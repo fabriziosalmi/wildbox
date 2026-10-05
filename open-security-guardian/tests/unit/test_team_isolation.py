@@ -83,6 +83,7 @@ def api(settings, monkeypatch):
             "HTTP_X_WILDBOX_TEAM_ID": str(team),
             "HTTP_X_WILDBOX_ROLE": role,
             "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
+            "HTTP_X_WILDBOX_AUTH_TYPE": "session",
         }
         kwargs = {"secure": True, **headers}
         if data is not None:

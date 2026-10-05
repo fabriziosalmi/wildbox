@@ -196,8 +196,14 @@ _AUTHENTICATING_LOCATION = (
 
 
 def _site(declaration):
+    # The variables authenticate() assigns (#637), so that the route URI is
+    # the one thing each case varies.
+    assigned = "".join(f'    set ${name} "";\n' for name in cgc.ASSIGNED_VARIABLES)
+    # And the one CORS policy (#712).
+    assigned += "    include /etc/nginx/includes/cors.conf;\n"
     return {
         "conf.d/site.conf": "server {\n"
+        + assigned
         + declaration
         + _AUTHENTICATING_LOCATION
         + "}\n"

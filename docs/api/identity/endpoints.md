@@ -283,10 +283,57 @@ gateway does not confirm, nothing changes and the answer is 503.
 | GET | `/health` | Health check |
 | GET | `/` | Service information |
 | POST | `/internal/authorize` | Token and API-key validation for the gateway; requires `X-Gateway-Secret` and is not routed by the gateway |
+| POST | `/internal/team-contacts` | For guardian's worker: the address and role of the active members of one team, selected by `user_ids` or by `roles`. Requires `X-Guardian-Contacts-Secret` (`GUARDIAN_CONTACTS_SECRET`, not the gateway's secret) and is not routed by the gateway |
 
 `/internal/authorize` is the only identity route that accepts
 `X-Gateway-Secret`. The gateway calls it on its own behalf, with the secret
 from its environment; no gateway location maps a client path to `/internal`.
+
+---
+
+## Errors
+
+Every error of the service has the body every Wildbox service answers:
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "User not found",
+    "type": "HTTPException",
+    "request_id": "6f1c2d..."
+  }
+}
+```
+
+`error.code` is the HTTP status, `error.message` the reason and
+`error.request_id` the correlation id, the `X-Request-ID` the gateway sent
+or one the service generated. There is no top-level `detail`.
+
+| Status | `error.message` | `error.type` |
+| --- | --- | --- |
+| 404, raised by a route | The route's own message: `User not found`, `Team not found`, `API key not found` | `HTTPException` |
+| 404, no such path | `Not Found` | `HTTPException` |
+| 422, invalid request | `Request validation failed`; `error.details` lists the field errors | `ValidationError` |
+| 500, unhandled error | `An internal error occurred`; the cause is in the service log under the same request id | `InternalServerError` |
+| 503, database unreachable | `Database temporarily unavailable` | `HTTPException` |
+
+A field error says where and what, and does not repeat what was sent:
+
+```json
+{"error": {"code": 422, "message": "Request validation failed",
+  "type": "ValidationError", "request_id": "...",
+  "details": [{"type": "string_too_short", "loc": ["body", "new_password"],
+               "msg": "String should have at least 12 characters"}]}}
+```
+
+Each item has `type`, `loc` and `msg` only. The refused value (`input` in
+FastAPI's default body) is not returned: for a missing field it was the whole
+request body, a password in it included.
+
+A fastapi-users error keeps its code at `error.details` (see
+[Password Policy](#password-policy)); when the detail is a bare code, such as
+`LOGIN_BAD_CREDENTIALS`, the code is `error.message`.
 
 ---
 

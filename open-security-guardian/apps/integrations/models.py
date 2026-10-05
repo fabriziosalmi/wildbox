@@ -37,7 +37,26 @@ class IntegrationStatus(models.TextChoices):
 
 
 class ExternalSystem(models.Model):
-    """External system configuration and connection details"""
+    """The record of an external system: where it is, not how to log in.
+
+    guardian holds no credential for an external system (#728).
+    ``auth_config`` was a JSON column here that took API keys, bearer tokens
+    and basic-auth passwords and stored them as sent. Nothing read it:
+    guardian contacts no external system (apps/integrations/views.py), the
+    API never returned the column, and ``get_auth_headers``, the one method
+    that did, had no caller. The column was dropped (migration 0004), as
+    were ``WebhookEndpoint.secret_token`` and ``NotificationChannel.config``
+    for the same reason, and the API refuses the three fields instead of
+    taking a secret it would discard. ``auth_type`` stays: it says how the
+    system authenticates, which is not a secret.
+
+    Whatever first contacts an external system brings the credential back,
+    and must not bring it back as plain text: encrypt it with a key the
+    database does not hold, as cspm does for cloud credentials
+    (open-security-cspm/app/credential_crypto.py), and keep it write-only.
+    tests/unit/test_no_stored_credentials.py fails for a model field named
+    like a secret until it is listed there with how it is protected.
+    """
     TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     team_id = team_id_field()
@@ -61,9 +80,7 @@ class ExternalSystem(models.Model):
         ('bearer', 'Bearer Token'),
         ('custom', 'Custom Auth')
     ], default='api_key')
-    
-    auth_config = models.JSONField(default=dict, blank=True, help_text="Authentication configuration")
-    
+
     # Connection Settings
     verify_ssl = models.BooleanField(default=True)
     timeout_seconds = models.PositiveIntegerField(default=30)
@@ -125,31 +142,6 @@ class ExternalSystem(models.Model):
         if self.total_requests == 0:
             return 0.0
         return (self.successful_requests / self.total_requests) * 100
-
-    def get_auth_headers(self):
-        """Get authentication headers for API requests"""
-        headers = {}
-        
-        if self.auth_type == 'api_key':
-            api_key = self.auth_config.get('api_key')
-            key_header = self.auth_config.get('key_header', 'X-API-Key')
-            if api_key:
-                headers[key_header] = api_key
-        
-        elif self.auth_type == 'bearer':
-            token = self.auth_config.get('token')
-            if token:
-                headers['Authorization'] = f'Bearer {token}'
-        
-        elif self.auth_type == 'basic':
-            username = self.auth_config.get('username')
-            password = self.auth_config.get('password')
-            if username and password:
-                import base64
-                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
-                headers['Authorization'] = f'Basic {credentials}'
-        
-        return headers
 
 
 class IntegrationMapping(models.Model):
@@ -293,6 +285,11 @@ class WebhookEndpoint(models.Model):
     caller's team already uses. If guardian ever receives webhooks on these
     paths, the path becomes a routing key and has to be generated, not
     chosen: uniqueness per team would not be enough to route by.
+
+    There is no verification secret on the row (#728): ``secret_token`` was
+    stored as plain text for a check nothing performs, and was dropped.
+    ``verify_signature`` records what the team wants; a receiver, when one
+    exists, needs the secret back encrypted (see ``ExternalSystem``).
     """
     TEAM_LOOKUP = 'system__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -302,7 +299,6 @@ class WebhookEndpoint(models.Model):
     # Webhook Configuration
     name = models.CharField(max_length=200)
     endpoint_url = models.CharField(max_length=500, db_index=True, help_text="Webhook endpoint path")
-    secret_token = models.CharField(max_length=200, blank=True, help_text="Webhook verification token")
     
     # Event Configuration
     event_types = models.JSONField(default=list, help_text="List of event types to trigger webhook")
@@ -388,7 +384,24 @@ class IntegrationLog(models.Model):
 
 
 class NotificationChannel(models.Model):
-    """Notification channels for alerts and updates"""
+    """Notification channels for alerts and updates
+
+    A record of where a team wants to be told, and nothing more: guardian
+    delivers nothing through a channel. The notifications it does send (alert
+    rules, SLA violations, compliance reminders) are e-mails to the
+    recipients of the rule, vulnerability or assessment concerned, and none
+    reads this table. ``send_notification`` used to be defined here: it
+    sent nothing, counted the call in ``total_notifications`` and returned
+    True, and nothing called it. It was removed with the API actions of the
+    same name (#644), so ``total_notifications`` and ``last_notification``
+    stay at their defaults.
+
+    The row has no ``config`` (#728). That JSON column took what a delivery
+    would need (a Slack or Teams webhook URL, an SMTP password, a push
+    token), stored it as plain text and was never read, by guardian or by
+    the API, which accepted it and did not return it. It was dropped;
+    ``recipients`` and the subscriptions stay, since they are the record.
+    """
     TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     team_id = team_id_field()
@@ -403,9 +416,6 @@ class NotificationChannel(models.Model):
         ('sms', 'SMS'),
         ('push', 'Push Notification')
     ])
-    
-    # Configuration
-    config = models.JSONField(default=dict, help_text="Channel-specific configuration")
     
     # Event Subscriptions
     event_types = models.JSONField(default=list, help_text="Subscribed event types")
@@ -428,28 +438,6 @@ class NotificationChannel(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_channel_type_display()})"
-
-    def send_notification(self, event_type, message, severity='info', metadata=None):
-        """Send notification through this channel"""
-        # This would contain the actual notification sending logic
-        # Implementation would depend on the channel type
-        
-        if not self.is_active:
-            return False
-        
-        if event_type not in self.event_types:
-            return False
-        
-        if self.severity_filter and severity not in self.severity_filter:
-            return False
-        
-        # Channel-specific sending logic would go here
-        # For now, just update counters
-        self.total_notifications += 1
-        self.last_notification = timezone.now()
-        self.save(update_fields=['total_notifications', 'last_notification'])
-        
-        return True
 
 
 class ApiUsageMetrics(models.Model):

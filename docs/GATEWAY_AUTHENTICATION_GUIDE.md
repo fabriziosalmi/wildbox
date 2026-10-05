@@ -36,11 +36,15 @@ shared handler (`authenticate()` in
    60-second windows of one sixtieth of that figure (166 with the default).
    The gateway validates `RATE_LIMIT_PER_HOUR` at startup and does not start
    when it is not a whole number from 1 to 1,000,000,000.
-4. It removes `Authorization`, `X-API-Key` and any client-supplied
-   `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role`
+4. It removes `Authorization`, `X-API-Key`, the `auth_token` cookie (the
+   session JWT as the dashboard stores it; other cookies are kept) and any
+   client-supplied
+   `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`,
+   `X-Wildbox-Auth-Type` and `X-Wildbox-Scopes`
    (`utils.clean_request_headers()`), then stores the validated identity in
    the nginx variables `$wildbox_user_id`, `$wildbox_team_id` and
-   `$wildbox_role`.
+   `$wildbox_role`, and what the credential is in `$wildbox_auth_type` and
+   `$wildbox_scopes` (see [Credential headers](#credential-headers)).
 
 The shared proxy settings, `open-security-gateway/nginx/includes/proxy_params.conf`,
 which every proxied route includes, then send:
@@ -49,21 +53,37 @@ which every proxied route includes, then send:
 proxy_set_header X-Wildbox-User-ID $wildbox_user_id;
 proxy_set_header X-Wildbox-Team-ID $wildbox_team_id;
 proxy_set_header X-Wildbox-Role $wildbox_role;
+proxy_set_header X-Wildbox-Auth-Type $wildbox_auth_type;
+proxy_set_header X-Wildbox-Scopes $wildbox_scopes;
 proxy_set_header X-Gateway-Secret $wildbox_gateway_secret;
 proxy_set_header X-Request-ID $request_id;
 proxy_set_header Authorization "";
 ```
 
-The server block initializes `$wildbox_gateway_secret` and the three
-`$wildbox_*` identity variables to empty strings, and nginx does not send a
-header whose value is empty. `authenticate()` fills them in, the secret from
-the gateway's `GATEWAY_INTERNAL_SECRET`, only for a request it let through
-(`auth_handler.lua`). So the gateway sends its proof of origin only on routes
-it has authenticated; every other location (identity's routes, the
-dashboard) forwards no `X-Gateway-Secret` and drops one a client sent.
+The server block initializes `$wildbox_gateway_secret`, the three
+`$wildbox_*` identity variables and the two credential variables to empty
+strings, and nginx does not send a header whose value is empty.
+`authenticate()` fills them in, the secret from the gateway's
+`GATEWAY_INTERNAL_SECRET`, only for a request it let through
+(`auth_handler.lua`). So the gateway sends its proof of origin, and its
+description of the credential, only on routes it has authenticated; every
+other location (identity's routes, the dashboard) forwards no
+`X-Gateway-Secret`, `X-Wildbox-Auth-Type` or `X-Wildbox-Scopes`, and drops
+the ones a client sent. `scripts/check_gateway_config.py` fails for a
+configuration that calls `authenticate()` without declaring the variables.
 
 ### Routes that differ
 
+- **Automations**: not routed. `/api/v1/automations/` used to proxy to n8n,
+  which is not a Wildbox service: it was sent `X-Gateway-Secret` and the
+  caller's identity (#711), and every registered session of every team
+  reached its editor, its REST API and, on an instance with no owner yet,
+  its owner setup (#714). The path now answers 404 like any unknown one.
+  `authenticate()` is only for a location whose upstream is a Wildbox
+  service: the secret must never leave the set of services that validate
+  it, because whoever holds it can state any user, team and role to all of
+  them. `tests/scripts/test_gateway_authenticated_locations.py` fails for a
+  location that proxies anywhere else.
 - **Identity** (`/api/v1/identity/`, `/auth/`): identity is the
   authentication authority and validates the bearer token itself, so these
   routes do not run the shared handler and pass `Authorization` through.
@@ -72,7 +92,11 @@ dashboard) forwards no `X-Gateway-Secret` and drops one a client sent.
   (`open-security-guardian/apps/core/gateway_middleware.py`) rather than the
   FastAPI dependency below. Like the FastAPI services, it accepts gateway
   headers only and answers a direct request with `403`
-  `GATEWAY_AUTH_REQUIRED`; it has no API keys of its own (#633).
+  `GATEWAY_AUTH_REQUIRED`; it has no API keys of its own (#633). The
+  middleware reads the credential headers with the same code as the FastAPI
+  services (`open_security_shared.scopes`) and requires the scope of the
+  request's method; see
+  [Where a scope is checked twice](#where-a-scope-is-checked-twice).
 
 ## Identity headers
 
@@ -84,6 +108,80 @@ dashboard) forwards no `X-Gateway-Secret` and drops one a client sent.
 | `X-Gateway-Secret` | The shared `GATEWAY_INTERNAL_SECRET`: the proof that the request came from the gateway |
 
 There is no plan or subscription header.
+
+## Credential headers
+
+The gateway also tells the service what the credential is, so that a
+service can check an API-key scope itself (#637):
+
+| Header | Content |
+| --- | --- |
+| `X-Wildbox-Auth-Type` | `session` for a login session (a JWT), `api_key` for an API key. Sent on every request the gateway authenticated |
+| `X-Wildbox-Scopes` | The API key's scopes, separated by single spaces, in the order identity holds them: `data:ingest`, or `tools:read data:read`. A key that is not limited carries `*`. Not sent for a session |
+
+A session has no scopes and is not limited by them: the service gets
+`X-Wildbox-Auth-Type: session` and no `X-Wildbox-Scopes`. That is how it
+tells a session from a key: a key always has the header, unless its scope
+list is empty, and a key without the header may do nothing that needs a
+scope.
+
+A third auth type, `service`, is never sent by the gateway. A Wildbox
+service that calls another one on a user's behalf sends it with the gateway
+secret; see [Calls between services](#calls-between-services).
+
+The gateway decides the type by identity's answer: a decision that names an
+API key is `api_key`, whichever header the credential came in. A scope that
+is not a scope name (`*`, `name` or `name:action`, in lower case) is not
+forwarded.
+
+### How a service reads them
+
+`open_security_shared.scopes` holds the rules, with no dependency, for the
+FastAPI services and for guardian alike. They fail closed:
+
+| What arrives | What the service does |
+| --- | --- |
+| No `X-Wildbox-Auth-Type` | Serves routes that need no scope; refuses a route that needs one, `403` `GATEWAY_AUTH_TYPE_REQUIRED`. A gateway older than the service does not send the header |
+| An auth type other than `session`, `api_key` or `service` | `400` `INVALID_GATEWAY_HEADERS`, on every route |
+| `X-Wildbox-Scopes` that is not a list of scope names separated by single spaces (empty, another separator, doubled spaces, upper case) | `400` `INVALID_GATEWAY_HEADERS`, on every route |
+| `X-Wildbox-Scopes` present | The scopes decide, whatever the auth type |
+| No `X-Wildbox-Scopes`, auth type `session` or `service` | Not limited by scopes |
+| No `X-Wildbox-Scopes`, auth type `api_key` | The key holds no scope: every route that needs one is refused |
+
+Whether a set of scopes satisfies a required one is decided as at the
+gateway (`scopes_satisfy` in `auth_handler.lua`, `scope_satisfied` in
+`open-security-shared/scopes.py`): `admin` and `*` satisfy everything,
+`write` satisfies `read`, a resource's `admin` scope satisfies every action
+on it, a generic scope satisfies the resource scopes of its level, and
+`<resource>:delete` is satisfied only by itself and the admin scopes. The
+two implementations are held together by one table of 200 pairs,
+`open-security-gateway/test/scope_vectors.txt`: the shared package's tests
+check theirs against every row, and the gateway's harness
+(`test/scope_vector_tests.sh`) checks the Lua against every row on the
+wire.
+
+### Where a scope is checked twice
+
+The gateway checks every request. These services check again, on what the
+gateway forwarded, so that a mistake in the gateway's scope map is not the
+only thing between a key and the route:
+
+| Service | Routes | Scope required of an API key |
+| --- | --- | --- |
+| data | `POST /api/v1/ingest` | `data:ingest` (also satisfied by `data:write` or `write`) |
+| data | every other route under `/api/v1/` | `read` for `GET`, `write` for other methods |
+| tools | `POST /api/tools/{tool}`, `POST /api/tools/{tool}/async`, `DELETE /api/tasks/{task_id}` | `tools:execute` |
+| guardian | every route under `/api/` | `data:read` for `GET`, `HEAD` and `OPTIONS`; `data:delete` for `DELETE`; `data:write` for other methods |
+
+A refusal is `403` with `code` `INSUFFICIENT_SCOPE` and the
+`required_scope`.
+
+The other routes rely on the gateway's check alone: reading tools and
+tasks (`tools:read`), and everything in the agents, responder and CSPM
+services. The agents and responder services use the shared dependency, so
+their `GatewayUser` carries `auth_type` and `scopes` and a route can add
+`require_scope`; CSPM reads the identity headers with code of its own and
+does not read the credential headers.
 
 ## Using it in a FastAPI service
 
@@ -105,22 +203,31 @@ and in the service's `Dockerfile`:
 
 ```dockerfile
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-build-isolation \
+        "/tmp/open-security-shared[fastapi,metrics]" \
+    && pip check
 ```
 
-`--no-deps` because the service's own `requirements.txt` already provides the
-package's dependencies (FastAPI, Pydantic and the others listed in
-`open-security-shared/pyproject.toml`). `--no-index --no-build-isolation`
-because pip would otherwise download setuptools from PyPI to build the
-package, unpinned and unhashed; with them it uses the setuptools already in
-the image. The Code Quality job refuses a Dockerfile that installs a local
-path without `--no-index`.
+The extras are those of the shared modules the service imports: `fastapi` for
+`gateway_auth`, `errors` and `tenancy`, `metrics` for `observability` (the
+table is in `open-security-shared/README.md`). The service's own
+`requirements.txt` must provide what they require (FastAPI, Pydantic,
+prometheus-client): the package has no dependency of its own, and with
+`--no-index` pip can only resolve the extras against what the lock installed,
+so the build fails when the lock lacks one. `pip check` fails it for any other
+unmet requirement. `--no-index --no-build-isolation` also because pip would
+otherwise download setuptools from PyPI to build the package, unpinned and
+unhashed; with them it uses the setuptools already in the image. The Code
+Quality job refuses a Dockerfile that installs a local path without
+`--no-index`, and the Dependency Integrity job one whose extras do not match
+what the service imports.
 
 ### Authenticate a route
 
 `open_security_shared.gateway_auth` provides `GatewayUser`,
-`get_user_from_gateway_headers` and `require_role`. Most services re-export
-them from their own `app/auth.py`, as the data and agents services do:
+`get_user_from_gateway_headers`, `require_role` and `require_scope`. Most
+services re-export them from their own `app/auth.py`, as the agents service
+does:
 
 ```python
 # open-security-myservice/app/auth.py
@@ -162,6 +269,33 @@ async def delete_item(
 Scope every query by `user.team_id`: the gateway authenticates the caller,
 the service decides what that caller may see.
 
+### Require an API-key scope
+
+When the gateway requires a scope of a route (`required_scope_for_request`
+in `auth_handler.lua`), the service can require it again with
+`require_scope`. It returns the user, so it replaces the authentication
+dependency on that route:
+
+```python
+from open_security_shared.gateway_auth import GatewayUser, require_scope
+
+
+@app.post("/api/v1/ingest")
+async def ingest(user: GatewayUser = Depends(require_scope("data:ingest"))):
+    return {"team_id": str(user.team_id)}
+
+
+# A service whose routes all follow the gateway's read/write rule, as the
+# data service does: "read" for GET, HEAD and OPTIONS, "write" otherwise.
+get_current_user = require_scope(read="read", write="write")
+```
+
+A session and a `service` call pass; an API key passes when its scopes
+satisfy the required one; a request without `X-Wildbox-Auth-Type` is
+refused. `user.auth_type`, `user.scopes` and `user.has_scope("...")` are
+there for a rule of the route's own. Use the scope the gateway requires for
+the route, or a key the gateway lets through is refused by the service.
+
 ### What the dependency checks
 
 `get_user_from_gateway_headers` (`open-security-shared/gateway_auth.py`), in
@@ -174,9 +308,15 @@ this order:
 | `X-Gateway-Secret` missing or different (constant-time comparison) | 403 | `GATEWAY_SECRET_REQUIRED` |
 | User or team ID not a UUID4 | 400 | `INVALID_GATEWAY_HEADERS` |
 | Role not one of `owner`, `admin`, `member`, `viewer` (missing means `member`) | 400 | `INVALID_GATEWAY_HEADERS` |
+| `X-Wildbox-Auth-Type` or `X-Wildbox-Scopes` present and malformed | 400 | `INVALID_GATEWAY_HEADERS` |
 
 `require_role(...)` answers `403` with `code` `INSUFFICIENT_ROLE` when the
 caller's role is not in the list.
+
+`require_scope(...)` answers `403` with `code` `INSUFFICIENT_SCOPE` when an
+API key lacks the scope, and `403` with `code` `GATEWAY_AUTH_TYPE_REQUIRED`
+when the request has no `X-Wildbox-Auth-Type`. Both name the
+`required_scope`.
 
 The tools service wraps the dependency (`open-security-tools/app/auth.py`):
 a request without the identity headers gets `401` there instead of `403`.
@@ -212,7 +352,18 @@ A service that calls another one on behalf of a user forwards that user's
 identity: the same three `X-Wildbox-*` headers and `X-Gateway-Secret`. There
 is no service-wide key. The agents service does this for its tool calls
 (`open-security-agents/app/tools/wildbox_client.py`, `_request_headers()`),
-and refuses to make a call when it has no complete caller identity.
+and the responder for its connectors
+(`open-security-responder/app/caller.py`, `gateway_headers()`); both refuse
+to make a call when they have no complete caller identity.
+
+Such a call also sends `X-Wildbox-Auth-Type: service`, and no scopes: the
+called service refuses a request that needs a scope and does not say what
+its credential is. `service` is not limited by scopes. The caller's own
+credential was checked by the gateway on the route that started the work
+(`tools:execute` to start an analysis, `write` to run a playbook), and its
+scopes do not travel with the call: what an analysis or a playbook does on
+the caller's behalf is not checked against the scopes of the key that
+started it.
 
 ## Testing
 
@@ -258,6 +409,12 @@ authentication.
 service hold different `GATEWAY_INTERNAL_SECRET` values, typically after a
 rotation in which not every container was recreated. See
 [Secrets rotation](SECURITY_SECRETS_ROTATION.md).
+
+**The service answers `GATEWAY_AUTH_TYPE_REQUIRED`.** The request carried
+the gateway's secret and no `X-Wildbox-Auth-Type`. The gateway image is
+older than the service's: rebuild the gateway image and recreate its
+container. A script or a test that calls a service directly with the secret
+must send the header too.
 
 **`ModuleNotFoundError: open_security_shared`.** The image was built without
 the `shared` build context or without the `pip install` step above.

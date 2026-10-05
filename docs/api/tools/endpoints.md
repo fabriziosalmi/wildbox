@@ -141,7 +141,9 @@ it as `X-API-Key: <key>`. The
 both credentials.
 
 A JWT is not limited by scopes. An API key with scopes needs the following
-ones, which the gateway checks before the request reaches the service:
+ones, which the gateway checks before the request reaches the service. The
+service checks `tools:execute` again, on the scopes the gateway forwards,
+on the routes that run a tool or cancel a task:
 
 | Request | Required scope |
 | --- | --- |
@@ -578,8 +580,9 @@ uses:
 ```
 
 `details` is added when there is more to say, such as the field errors of a
-422. `request_id` matches the `X-Request-ID` the gateway set, for finding
-the request in the logs.
+422. A field error is `{"type", "loc", "msg"}`: where the error is and what
+is wrong. The value that was refused is never in it. `request_id` matches
+the `X-Request-ID` the gateway set, for finding the request in the logs.
 
 | Status | Where |
 | --- | --- |

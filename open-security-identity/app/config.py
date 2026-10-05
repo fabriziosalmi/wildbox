@@ -2,6 +2,7 @@
 Configuration management for Open Security Identity service.
 """
 
+import hmac
 import json
 from typing import Annotated, Any, Optional
 
@@ -14,6 +15,8 @@ from pydantic_settings import BaseSettings, NoDecode
 # values such as "a" * 32 without tripping on random hex (16 symbols).
 API_KEY_HASH_SECRET_MIN_LENGTH = 32
 API_KEY_HASH_SECRET_MIN_UNIQUE_CHARS = 10
+# GUARDIAN_CONTACTS_SECRET, held to the same standard.
+GUARDIAN_CONTACTS_SECRET_MIN_LENGTH = 32
 # Markers of the values shipped in .env.example and the documentation. Matched
 # as substrings; none can plausibly occur in a random hex or URL-safe value.
 _PLACEHOLDER_MARKERS = ("generate-with", "change-me", "change-this", "changeme")
@@ -28,8 +31,13 @@ class Settings(BaseSettings):
     debug: bool = False
     port: int = 8001
     
-    # "production" makes API_KEY_HASH_SECRET mandatory (see below).
-    environment: str = "development"
+    # "production" makes API_KEY_HASH_SECRET mandatory (see below);
+    # "development" publishes the API schema and documentation pages
+    # (app/main.py). An environment that is not declared is neither: the
+    # default was "development", so a service started without ENVIRONMENT (a
+    # bare `docker run`) published its route map (#722). Empty is also what
+    # Compose passes for an undefined variable.
+    environment: str = ""
 
     # Database
     database_url: str = Field(..., description="Database connection URL")
@@ -65,7 +73,17 @@ class Settings(BaseSettings):
 
     # Gateway secret for service-to-service authentication
     gateway_internal_secret: Optional[str] = Field(None, description="Shared secret for gateway-to-identity communication")
-    
+
+    # What guardian's worker presents to POST /internal/team-contacts to
+    # learn who may be e-mailed about a team (#705, app/team_contacts.py).
+    # A secret of its own: the worker holds no GATEWAY_INTERNAL_SECRET, and
+    # must not be handed it under another name. Unset, the route answers
+    # 503 and guardian sends no e-mail.
+    guardian_contacts_secret: Optional[str] = Field(
+        default=None,
+        description="Secret guardian's worker presents to read a team's contacts",
+    )
+
     # CORS - SECURITY: Restrict origins in production
     #
     # NoDecode: pydantic-settings would otherwise read a list[str] from the
@@ -137,6 +155,69 @@ class Settings(BaseSettings):
                 "characters); generate one with 'make generate-secrets'"
             )
         return value
+
+    @field_validator("guardian_contacts_secret", mode="before")
+    @classmethod
+    def _blank_contacts_secret_is_unset(cls, value: Any) -> Any:
+        """Read an empty GUARDIAN_CONTACTS_SECRET as unset.
+
+        Compose passes it as ``${GUARDIAN_CONTACTS_SECRET:-}``: empty for a
+        deployment that has not switched guardian's e-mail on.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("guardian_contacts_secret")
+    @classmethod
+    def _contacts_secret_is_strong(cls, value: Optional[str]) -> Optional[str]:
+        """Refuse a short, placeholder or low-entropy GUARDIAN_CONTACTS_SECRET.
+
+        It guards the e-mail addresses of every team's members. The messages
+        name the variable but never echo its value.
+        """
+        if value is None:
+            return value
+        if len(value) < GUARDIAN_CONTACTS_SECRET_MIN_LENGTH:
+            raise ValueError(
+                f"GUARDIAN_CONTACTS_SECRET must be at least "
+                f"{GUARDIAN_CONTACTS_SECRET_MIN_LENGTH} characters; generate "
+                f"one with 'openssl rand -hex 32'"
+            )
+        lowered = value.lower()
+        if any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
+            raise ValueError(
+                "GUARDIAN_CONTACTS_SECRET is a placeholder from .env.example; "
+                "generate one with 'openssl rand -hex 32'"
+            )
+        if len(set(value)) < API_KEY_HASH_SECRET_MIN_UNIQUE_CHARS:
+            raise ValueError(
+                "GUARDIAN_CONTACTS_SECRET has too little entropy (too few "
+                "distinct characters); generate one with 'openssl rand -hex 32'"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _contacts_secret_is_its_own(self) -> "Settings":
+        """Refuse a GUARDIAN_CONTACTS_SECRET that is another secret's value.
+
+        guardian's worker holds it. Equal to GATEWAY_INTERNAL_SECRET, it
+        would hand the worker the secret that lets its holder speak as any
+        user to every service; equal to a signing key, that key.
+        """
+        if self.guardian_contacts_secret is None:
+            return self
+        for name in ("gateway_internal_secret", "jwt_secret_key", "api_key_hash_secret"):
+            other = getattr(self, name)
+            if other and hmac.compare_digest(
+                self.guardian_contacts_secret.encode("utf-8"), other.encode("utf-8")
+            ):
+                raise ValueError(
+                    f"GUARDIAN_CONTACTS_SECRET must not be the value of "
+                    f"{name.upper()}: generate a separate one with "
+                    f"'openssl rand -hex 32'"
+                )
+        return self
 
     @model_validator(mode="after")
     def _hash_secret_required_in_production(self) -> "Settings":

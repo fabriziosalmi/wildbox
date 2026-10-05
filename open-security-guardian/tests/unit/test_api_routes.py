@@ -13,8 +13,9 @@ list route with ``?search=`` and with each ``?ordering=`` the viewset
 accepts, and every detail route with a primary key that does not exist. None
 may answer 5xx. A second test stores one row per remediation and
 integrations model and reads it back through list and retrieve, so that
-the serializers run on real data, and checks that stored credentials are
-not returned. A third reads the scanner statistics over stored rows.
+the serializers run on real data, and checks that the payloads of an
+integration log are not returned. A third reads the scanner statistics over
+stored rows.
 """
 
 import re
@@ -89,6 +90,7 @@ def api(settings, monkeypatch):
         "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": "admin",
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
+        "HTTP_X_WILDBOX_AUTH_TYPE": "session",
     }
 
     def get(url):
@@ -135,7 +137,6 @@ def _seed():
         system_type="ticketing",
         base_url="https://jira.example.com",
         auth_type="bearer",
-        auth_config={"token": "s3cr3t-auth-config"},
     )
     mapping = IntegrationMapping.objects.create(
         system=system, guardian_entity="vulnerability", external_entity="issue"
@@ -187,7 +188,6 @@ def _seed():
             system=system,
             name="hook",
             endpoint_url="/hooks/jira",
-            secret_token="s3cr3t-webhook-token",
         ),
         "integrations/logs": IntegrationLog.objects.create(
             system=system,
@@ -199,7 +199,6 @@ def _seed():
             team_id=TEAM_ID,
             name="slack",
             channel_type="slack",
-            config={"webhook_url": "https://hooks.slack.com/s3cr3t-channel"},
         ),
     }
 
@@ -214,7 +213,9 @@ def test_list_and_retrieve_serialize_stored_rows(api):
         assert retrieved.status_code == 200, (route, retrieved.content[:500])
         assert retrieved.json()["id"] == str(obj.pk), route
         for response in (listed, retrieved):
-            # Credentials stored on these rows are write-only.
+            # The payloads of an integration log are not served. The other
+            # rows hold no credential to serve: the columns that did are
+            # gone (#728, tests/unit/test_no_stored_credentials.py).
             assert b"s3cr3t" not in response.content, route
 
 

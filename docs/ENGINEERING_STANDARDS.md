@@ -49,8 +49,7 @@ NEXTAUTH_SECRET=<openssl rand -base64 32>
 GATEWAY_INTERNAL_SECRET=<openssl rand -hex 32>
 
 # N8N Automation
-N8N_BASIC_AUTH_USER=admin
-N8N_BASIC_AUTH_PASSWORD=<openssl rand -base64 24>
+N8N_ENCRYPTION_KEY=<openssl rand -hex 32>
 
 # Database
 POSTGRES_PASSWORD=<openssl rand -base64 32>

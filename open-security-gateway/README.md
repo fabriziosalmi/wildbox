@@ -10,11 +10,12 @@ The configuration lives in:
 
 | File | Contents |
 | --- | --- |
-| `nginx/nginx.conf` | Global settings, `limit_req` zones, Lua shared dictionaries, CORS allowlist, exported environment variables |
+| `nginx/nginx.conf` | Global settings, `limit_req` zones, Lua shared dictionaries, exported environment variables |
 | `nginx/conf.d/wildbox_gateway.conf` | Upstreams, listeners and every `location` block |
-| `nginx/includes/` | Shared proxy, CORS and dashboard header settings, and the auth-cache purge endpoint |
+| `nginx/includes/` | Shared proxy settings, the request-method and CORS rules (`cors.conf`), dashboard header settings, and the auth-cache purge endpoint |
 | `nginx/lua/auth_handler.lua` | Authentication, decision cache, revocation, API-key scopes, per-team rate limit |
 | `nginx/lua/utils.lua` | Token extraction, header cleanup, HTTP client helper |
+| `nginx/lua/cors.lua` | The CORS allowlist (`CORS_ORIGINS`), the preflight answer, and the labels on the API's responses |
 | `scripts/docker-entrypoint.sh` | Generates a self-signed certificate if none is mounted, then starts OpenResty with `nginx/nginx.conf` |
 
 ## Running
@@ -96,7 +97,9 @@ then:
 5. Applies the per-team rate limit.
 6. Strips `Authorization`, `X-API-Key` and any client-supplied `X-Wildbox-*`
    headers, then forwards `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
-   `X-Wildbox-Role`, `X-Gateway-Secret` and `X-Request-ID` to the service.
+   `X-Wildbox-Role`, `X-Gateway-Secret` and `X-Request-ID` to the service,
+   with what the credential is: `X-Wildbox-Auth-Type` and, for an API key,
+   `X-Wildbox-Scopes` (see [What the service is told](#what-the-service-is-told)).
 
 If identity cannot be reached, the gateway answers `503` with a JSON body and
 `Retry-After`. After 10 failed calls a circuit breaker stops calling identity
@@ -112,7 +115,6 @@ same scope:
 | Path | Read (`GET`, `HEAD`) | Other methods |
 | --- | --- | --- |
 | `/api/v1/tools`, `/api/v1/agents`, `/api/v1/tasks` | `tools:read` | `tools:execute` |
-| `/api/v1/automations` | `tools:admin` | `tools:admin` |
 | `/api/v1/guardian` | `data:read` | `data:write`, or `data:delete` for `DELETE` |
 | `/api/v1/data/ingest` (this path only) | `read` | `data:ingest`, also satisfied by `data:write` or `write` |
 | `/api/v1/data`, `/api/v1/cspm`, `/api/v1/responder`, `/api/v1/identity/health` | `read` | `write` |
@@ -124,7 +126,9 @@ A generic scope also satisfies the resource scopes of its level: `read`
 satisfies `tools:read` and `data:read`, and `write` satisfies those and
 `tools:execute`, `data:write` and `data:ingest`. `tools:admin` and
 `data:delete` are satisfied only by themselves, by the resource's `admin`
-scope, and by `admin` and `*`.
+scope, and by `admin` and `*`. No route requires `tools:admin` since the
+automations route was removed; a key that holds it has what `tools:read`
+and `tools:execute` give.
 
 The request is mapped by the path nginx chose its location for, before any
 rewrite in that location: the server block copies `$uri` into
@@ -134,6 +138,80 @@ configuration that authenticates without it.
 A location added to `wildbox_gateway.conf` needs a row in `ROUTE_SCOPES`
 and a pin in `test/route_scope_tests.sh`. Without the row it requires
 `admin` of every scope-limited key; without the pin the harness fails.
+
+### What the service is told
+
+The gateway forwards the credential it decided on, so that a service can
+check a scope itself (`credential_headers` in `auth_handler.lua`):
+
+| Credential | `X-Wildbox-Auth-Type` | `X-Wildbox-Scopes` |
+| --- | --- | --- |
+| Session (JWT) | `session` | not sent |
+| API key with scopes | `api_key` | the scopes, separated by single spaces, in identity's order |
+| API key that is not limited | `api_key` | `*` |
+
+Both are set by `authenticate()` and sent by `proxy_params.conf` from
+`$wildbox_auth_type` and `$wildbox_scopes`; a client's own are removed, and
+a location that does not authenticate forwards neither. The auth type
+follows identity's answer: a decision that names an API key is `api_key`.
+A value that is not a scope name is not forwarded.
+
+The data service, guardian and the tools routes that run a tool require the
+scope again on these headers, and refuse a request that carries the
+gateway's secret without `X-Wildbox-Auth-Type`. The
+[Gateway authentication guide](../docs/GATEWAY_AUTHENTICATION_GUIDE.md#credential-headers)
+describes how a service reads them. `test/scope_vectors.txt` is the scope
+hierarchy written out; `test/scope_vector_tests.sh` checks `scopes_satisfy`
+against it and the shared package's tests check the services' copy.
+
+### What each upstream receives
+
+`X-Gateway-Secret` and the `X-Wildbox-*` headers are what a Wildbox service
+trusts, so they go to Wildbox services and to nothing else, and a caller's
+own credentials go only where they are validated:
+
+| Upstream | Receives | Does not receive |
+| --- | --- | --- |
+| A Wildbox service behind `authenticate()` | `X-Gateway-Secret`, the caller's user, team and role, the credential's type and scopes | the caller's `Authorization`, `X-API-Key` and `auth_token` cookie |
+| identity's own routes (`/api/v1/identity/`, `/auth/users/`, `/auth/jwt/`, ...) | the caller's `Authorization`, which identity validates | `X-Gateway-Secret`, any `X-Wildbox-*`, `X-API-Key` |
+| The dashboard | its cookies | `X-Gateway-Secret`, any `X-Wildbox-*`, `Authorization`, `X-API-Key` |
+
+The `auth_token` cookie is where the dashboard keeps the session JWT. A
+browser sends it with every request to the gateway's origin, so
+`clean_request_headers()` removes it, and only it, on every route
+`authenticate()` guards.
+
+The gateway proxies to nothing else. `/api/v1/automations/` used to reach
+n8n, the optional automations service, which is not a Wildbox service; the
+location is removed and the path answers 404
+(see [Automations](#automations-n8n)). `authenticate()` must not guard a
+location whose upstream is anything but a Wildbox service: it would send
+that upstream the secret.
+
+The harness enforces the table: `test/upstream_header_tests.sh` reads every
+location with a `proxy_pass` from `wildbox_gateway.conf`, fails for one it
+has no classification for, and checks on the wire what each one's upstream
+receives of a request that carries a session token, an API key, the
+session cookie and forged copies of the gateway's own headers.
+`tests/scripts/test_gateway_authenticated_locations.py` fails for a
+location that proxies to anything but a Wildbox service or the dashboard.
+
+### Automations (n8n)
+
+The gateway does not route to n8n. `/api/v1/automations/` proxied to its
+whole surface, the editor, the REST API and the webhooks, for every
+registered session of every team; n8n is a single-tenant tool with accounts
+of its own, and an instance whose owner account does not exist yet lets the
+first caller create it. The path now falls to the catch-all and answers 404
+with or without a credential.
+
+n8n's editor is on `127.0.0.1:5678` of the host, with the `automations`
+Compose profile started; `open-security-automations/README.md` has the
+setup. The workflows shipped there call the API outbound, through the
+gateway, with an API key. A workflow that needs an inbound webhook needs a
+location of its own for n8n's `/webhook/` prefix only, without
+`authenticate()` and without `proxy_params.conf`, relying on the webhook's
+own authentication in n8n.
 
 ## Routing
 
@@ -180,7 +258,6 @@ caller it verified, #664).
 | `/api/v1/tools/*` | `open-security-tools:8000` `/api/tools/*` | gateway |
 | `/api/v1/tasks` | `open-security-tools:8000` `/api/tasks` | gateway |
 | `/api/v1/tasks/*` | `open-security-tools:8000` `/api/tasks/*` | gateway |
-| `/api/v1/automations/*` | `open-security-automations:5678` `/*` | gateway |
 
 Notes:
 
@@ -190,11 +267,8 @@ Notes:
   `X-Forwarded-Prefix: /api/v1/guardian`, a literal that replaces any value
   the client sent: guardian writes its pagination links under that path, as
   relative references without a host (#643).
-- `/api/v1/automations/*` reaches n8n, which runs only with the `automations`
-  Compose profile; the upstream is resolved at request time, so the route
-  answers `502` while n8n is not running. The gateway replaces the
-  `Authorization` header with n8n's basic auth from `N8N_BASIC_AUTH_USER` and
-  `N8N_BASIC_AUTH_PASSWORD`.
+- `/api/v1/automations/*` is not a route: it answers 404. See
+  [Automations](#automations-n8n).
 
 ### Dashboard and other locations
 
@@ -276,7 +350,7 @@ them through the `env` directives in `nginx.conf`.
 | `IDENTITY_SERVICE_URL` | `http://open-security-identity:8001` | Base URL for `/internal/authorize` |
 | `AUTH_CACHE_TTL` | `300` | Seconds a decision is cached |
 | `RATE_LIMIT_PER_HOUR` | `10000` | Per-team request budget, see above. Must be a whole number from 1 to 1,000,000,000; any other value stops the gateway at startup |
-| `N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD` | `admin`, empty | Basic auth injected on `/api/v1/automations/*` |
+| `CORS_ORIGINS` | `http://localhost:3000` in `docker-compose.yml`, empty under the production overlay | The origins whose pages may call the API from a browser, see [CORS](#cors). An entry that is not an origin stops the gateway at startup |
 
 The Compose file and `.env.example` also set `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`
 and `GATEWAY_DEBUG`. They have no effect: no nginx or Lua code reads
@@ -284,9 +358,37 @@ and `GATEWAY_DEBUG`. They have no effect: no nginx or Lua code reads
 configuration but never used. The error log level is fixed at `warn` in
 `nginx.conf`.
 
-To accept cross-origin requests from a dashboard served on another origin, add
-the origin to the `$cors_allow_origin` map in `nginx.conf`. By default only
-`localhost` and `127.0.0.1` origins are allowed.
+### CORS
+
+The dashboard is normally served by the gateway, on the API's own origin,
+and needs no CORS. A dashboard on another origin, and the dashboard's
+development server on `http://localhost:3000`, do. `CORS_ORIGINS` lists the
+origins that may call the API from a browser: exact origins (scheme, host,
+optional port), comma-separated; a JSON list is read too. Nothing is
+allowed that is not listed, and an entry that is not an origin (a wildcard,
+a path, a bare host name) stops the gateway at startup.
+
+The rules are in `nginx/lua/cors.lua`, applied by `includes/cors.conf`,
+which the production and the test configuration both include at server
+level. For the API (`/api/` and identity's routes under `/auth/`):
+
+- A preflight from a listed origin (`OPTIONS` with `Origin` and
+  `Access-Control-Request-Method`) is answered `204` by the gateway, before
+  authentication and without reaching a service. Any other `OPTIONS`
+  request, and any method outside `GET`, `HEAD`, `POST`, `PUT`, `PATCH` and
+  `DELETE`, is answered `405`.
+- A response to a request from a listed origin carries
+  `Access-Control-Allow-Origin` with that origin (never `*`) and
+  `Access-Control-Allow-Credentials: true`, the gateway's own `401`, `403`,
+  `404` and `429` answers included.
+- A response to any other origin carries no `Access-Control-*` header. What
+  a service sets is removed either way: the gateway is the one authority,
+  so a header is never doubled.
+- Every response carries `Vary: Origin`.
+
+The dashboard's own pages are not labelled. `test/cors_tests.sh` checks all
+of this against the production image and configuration, and the same core
+cases against the test configuration.
 
 ## Logs
 
@@ -325,11 +427,19 @@ CI runs two checks on this directory:
 - `.github/workflows/gateway-tests.yml` runs the harness against a mock
   identity (`test/mock_identity.py`). It builds `Dockerfile.test`, whose
   configuration is written for the tests, and runs `test/ci_auth_tests.sh`,
+  `test/scope_forwarding_tests.sh`, `test/scope_vector_tests.sh`,
   `test/revocation_tests.sh` and `test/startup_config_tests.sh` against it.
   It also builds the production `Dockerfile` and runs
   `test/route_scope_tests.sh` against it: the scope each authenticated
   location of `wildbox_gateway.conf` requires, per method, with the mock
-  answering for every upstream.
+  answering for every upstream. `test/upstream_header_tests.sh`
+  runs against the same image: which of Wildbox's own headers each
+  proxying location sends its upstream. `test/cors_tests.sh` checks CORS against it and against the test
+  configuration. `test/production_image_tests.sh` checks the
+  image as built, with nothing mounted over `/etc/nginx`: only this
+  project's configuration is loaded, port 80 answers `/health` and
+  redirects the rest whatever the `Host`, and Docker reports the container
+  healthy by the image's own `HEALTHCHECK`.
 
 The `docker-compose.yml`, `docker-compose.dev.yml` and `Makefile` in this
 directory are for standalone use. They use a separate `wildbox-net` network

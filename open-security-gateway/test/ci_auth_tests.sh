@@ -196,6 +196,21 @@ assert_json "unreadable path requires admin to write" '.required_scope' 'admin'
 request "an unreadable path serves an admin key" 200 \
     -H "X-API-Key: wsk_scoped~unmapped-admin~admin" "$UNROUTED"
 assert_json "unreadable path still proxied where the location says" '.path' '/api/v1/tools/echo'
+# And where a location rewrites the path before authenticate() runs, the
+# scope is still the one of the route the location was chosen by. This one
+# is under /api/v1/guardian and rewrites to /api/v1/tools/...: a map that
+# read $uri would ask for tools:execute, and let a tools key write to a
+# guardian route. Production had such a location (automations) until #714.
+REWRITTEN="$GATEWAY_URL/api/v1/guardian/rewritten/echo"
+request "a rewritten path is not what the scope is read from" 403 -X POST \
+    -H "X-API-Key: wsk_scoped~rewritten-tools~tools:execute,tools:admin" "$REWRITTEN"
+assert_json "a rewriting location requires its route's scope" '.required_scope' 'data:write'
+request "a rewriting location reads with its route's scope" 403 \
+    -H "X-API-Key: wsk_scoped~rewritten-tools~tools:execute,tools:admin" "$REWRITTEN"
+assert_json "a rewriting location requires its route's read scope" '.required_scope' 'data:read'
+request "a rewriting location serves a key holding its route's scope" 200 -X POST \
+    -H "X-API-Key: wsk_scoped~rewritten-data~data:write" "$REWRITTEN"
+assert_json "the request is proxied to the rewritten path" '.path' '/api/v1/tools/echo'
 
 # 10. Auth cache: the two valid-bearer requests above (tests 4 and 5) must
 #     have produced exactly ONE /internal/authorize call
@@ -479,39 +494,8 @@ else
     fail "RATE_LIMIT_PER_HOUR=120: five requests in a row were all served (last HTTP $STATUS)"
 fi
 
-# --- CORS (dashboard on a separate origin) ---------------------------------
-echo "== CORS =="
-# 13. Preflight from an ALLOWED origin (localhost): echoed origin.
-ACAO=$(curl -sk -o /dev/null -D - -X OPTIONS \
-    -H "Origin: http://localhost:3000" \
-    -H "Access-Control-Request-Method: POST" \
-    "$GATEWAY_URL/auth/jwt/login" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
-if [ "$ACAO" = "http://localhost:3000" ]; then
-    pass "CORS preflight echoes an allowed origin"
-else
-    fail "CORS preflight: expected origin echoed, got '$ACAO'"
-fi
-
-# 14. Credentials flag present on the preflight.
-ACAC=$(curl -sk -o /dev/null -D - -X OPTIONS \
-    -H "Origin: http://localhost:3000" "$GATEWAY_URL/auth/jwt/login" 2>/dev/null \
-    | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-credentials"{print $2}')
-if [ "$ACAC" = "true" ]; then
-    pass "CORS allows credentials"
-else
-    fail "CORS: expected Allow-Credentials true, got '$ACAC'"
-fi
-
-# 15. A DISALLOWED origin gets NO Access-Control-Allow-Origin header (the
-#     security-critical case: the browser then blocks the response).
-EVIL=$(curl -sk -o /dev/null -D - -X OPTIONS \
-    -H "Origin: https://evil.example" "$GATEWAY_URL/auth/jwt/login" 2>/dev/null \
-    | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
-if [ -z "$EVIL" ]; then
-    pass "CORS does not echo a disallowed origin"
-else
-    fail "CORS LEAK: echoed disallowed origin '$EVIL'"
-fi
+# CORS is in cors_tests.sh (#712): it runs against the production
+# configuration, where these cases should have been, and against this one.
 
 echo
 echo "== Results: $PASS passed, $FAIL failed =="

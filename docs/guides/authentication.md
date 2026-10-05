@@ -24,6 +24,46 @@ see [When identity is unreachable](#when-identity-is-unreachable).
 
 ---
 
+## API-Key Scopes
+
+An API key is created with a list of scopes, or without one: a key created
+without `scopes` is not limited, and identity stores that as `["*"]`. A
+session (a JWT) has no scopes and is not limited by them.
+
+| Scope | What it allows |
+| --- | --- |
+| `read`, `write` | Reading, and changing, the data, CSPM and responder services. `write` includes `read` |
+| `tools:read`, `tools:execute`, `tools:admin` | Listing and reading tools, agent analyses and tasks; running and cancelling them. No route requires `tools:admin`: it grants what the other two do |
+| `data:read`, `data:write`, `data:delete` | Reading, changing and deleting in guardian. A delete needs `data:delete` itself |
+| `data:ingest` | Posting sensor telemetry to `/api/v1/data/ingest`, and nothing else |
+| `admin`, `*` | Everything |
+
+The generic `read` and `write` also satisfy the tools and data scopes of
+their level; the table of every route is in the
+[gateway README](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-gateway/README.md#api-key-scopes).
+
+Scopes are checked in two places:
+
+1. **The gateway** maps every request to the scope it requires and answers
+   `403` with `{"error": "insufficient_scope", "required_scope": "..."}` to a
+   key that lacks it. Nothing reaches the service.
+2. **The service**, for the data service, guardian, and the tools routes
+   that run a tool or cancel a task, requires the same scope again. The
+   gateway forwards what the credential is in two headers it sets itself
+   and removes from whatever the client sent: `X-Wildbox-Auth-Type`
+   (`session` or `api_key`) and, for an API key, `X-Wildbox-Scopes` (the
+   key's scopes, separated by spaces). A mistake in the gateway's scope
+   map is then refused by the service, with `403` and the code
+   `INSUFFICIENT_SCOPE`.
+
+A client cannot set either header: sending `X-Wildbox-Scopes` or
+`X-Wildbox-Auth-Type` changes nothing, with any credential and on any
+route. The [Gateway authentication guide](../GATEWAY_AUTHENTICATION_GUIDE.md#credential-headers)
+has the format, how a service reads the headers, and which routes check a
+scope twice.
+
+---
+
 ## Logging In
 
 `POST /auth/jwt/login` through the gateway, form-encoded, with the email

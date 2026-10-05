@@ -9,9 +9,11 @@ Stdlib-only stand-in for open-security-identity, faithful to the real
 - 200 with {is_authenticated, user_id, team_id, role, permissions, scopes}
   for the fixture tokens below.
 
-Every other path echoes the request back as JSON ({method, path, headers})
-so tests can assert exactly which headers the gateway forwarded upstream
-(X-Wildbox-* injection, Authorization/X-API-Key stripping).
+Every other path echoes the request back as JSON ({method, path, port,
+headers}) so tests can assert exactly which headers the gateway forwarded
+upstream (X-Wildbox-* injection, Authorization/X-API-Key stripping), and to
+which upstream: ``port`` is the port the request arrived on, one for each
+service the mock stands in for (#711).
 
 GET /__mock/counts returns per-token /internal/authorize call counts, which
 lets tests prove the gateway's auth cache short-circuits repeat validations.
@@ -97,6 +99,48 @@ TOKENS = {
         "scopes": ["data:ingest"],
         "api_key_id": "key-ingest",
     },
+    # Keys for what the gateway forwards about a credential (#637): several
+    # scopes, in an order that is not alphabetical; a key identity reports
+    # no scope list for, which is not limited; a key whose list is empty;
+    # and a list holding something that is not a scope name.
+    "wsk_multiscope_ci_fixture": {
+        "user_id": "user-1212",
+        "team_id": "team-1212",
+        "role": "member",
+        "scopes": ["tools:read", "data:ingest", "data:read"],
+        "api_key_id": "key-multiscope",
+    },
+    "wsk_unlimited_ci_fixture": {
+        "user_id": "user-1313",
+        "team_id": "team-1313",
+        "role": "member",
+        "scopes": None,
+        "api_key_id": "key-unlimited",
+    },
+    "wsk_noscopes_ci_fixture": {
+        "user_id": "user-1414",
+        "team_id": "team-1414",
+        "role": "member",
+        "scopes": [],
+        "api_key_id": "key-noscopes",
+    },
+    # The session of the scripts that run against the production
+    # configuration (upstream_header_tests.sh, cors_tests.sh): a token of
+    # its own, so that the authorization counts other scripts assert on do
+    # not depend on which script ran first.
+    "prod-harness-session-token": {
+        "user_id": "user-1616",
+        "team_id": "team-1616",
+        "role": "admin",
+        "scopes": None,
+    },
+    "wsk_oddscope_ci_fixture": {
+        "user_id": "user-1515",
+        "team_id": "team-1515",
+        "role": "member",
+        "scopes": ["tools:read", "not a scope", "data:read\r\nX-Wildbox-Role: owner", "*"],
+        "api_key_id": "key-oddscope",
+    },
     # An answer for an API key that does not name the key, as identity
     # before #593 gave: the gateway cannot check it against a revocation,
     # so it must not serve it.
@@ -166,6 +210,16 @@ def jwt_claims(token):
     return claims if isinstance(claims, dict) and claims.get("jti") else None
 
 
+# What a service with CORS middleware of its own might answer, by the name a
+# test asks for in X-Mock-Service-Cors (test/cors_tests.sh). "listed" is the
+# origin the harness lists in the gateways' CORS_ORIGINS.
+SERVICE_CORS_ORIGINS = {
+    "wildcard": "*",
+    "unlisted": "https://evil.example",
+    "listed": "https://dashboard.example.test",
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -173,6 +227,16 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        # A service with CORS middleware of its own (#712): the mock answers
+        # with an Access-Control-Allow-Origin of its own, so the test can see
+        # that the gateway's word replaces it. The test names which one; the
+        # value comes from SERVICE_CORS_ORIGINS, never from the request, so
+        # nothing a client sends is written into a response header.
+        said = SERVICE_CORS_ORIGINS.get(self.headers.get("X-Mock-Service-Cors"))
+        if said:
+            self.send_header("Access-Control-Allow-Origin", said)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         if self.command != "HEAD":
@@ -187,6 +251,7 @@ class Handler(BaseHTTPRequestHandler):
             {
                 "method": self.command,
                 "path": self.path,
+                "port": self.server.server_address[1],
                 "headers": {k.lower(): v for k, v in self.headers.items()},
             },
         )
@@ -324,7 +389,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             # Also what a request the gateway maps to a service's /health
             # lands on: say which request it was, as the echo does.
-            self._reply(200, {"status": "ok", "method": self.command, "path": self.path})
+            self._reply(
+                200,
+                {
+                    "status": "ok",
+                    "method": self.command,
+                    "path": self.path,
+                    "port": self.server.server_address[1],
+                    "headers": {k.lower(): v for k, v in self.headers.items()},
+                },
+            )
         elif self.path == "/__mock/counts":
             self._reply(200, dict(authorize_calls))
         else:

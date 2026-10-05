@@ -20,6 +20,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unit test now reads the three compose files and fails if the sensor
   loses `cap_drop: ALL` or `no-new-privileges`, or gains a capability,
   `privileged`, the host's PID namespace or the root user.
+- **gateway: n8n is no longer reachable through the gateway** (#714).
+  `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
+  REST API and its webhooks, for whoever the gateway authenticated:
+  every registered session of every team, whatever its role, and any API
+  key holding `tools:admin`. n8n is a single-tenant tool with accounts
+  of its own and knows nothing of Wildbox's teams, and an instance whose
+  owner account has not been created yet lets the first caller create
+  it, with no credential (`POST /rest/owner/setup`, measured on 1.74.0).
+  The owner writes workflows, which run code in a container that reaches
+  the gateway and the services. Withholding headers (#711, below) does
+  not make that safe, so the location is removed, with its row in the
+  scope map: the path answers 404 with or without a credential. Nothing
+  shipped needs an inbound path: the workflows in
+  `open-security-automations/workflows` start on a schedule and call the
+  API outbound with an API key. n8n's editor stays on the port Compose
+  publishes on the loopback interface, `127.0.0.1:5678`, and its README
+  now tells the operator to create the owner account right after the
+  first start and how to check that one exists; n8n 1.74 has no way to
+  create it ahead of time. `N8N_BASIC_AUTH_ACTIVE`, `N8N_BASIC_AUTH_USER`
+  and `N8N_BASIC_AUTH_PASSWORD` are gone from both Compose files, both
+  `.env.example` files, `generate_secrets.py`, `validate_secrets.py` and
+  `security_validation_v2.sh`: n8n 1.x has no basic auth and ignored
+  them, so they read like a lock on the editor and were none. The
+  Traefik labels in `open-security-automations/docker-compose.yml`,
+  which would have let a Traefik on the same host publish n8n, are
+  removed too. `tools:admin` stays a valid scope; no route requires it.
+  The harness asks the production image for nine n8n paths as a session,
+  with a `tools:admin`, an `admin` and an unlimited key and with no
+  credential, and expects the gateway's own 404 each time;
+  `tests/scripts` fails for a location that proxies to anything but a
+  Wildbox service or the dashboard, for an n8n port published off the
+  loopback interface, and for a file that sets the variables again.
+
+- **gateway: nothing outside Wildbox's services receives the gateway's
+  secret, the caller's identity or the session cookie** (#711). The
+  automations location proxied to n8n with the same settings as a
+  Wildbox service, so n8n was sent `X-Gateway-Secret` and the caller's
+  user, team and role on every request, and from a browser the session
+  JWT in the `auth_token` cookie. The secret is what the services accept
+  as proof that the identity headers came from the gateway: whoever
+  holds it can state any user, team and role to all of them, a workflow
+  started by a webhook reads the headers of the request that started it,
+  and n8n reaches every service on the internal network. That location
+  is removed (#714, above); rotate the secret if n8n ever ran behind it.
+  The same audit of every other upstream: the `auth_token` cookie is
+  removed on every authenticated route, so the backends, from which
+  `Authorization` was already withheld, no longer get the same token in
+  a cookie; and a client's `X-API-Key` no longer reaches the dashboard
+  or identity's own routes, which do not read it. The gateway also
+  stops adding `Authorization: Basic` from `N8N_BASIC_AUTH_USER` and
+  `N8N_BASIC_AUTH_PASSWORD`. A new `test/upstream_header_tests.sh` runs
+  the production image and configuration, fails for a proxying location
+  it has no classification for, and checks what each upstream receives
+  of a request that carries a session token, an API key, the session
+  cookie and forged copies of the gateway's own headers.
+
+- **API-key scopes reach the services, and data, guardian and tools
+  check them again** (#637). The gateway enforced an API key's scopes
+  and forwarded the user, the team and the role alone, so no service
+  could tell a sensor's `data:ingest` key from its owner's session: the
+  gateway's scope map was the only check, and a mistake in it had
+  nothing behind it. The gateway now forwards what it decided on,
+  `X-Wildbox-Auth-Type` (`session` or `api_key`) and, for an API key,
+  `X-Wildbox-Scopes` (the scopes, space-separated; `*` for a key that
+  is not limited). It sets both itself, removes a client's own, and
+  forwards neither on a location that does not authenticate. A session
+  has no scopes: it is told apart by its auth type and the missing
+  header. `open_security_shared.scopes` reads the headers and holds the
+  gateway's hierarchy, and `gateway_auth.require_scope` is the
+  dependency a route uses. The data service requires `data:ingest` on
+  its ingest route and `read` or `write` on every other route, so a
+  sensor's key does nothing else there; guardian requires `data:read`,
+  `data:write` or `data:delete` by method, in its middleware, and gives
+  views the credential as `request.auth`; tools requires
+  `tools:execute` to run a tool or cancel a task. They fail closed: a
+  malformed header is a 400, and a request that carries the gateway's
+  secret without an auth type is refused wherever a scope is required.
+  The agents service and the responder, which call other services for a
+  user, state `service`. What a correctly scoped key can do is
+  unchanged: the gateway's Lua and the services' Python are tested
+  against one table of 200 pairs (`test/scope_vectors.txt`). The
+  gateway's check stands alone for reading tools and tasks and for the
+  agents, responder and CSPM services.
+
+- **A validation error no longer returns what was sent** (#722). The
+  field errors of a 422 carried FastAPI's `input`, the value that was
+  refused, and for a missing field that is the whole object the field is
+  missing from: a JSON body posted without its email came back with the
+  password in it, and a new password shorter than 12 characters came
+  back as it was typed, to be kept by whatever logs the errors a client
+  receives. tools already left it out for tool input; the handler every
+  FastAPI service shares did not. Each item of `error.details` is now
+  `{"type", "loc", "msg"}` and nothing else, in identity, tools, data,
+  responder, agents and cspm: no `input`, no `ctx`, no `url`. The same
+  holds for a model an endpoint builds from its own data, whose `input`
+  was the server's. `msg` is the validator's sentence, unchanged, except
+  pydantic's message for an unknown tag of a discriminated union, which
+  quoted the tag and now names only the accepted ones. The dashboard
+  reads `loc` and `msg` and is unaffected; a client that read `input` or
+  `ctx` from a 422 no longer finds them.
+- **A service started without `ENVIRONMENT` no longer takes itself for
+  a development one** (#722). identity, tools, data, responder, agents
+  and cspm read a missing `ENVIRONMENT` as `development`, so a bare
+  `docker run` of an image, or any deployment that left the variable
+  out, served `/openapi.json`, `/docs` and `/redoc`: the route map of
+  the service, admin and internal routes included. The default is now
+  empty, which is neither `development` nor `production`; the three
+  paths answer 404 unless `ENVIRONMENT` says `development`. tools still
+  refuses to start on a value that is set and is not `development`,
+  `staging` or `production`. The sensor's local API served its HTML
+  route list at `/` and `/docs`, without authentication, unless
+  `ENVIRONMENT` was `production`, and its Compose files set none; it now
+  follows the same rule. The root Compose file passes
+  `ENVIRONMENT=${ENVIRONMENT:-development}` and is unchanged, as are the
+  start-up checks that apply to `production` only. The development
+  Compose files of tools and the sensor now set
+  `ENVIRONMENT=development` themselves.
 - **guardian: pagination links no longer name the internal host, and a
   client can follow them** (#643). A list of more than one page answered
   `next` and `previous` links such as
@@ -198,9 +315,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no use for them, and they describe how the deployment is laid out.
   The listing is now each connector's `name` and `actions`; the
   `config` field is gone.
+- **guardian no longer stores the credentials of scanners and external
+  systems, which it kept in plain text and never used** (#728). A
+  scanner's `api_key` and `password` (the help text of the second said
+  "Encrypted"; the serializer said "In a real implementation, encrypt"),
+  an external system's `auth_config`, a webhook endpoint's
+  `secret_token` and a notification channel's `config` were stored as
+  the API was sent them. Whoever could read guardian's database, a dump
+  or a backup read every team's scanner keys, bearer tokens, basic-auth
+  passwords and Slack webhook URLs. Nobody else could: the API never
+  returned the five fields, and no code read them, since guardian
+  connects to no scanner, contacts no external system, receives no
+  webhook and delivers nothing through a channel (the actions that
+  claimed to were removed in #644). They are removed, not encrypted: a
+  key that three containers must have at start, and that every backup
+  then depends on, would protect values nothing can use. Migrations
+  blank the values and then drop the columns, in that order because
+  PostgreSQL's `DROP COLUMN` leaves a column's bytes in each row until
+  the row is next written, and log how many rows held a secret, never a
+  value. The code that first connects to a scanner brings its credential
+  back encrypted with a key the database does not hold, as cspm does;
+  a unit test fails for a model field or a served serializer field named
+  like a secret until it says how it is protected. Unit tests send each
+  secret through every write route and read every table afterwards, and
+  run the migrations forwards and backwards on rows that hold secrets;
+  on PostgreSQL 15 the heap files of the four tables held the secrets
+  after a drop alone and none after the migrations as written.
+  Twenty-two mutations of the fix each fail a test.
 
 ### Removed
 
+- **gateway: `/api/v1/automations/`, the route to n8n** (#714). It
+  answers 404. n8n's editor is on `http://127.0.0.1:5678` of the host
+  with the `automations` profile started; from another machine, through
+  an SSH tunnel. The `N8N_BASIC_AUTH_*` variables are removed with it:
+  leftover lines in `.env` are ignored, and `validate_secrets.py` no
+  longer asks for `N8N_BASIC_AUTH_PASSWORD`.
 - **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
   `ENABLE_RATE_LIMITING`, settings that no code enforced.**
   `docker-compose.yml` set the first two and operators could tune them,
@@ -216,6 +366,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
   which `monitoring/prometheus.yml` scrapes; it is now registered by the
   shared package, as in the other services (#646).
+- **guardian: twenty actions that answered `success` without doing
+  anything** (#644). They returned `200 {"status": "success", ...}`, or
+  fixed figures, whatever the record and without contacting anything, so
+  a client, an operator or a test could not tell them from real results:
+  a notification "sent", a connection "tested", results "imported". None
+  can be done without an external system that guardian does not talk to,
+  and nothing in Wildbox called them, so their routes are gone rather
+  than left to answer an error:
+  - integrations: `systems/{id}/test_connection/`, `health_check/`
+    (always `{"status": "healthy", "response_time_ms": 150}`) and
+    `sync_status/`; `mappings/{id}/test_mapping/` and `sync_now/`;
+    `sync-records/sync_statistics/` (zeros) and `{id}/retry_sync/`;
+    `webhooks/{id}/test_webhook/` and `trigger_webhook/`;
+    `logs/error_summary/` (zeros); `notifications/{id}/test_notification/`
+    and `send_notification/`;
+  - scanners: `scanners/{id}/test_connection/`, which required the caller
+    to send a `success` flag and answered "Connection test passed"
+    whatever it was; `scans/{id}/start/`, `stop/`, `pause/` and `resume/`,
+    which only overwrote the stored status (`stop/` with `stopped`, a
+    status scans do not have); `scans/import_results/`;
+  - remediation: `tickets/{id}/sync_external/`, and
+    `workflows/{id}/pause/`, which stored `paused`, a status workflows do
+    not have, so the API then refused that workflow's own status on a
+    `PUT` and as a filter.
+
+  They answer `404` (`405` for `POST scans/import_results/`). The
+  [API reference](docs/api/guardian/endpoints.md) lists each with what to
+  use instead: a scan's status is set with `PATCH scanners/scans/{id}/`, a
+  workflow is put on hold with `PATCH` and `{"status": "deferred"}`, and
+  the counts the two statistics routes stood for are the `count` of
+  `sync-records/?sync_status=failed` and `logs/?level=error`. Also
+  removed, for the same reason: the model method
+  `NotificationChannel.send_notification`, which counted a notification
+  and returned `True` having sent nothing; the Celery task
+  `scan_vulnerability_remediation`, which answered `still_present` for
+  every vulnerability without a scan and which nothing dispatched; and
+  the cloud and CMDB discovery functions that logged "not yet
+  implemented" and returned 0 assets.
 - **The `WildboxNoToolExecutions` alert rule** (#658). It fired when no
   tool had run for twelve hours, which on a stack nobody used overnight
   or over a weekend is a healthy state, and it could not fire in the
@@ -253,9 +441,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other checks called the tools service and Redis without credentials
   and reported the refusals as problems. `make health` is the health
   check (#656).
+- **guardian: the `api_key` and `password` fields of a scanner, the
+  `auth_config` field of an external system, the `secret_token` field of
+  a webhook endpoint and the `config` field of a notification channel**
+  (#728), with `Scanner.get_connection_info` and
+  `ExternalSystem.get_auth_headers`, which nothing called. The fields
+  were write-only, so no response changes. A `POST`, `PUT` or `PATCH`
+  that sends a value in one of them answers `400` on that field, with
+  the reason, instead of `201` or `200` for a secret guardian would
+  discard; an empty value (`""`, `null`, `{}`, `[]`) is ignored.
 
 ### Fixed
 
+- **identity answers 404, 500 and 503 in the body every service
+  answers** (#722). It installed the shared error handlers and then
+  registered two of its own by status code, which run first. Every 404
+  answered `{"detail": "Endpoint not found"}`, the ones a route raised
+  with its own message included: asking about a user, a team or an API
+  key that does not exist said the endpoint did not exist. Every 500
+  answered `{"detail": "Internal server error"}`, without the request id
+  that ties a reported failure to the log. The database middleware
+  answered `{"detail": "Database temporarily unavailable"}` for a lost
+  connection. All three now have the canonical body:
+  `error.message` is the route's own message (`User not found`), `Not
+  Found` for a path that does not exist, `An internal error occurred`
+  for an unhandled error, and `error.request_id` is always there. The
+  gateway reads only the status of identity's answers, and the dashboard
+  reads `error.message` before `detail`, so neither changes; a client
+  that read `detail` from an identity 404, 500 or 503 must read
+  `error.message`.
+- **Every Python image holds what the shared package requires of it**
+  (#722). `open-security-shared` declared FastAPI, Pydantic, passlib,
+  PyJWT and prometheus-client as dependencies of the whole package, and
+  every image installed it with `pip install --no-deps` under a comment
+  saying the service's lock provided them. `pip check` failed in seven
+  images of eight: agents, responder and tools had neither passlib nor
+  PyJWT, guardian had those missing and no FastAPI, cspm no passlib, data
+  no PyJWT, the sensor none of the five, and cspm, data and guardian ran
+  prometheus-client 0.19.0 where the package asked for 0.20 or later.
+  Nothing failed because no module that needed a missing package was
+  imported there, which nothing checked. The package now has no
+  dependency of its own and one extra per group of modules (`fastapi`,
+  `auth`, `metrics`, `events`, `tracing`), each listing what those modules
+  import. A Dockerfile installs it with the extras of the modules its
+  service imports, without `--no-deps` and still with `--no-index`, so pip
+  resolves their requirements against what the hash-checked lock
+  installed and the build fails when the lock lacks one or pins it below
+  the declared floor; `pip check` then fails the build for any other
+  unmet requirement. The six FastAPI services install `fastapi` and
+  `metrics`; guardian (Django) and the sensor (aiohttp) import no module
+  that needs an extra and install none. `pip check` is clean in the eight
+  images and in the tools development image.
+- **The message a service logs when tracing is not initialized says
+  why** (#722). It advised
+  `pip install 'open-security-shared[observability]'`, an extra (the
+  OpenTelemetry API and SDK) that did not make the tracing module
+  importable. It now logs the import error. The extra is renamed
+  `tracing` and lists every distribution the module imports; the module
+  still cannot be imported with a current OpenTelemetry SDK, because it
+  uses the Jaeger Thrift exporter, last released as 1.21.0, and no image
+  installs the extra.
+- **gateway: a dashboard on another origin can call the API: a CORS
+  preflight is answered, for the origins in `CORS_ORIGINS`** (#712).
+  The production configuration answered 405 to every `OPTIONS` request
+  before any location ran, so no preflight was ever answered: a page on
+  another origin, the dashboard's own development server on
+  `http://localhost:3000` included, could log in and do nothing else.
+  The harness did not see it, because its CORS cases ran against a test
+  configuration without that rule. Besides, the allowlist was a map
+  written into `nginx.conf`, not `CORS_ORIGINS`, and only identity's
+  routes carried the headers. CORS is now decided in one place
+  (`lua/cors.lua`, `includes/cors.conf`, included by both
+  configurations): a preflight from a listed origin is answered 204 by
+  the gateway, before authentication; a response to a listed origin
+  names it and allows credentials, the gateway's own 401, 403, 404 and
+  429 included; a response to any other origin names nobody; what a
+  service sets is replaced, so no header is doubled; the API's responses
+  carry `Vary: Origin`. Any other `OPTIONS` request is still 405.
+  `test/cors_tests.sh` runs against the production image and
+  configuration.
+- **gateway: a container run from the image alone is healthy, and its
+  port 80 is the gateway's** (#713). The image kept the base image's
+  `/etc/nginx/conf.d/default.conf`, a server for `localhost` on port 80
+  with a welcome page. It was loaded beside `wildbox_gateway.conf`, so
+  the image's own `HEALTHCHECK` (`curl http://localhost:80/health`) got
+  404 and Docker reported the container unhealthy, and port 80 served
+  the welcome page instead of the redirect to HTTPS. The Compose stack
+  did not show it: it mounts `open-security-gateway/nginx` over
+  `/etc/nginx`. The Dockerfile removes the file, and
+  `test/production_image_tests.sh` checks the image as built.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
@@ -602,9 +876,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the repository uses. It now checks `docker compose version` and calls
   `docker compose`; the use case's README and testing guide show the
   same commands.
+- **guardian's e-mail notifications have an address to go to** (#705).
+  guardian mirrors identity's users by id, with no address, so the SLA
+  and assignment e-mails addressed to the assignee reached nobody;
+  compliance notifications named no recipient at all; and Compose passed
+  guardian no mail setting, so Django's console backend printed each
+  message, a team's asset names and findings with it, to the worker's
+  log while guardian recorded it as sent. Every e-mail about a team's
+  data now goes through one function, which decides who is told: the
+  addresses the team typed into the alert rule or report schedule
+  concerned; the vulnerability's assignee; otherwise the team's owners
+  and admins. guardian keeps no address. Its worker asks identity when it
+  is about to send, so an address that changed, a role that was taken
+  away, a deactivated account or a member who left is not written to;
+  a copy kept from a header on the member's last request would have been
+  as old as that request. A notification is sent when the mail server
+  accepted it, and otherwise recorded as not sent with the reason: no
+  mail server configured, nobody to tell, identity not reachable, the
+  server refusing. Links open a page the dashboard has, or are left out:
+  the vulnerability e-mails linked `/vulnerabilities/<id>/`, which it
+  does not serve, and the report e-mail named a path no client of the
+  gateway can call. A compliance e-mail is written from the row it is
+  about, not from what its caller passed. Tests run every notification
+  for two teams and check that each reaches its own team's people only
+  and names nothing of the other; 137 mutations of the change each fail
+  a test.
+- **The agents service's `result_url` is a path a client can follow**
+  (#716). `POST /api/v1/agents/analyze` and the task read answered
+  `"result_url": "/v1/analyze/{task_id}"`, the service's own path, which
+  on the gateway is not the task; the responder passed it on to whoever
+  ran `all_star_e2e`. It is now the task's path on the gateway,
+  `/api/v1/agents/analyze/{task_id}`: a constant without scheme or host,
+  like the tools service's and the responder's `status_url`, so no
+  request header can change it. A unit test follows it through the
+  rewrite in the gateway's configuration to the task.
+- **An AI analysis that fails is a failed task, not a completed one with
+  a made-up report** (#717). When the agent raised, it answered a report
+  with the verdict `Informational` and confidence 0; the worker did the
+  same when the task body raised; and a report the model did not
+  produce was replaced by a verdict taken from the first verdict word in
+  the narrative ("not malicious" read as `Malicious`), a confidence of
+  0.3 and one evidence item per tool that no tool had reported. Each
+  came back from `GET /api/v1/agents/analyze/{task_id}` as a completed
+  analysis and was counted in `completed_today`: with no
+  `ANTHROPIC_API_KEY`, every submission "completed". Now a failure
+  leaves the task `failed`, counted in `failed_today`, with no report,
+  and `error` says why: no model key (the task fails before anything
+  runs), the model unreachable or refusing, a timeout, a report that
+  could not be generated, or an internal error. Only the model's
+  structured report produces a verdict, a confidence or evidence.
+- **The AI analysis's system prompt no longer sends the model the
+  literal text `{input}` as its target** (#718). The prompt ended with
+  `CURRENT INVESTIGATION TARGET: {input}` and was passed as a message,
+  not a template, so the placeholder was never filled. The line is
+  gone; the target is in the user turn, where it always was.
 
 ### Changed
 
+- **cspm, data and guardian run prometheus-client 0.26.0** (#722), the
+  version the other services already locked, up from 0.19.0. The six
+  services that call `install_observability` name
+  `prometheus-client>=0.20,<1.0.0` in their own `requirements.in`, the
+  floor of the shared package's `metrics` extra; responder and tools had
+  it only because dramatiq and flower require it. Nothing else moved in
+  the locks.
+- **`open-security-shared` extras** (#722). `observability` is now
+  `tracing`. `events` requires `sqlalchemy[asyncio]`, which its modules
+  import, and no longer httpx, which none of them imports.
+
+- **gateway: the CORS allowlist is `CORS_ORIGINS`, and only that**
+  (#712). The gateway used to allow `localhost` and `127.0.0.1` on any
+  port, in every deployment, and read no setting. It now reads
+  `CORS_ORIGINS`, which `docker-compose.yml` defaults to
+  `http://localhost:3000` and the production overlay passes as set, and
+  allows nothing else. Each entry must be an origin (scheme, host,
+  optional port): with a wildcard, a path or a bare host name the
+  gateway does not start, and says which entry. The `$cors_allow_origin`
+  map in `nginx.conf` and `includes/cors_params.conf` are gone.
 - **`make health` only reads.** On every run it created the `data`
   database if it was missing and restarted the gateway if its log had
   ever contained `host not found in upstream`. Those repairs now run
@@ -626,6 +974,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   satisfy the new one. Unit tests cover both teams, a second system of the
   same team, updates and the database constraint; six mutations of the
   fix each fail a test.
+- **The guardian actions that can be done in its own database now do
+  what they answered** (#644):
+  - `POST remediation/tickets/{id}/assign/` answered "Ticket assigned"
+    for any `assignee_id`, a user that does not exist included, and left
+    the ticket as it was. It sets `assigned_to` to that member of the
+    caller's team and answers `400` for anyone else.
+  - `POST remediation/templates/{id}/clone/` answered "Template cloned"
+    and created nothing. It stores a copy in the caller's team and
+    returns it (`201`).
+  - `POST remediation/templates/{id}/apply/` counted a use of the
+    template and created no workflow. It creates the remediation workflow
+    of the team's vulnerability `vulnerability_id`, with the template's
+    type, priority, plans and steps, and returns it (`201`); `409
+    WORKFLOW_EXISTS` when the vulnerability already has one, and `400
+    TEMPLATE_STEPS_INVALID`, with nothing created, for a template whose
+    steps cannot be created.
+  - `DELETE integrations/logs/cleanup_logs/` answered "Logs older than N
+    days cleaned up" and deleted nothing. It deletes the caller's team's
+    integration logs older than `older_than_days` (default 30) and
+    reports how many.
+  - `POST vulnerabilities/bulk_action/` accepted `reopen` and `untag` and
+    answered "Bulk action completed on 0 vulnerabilities". Both are
+    performed, an action the view does not perform answers `400`, a bulk
+    `close` records its reason and history as `close/` does, and a bulk
+    `assign` sets what the request names: a group given alone unassigned
+    every user, and a user given alone cleared every group.
+  - `POST remediation/tickets/{id}/update_status/` stored any string as
+    the status; one the model does not define answers `400`.
+  - `POST remediation/workflows/{id}/start/` and `complete/` set the
+    status and no date, so a workflow completed in time was measured
+    against the clock and became `missed` once its planned date passed.
+    They set `actual_start_date` and `actual_completion_date`.
+  - `POST vulnerabilities/{id}/assign/` with neither an assignee nor a
+    group answered "assigned successfully" and queued the assignment
+    notification again; it answers `400`.
+  - `POST vulnerabilities/{id}/close/` and `reopen/` wrote a history
+    entry that said the status had been `open`, or `resolved`, whatever
+    it was. The entry has the status the vulnerability had.
+  - `POST assets/discovery-rules/{id}/execute/` answered "executed" with
+    a task id for a rule of a type that is not implemented (one stored
+    before 0.11.0 refused them), and the task then skipped it. It answers
+    `501` with `"code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"`. A network-scan
+    rule's task reported the networks it had queued as assets discovered;
+    it reports `networks_queued`.
+  - `GET vulnerabilities/trends/?days=abc` answered 500, and nothing
+    bounded the window. `days` is a whole number from 0 to 366, `400`
+    otherwise. The docs audit behind #644 read `trends` as ignoring the
+    rule that a member sees only their own vulnerabilities: it has
+    followed it since #642, and a test now pins it.
+
+  A test walks the URLconf and fails for a custom action that is not
+  classified in `tests/unit/test_action_contracts.py`; for one classified
+  as changing something, it compares every row guardian stores, the tasks
+  dispatched and the e-mails sent before and after, and fails a `2xx`
+  answer that changed nothing. A `GET` must answer differently when the
+  data differs, so fixed figures fail too.
 - **Rotating `POSTGRES_PASSWORD` no longer locks every service out.**
   `scripts/rotate_secrets.sh` rewrote only the `POSTGRES_PASSWORD=` line
   of `.env`. The services connect with `DATABASE_URL`,
@@ -679,6 +1083,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **guardian sends e-mail by SMTP or not at all, and checks its mail
+  settings when it starts** (#705). `EMAIL_BACKEND` is no longer read.
+  Without `EMAIL_HOST` there is no mail server and every notification is
+  recorded as not sent; with one, `DEFAULT_FROM_EMAIL` is required, and
+  a port, a TLS choice or a login that cannot work stops guardian at
+  start-up. `GUARDIAN_BASE_URL` is the address users open the dashboard
+  at, scheme and host only; anything else stops guardian, and unset, the
+  e-mails carry no link.
+- **A guardian notification without a recipient of its own goes to its
+  team's owners and admins** (#705): compliance notifications, an alert
+  rule or a report schedule that names no recipients, and an SLA
+  violation whose vulnerability has no assignee who can be told. The
+  owners and admins are told once of such a violation; an assignee is
+  still reminded once a day. An SLA entry in a vulnerability's history
+  now reads `sent`, `sent to the team's owners and admins (no assignee
+  to e-mail)` or `not sent (<reason>)`, and an assignment notification
+  adds an entry of its own.
 
 ### Added
 
@@ -706,9 +1127,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   do so, which is a request, not a control. Any value but the two names
   stops the service at start. Neither tool worked before this release,
   so the default takes nothing away from an existing deployment.
+- **identity tells guardian's worker who may be e-mailed about a team**
+  (#705). `POST /internal/team-contacts` answers the active members of
+  one team that the caller selects, by user id or by role, with their
+  address and role; there is no way to list a whole team, and the
+  gateway does not proxy the route. The caller presents
+  `GUARDIAN_CONTACTS_SECRET`, a secret of its own: guardian's worker
+  reaches outside the stack and holds no `GATEWAY_INTERNAL_SECRET`, and
+  identity does not start when the two have the same value.
+  `make generate-secrets` writes one; without it the route answers 503
+  and guardian e-mails only the addresses typed into a rule or a
+  schedule. Compose passes guardian's worker its mail server as
+  `GUARDIAN_EMAIL_HOST`, `GUARDIAN_EMAIL_PORT`, `GUARDIAN_EMAIL_USE_TLS`,
+  `GUARDIAN_EMAIL_USE_SSL`, `GUARDIAN_EMAIL_HOST_USER`,
+  `GUARDIAN_EMAIL_HOST_PASSWORD` and `GUARDIAN_DEFAULT_FROM_EMAIL`.
+- **A guardian alert notification says why it was not delivered**
+  (#705). `GET .../alerts/{id}/notifications/` gains `failure_reason`,
+  empty when `delivered` is true, and `recipients` lists who the
+  notification was addressed to, the team's owners and admins included.
 
 ### CI
 
+- **An image whose environment does not satisfy the shared package does
+  not build, and Dependency Integrity says so first** (#722). The
+  offline install of the shared package with extras and the `pip check`
+  that follows run in every image build, so Docker Build Validation
+  fails on a lock that lacks a requirement or pins it too low. The
+  sensor's image, which no workflow built, joins that matrix.
+  `scripts/check_shared_dependencies.py`, a new step of Dependency
+  Integrity, reads the tree without building: it fails when a Dockerfile
+  installs the package with other extras than the modules its service
+  imports need, with `--no-deps` or without `pip check`, when a lock does
+  not pin a requirement of those extras at a version the package
+  accepts, and when a shared module imports something its extras do not
+  require.
 - **Code Quality checks every Dockerfile** (#657).
   `scripts/check_container_hygiene.py` also reads every tracked
   Dockerfile and fails on a `pip install` that is neither

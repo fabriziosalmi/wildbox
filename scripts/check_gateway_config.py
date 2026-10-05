@@ -22,11 +22,25 @@ markers, the must-change-password refusal, the rate limit and the retry of
 a closed connection; the agents route had its own copy that carried none of
 them (#630).
 
+And it fails when a configuration file authenticates without declaring the
+nginx variables ``authenticate()`` assigns. Assigning an undeclared variable
+from Lua is an error at request time, a 500 for every authenticated request,
+and ``$wildbox_auth_type`` and ``$wildbox_scopes`` are what
+``proxy_params.conf`` sends the services as the credential's type and scopes
+(#637).
+
 And it fails when a configuration file authenticates without declaring
 ``set $wildbox_route_uri $uri;``. auth_handler maps a request to the
 API-key scope it requires by that variable, the path as it was before any
 location rewrote it; without the declaration the map knows no path and
 requires ``admin`` of every scope-limited key (#647).
+
+And it fails when CORS is not decided in one place. A configuration file
+that authenticates must include ``includes/cors.conf`` (the request-method
+rule, the preflight and the response labels, from ``lua/cors.lua``), and no
+configuration file may set an ``Access-Control-*`` header itself. The
+production configuration once answered 405 to every preflight while the
+test configuration, with rules of its own, passed the CORS tests (#712).
 
 Usage:
   scripts/check_gateway_config.py [--gateway-dir DIR]
@@ -44,7 +58,21 @@ _ENV_DIRECTIVE = re.compile(r"^\s*env\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=[^;]*)?;"
 _GETENV = re.compile(r"os\.getenv\s*\(\s*(?:([\"'])([^\"']*)\1\s*\))?")
 _AUTHORIZE = "/internal/authorize"
 _AUTHENTICATE = re.compile(r"\bauthenticate\s*\(")
+# The variables auth_handler.set_auth_headers() assigns.
+ASSIGNED_VARIABLES = (
+    "wildbox_user_id",
+    "wildbox_team_id",
+    "wildbox_role",
+    "wildbox_gateway_secret",
+    "wildbox_auth_type",
+    "wildbox_scopes",
+)
 _ROUTE_URI = re.compile(r"^\s*set\s+\$wildbox_route_uri\s+\$uri\s*;")
+_CORS_INCLUDE = re.compile(r"^\s*include\s+/etc/nginx/includes/cors\.conf\s*;")
+_CORS_HEADER = re.compile(
+    r"(add_header|more_set_headers)\b.*Access-Control-", re.IGNORECASE
+)
+_SET_EMPTY = re.compile(r'^\s*set\s+\$([a-z_]+)\s+""\s*;')
 
 
 def strip_comment(line: str, suffix: str) -> str:
@@ -103,7 +131,32 @@ def check(gateway_dir: Path) -> list:
                 )
         if path.suffix == ".conf":
             failures.extend(inline_authorizations(path, gateway_dir))
+            failures.extend(undeclared_assigned_variables(path, gateway_dir))
             failures.extend(missing_route_uri(path, gateway_dir))
+            failures.extend(cors_outside_the_include(path, gateway_dir))
+    return failures
+
+
+def cors_outside_the_include(path: Path, gateway_dir: Path) -> list:
+    """CORS decided anywhere but includes/cors.conf and lua/cors.lua."""
+    where = path.relative_to(gateway_dir.parent)
+    lines = [
+        strip_comment(line, path.suffix)
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    failures = [
+        f"{where}:{number}: sets an Access-Control-* header itself; CORS is decided "
+        "in lua/cors.lua, applied by includes/cors.conf"
+        for number, line in enumerate(lines, 1)
+        if _CORS_HEADER.search(line)
+    ]
+    authenticates = any(_AUTHENTICATE.search(line) for line in lines)
+    if authenticates and not any(_CORS_INCLUDE.match(line) for line in lines):
+        failures.append(
+            f"{where}: calls authenticate() but does not include "
+            "/etc/nginx/includes/cors.conf in its server block; without it the "
+            "configuration has no request-method rule and answers no CORS preflight"
+        )
     return failures
 
 
@@ -121,6 +174,29 @@ def missing_route_uri(path: Path, gateway_dir: Path) -> list:
         f"{path.relative_to(gateway_dir.parent)}: calls authenticate() but does not "
         "declare `set $wildbox_route_uri $uri;` in its server block; the scope map "
         "reads the request path from it"
+    ]
+
+
+def undeclared_assigned_variables(path: Path, gateway_dir: Path) -> list:
+    """A configuration that authenticates without a variable authenticate() assigns.
+
+    Each must be declared empty (``set $name "";``): empty is what a location
+    that authenticates nobody forwards, which is nothing.
+    """
+    lines = [
+        strip_comment(line, path.suffix)
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    if not any(_AUTHENTICATE.search(line) for line in lines):
+        return []
+    declared = {
+        match.group(1) for match in (_SET_EMPTY.match(line) for line in lines) if match
+    }
+    return [
+        f"{path.relative_to(gateway_dir.parent)}: calls authenticate() but does not "
+        f'declare `set ${name} "";` in its server block; authenticate() assigns it'
+        for name in ASSIGNED_VARIABLES
+        if name not in declared
     ]
 
 
@@ -149,7 +225,8 @@ def main(argv=None) -> int:
     print(
         "Every variable the gateway reads is declared in nginx.conf, every "
         "authorization goes through auth_handler, and every configuration that "
-        "authenticates declares the path the scope map reads."
+        "authenticates declares the variables it assigns and the path the scope "
+        "map reads, and includes the one CORS policy."
     )
     return 0
 

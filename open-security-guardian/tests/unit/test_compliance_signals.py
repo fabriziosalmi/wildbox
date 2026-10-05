@@ -12,11 +12,12 @@ The tasks run eagerly here, for real: the metrics row and the notifications
 are what is asserted, not the calls that should produce them. The tests
 commit (transaction=True), because the receivers queue their tasks on commit.
 
-A compliance notification has no recipients of its own, and no platform-wide
-list receives it any more (#678): it is rendered, not sent, and logged. These
-tests asserted an e-mail to DEFAULT_NOTIFICATION_RECIPIENTS; they now assert
-that the notification is attempted, that nothing is e-mailed, and, by sending
-the same notification to a named recipient, that it renders.
+A compliance notification has no recipients of its own. It went to the
+platform-wide DEFAULT_NOTIFICATION_RECIPIENTS, then to nobody (#678), and
+these tests asserted each in turn. It now goes to the owners and admins of
+the team the row belongs to, as identity lists them (#705): the tests assert
+the e-mail the team's owner receives, and that a team with nobody to tell is
+sent nothing, and says so.
 """
 
 import uuid
@@ -24,7 +25,6 @@ from datetime import timedelta
 
 import pytest
 from apps.compliance import tasks as compliance_tasks
-from apps.core.utils import send_notification
 from apps.compliance.models import (
     ComplianceAssessment,
     ComplianceControl,
@@ -43,7 +43,8 @@ _GW_SECRET = "test-gateway-secret"
 # made as a member of it: guardian answers 404 for another team's rows (#642).
 TEAM_ID = str(uuid.uuid4())
 _BASE = "/api/v1/compliance/"
-RECIPIENT = "compliance@example.com"
+OWNER = "owner@team.example"
+PLATFORM = "platform@example.com"
 
 
 @pytest.fixture
@@ -55,21 +56,36 @@ def eager(settings, monkeypatch):
     """
     monkeypatch.setattr(celery_app.conf, "task_always_eager", True)
     monkeypatch.setattr(celery_app.conf, "task_eager_propagates", True)
-    settings.DEFAULT_NOTIFICATION_RECIPIENTS = ["platform@example.com"]
+    settings.DEFAULT_NOTIFICATION_RECIPIENTS = [PLATFORM]
 
 
 @pytest.fixture
-def attempts(eager, monkeypatch, mailoutbox):
-    """Every notification the compliance tasks tried to send, with its outcome."""
+def attempts(eager, monkeypatch, mailoutbox, identity_contacts):
+    """Every notification the compliance tasks tried to send, with its outcome.
+
+    The team has one owner, in identity: who a compliance notification of
+    this team goes to.
+    """
+    identity_contacts.add(TEAM_ID, uuid.uuid4(), OWNER, role="owner")
     seen = []
+    deliver = compliance_tasks.notify_team_from_template
 
-    def recording(**kwargs):
-        sent = send_notification(**kwargs)
-        seen.append({**kwargs, "sent": sent})
-        return sent
+    def recording(team_id, subject, template, context, **kwargs):
+        delivery = deliver(team_id, subject, template, context, **kwargs)
+        seen.append(
+            {
+                "team_id": str(team_id),
+                "subject": subject,
+                "template": template,
+                "context": context,
+                "delivery": delivery,
+            }
+        )
+        return delivery
 
-    monkeypatch.setattr(compliance_tasks, "send_notification", recording)
-    return seen
+    monkeypatch.setattr(compliance_tasks, "notify_team_from_template", recording)
+    yield seen
+    assert PLATFORM not in [address for message in mailoutbox for address in message.to]
 
 
 def _subjects(attempts):
@@ -77,18 +93,14 @@ def _subjects(attempts):
 
 
 def _rendered(attempt, mailoutbox):
-    """The e-mail a notification is, once somebody is named to receive it."""
-    assert attempt["sent"] is False
-    assert mailoutbox == [], "a compliance notification has no recipients (#678)"
-    assert send_notification(
-        subject=attempt["subject"],
-        template=attempt["template"],
-        context=attempt["context"],
-        recipients=[RECIPIENT],
-    )
-    (message,) = mailoutbox
-    mailoutbox.clear()
-    assert message.to == [RECIPIENT]
+    """The e-mail a notification is: the one the team's owner received."""
+    assert attempt["team_id"] == TEAM_ID
+    assert attempt["delivery"].sent is True
+    assert attempt["delivery"].recipients == (OWNER,)
+    # Earlier steps of a test may have notified too: this notification's.
+    message = next(m for m in mailoutbox if m.subject == attempt["subject"])
+    mailoutbox.remove(message)
+    assert message.to == [OWNER]
     return message
 
 
@@ -105,6 +117,7 @@ def api(settings, monkeypatch, attempts):
         "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": "admin",
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
+        "HTTP_X_WILDBOX_AUTH_TYPE": "session",
     }
 
     def call(method, url, data):
@@ -198,7 +211,7 @@ def test_a_risk_level_change_alone_recalculates_and_notifies(attempts, mailoutbo
 
     assert _metrics(assessment).high_risk_findings == 1
     assert _subjects(attempts) == ["High Risk Compliance Finding"]
-    assert mailoutbox == []
+    assert [message.to for message in mailoutbox] == [[OWNER]]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -237,7 +250,7 @@ def test_creating_a_high_risk_result_notifies(attempts, mailoutbox):
 
     assert _metrics(assessment).partially_compliant_controls == 1
     assert _subjects(attempts) == ["High Risk Compliance Finding"]
-    assert mailoutbox == []
+    assert [message.to for message in mailoutbox] == [[OWNER]]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -350,6 +363,7 @@ def test_the_scheduled_reminders_render(attempts, settings, mailoutbox):
         control_type="preventive",
     )
     ComplianceException.objects.create(
+        team_id=TEAM_ID,
         control=control,
         title="Legacy VPN waiver",
         justification="j",
@@ -358,6 +372,7 @@ def test_the_scheduled_reminders_render(attempts, settings, mailoutbox):
         valid_until=now + timedelta(days=10, hours=1),
     )
     attempts.clear()
+    mailoutbox.clear()
 
     assert compliance_tasks.check_overdue_assessments.apply().get() == 1
     assert compliance_tasks.check_expiring_exceptions.apply().get() == 1
@@ -374,20 +389,44 @@ def test_the_scheduled_reminders_render(attempts, settings, mailoutbox):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_compliance_notification_is_not_sent_and_says_so(
-    attempts, mailoutbox, caplog
+def test_a_compliance_notification_goes_to_the_teams_owners_and_admins(
+    attempts, mailoutbox, identity_contacts
 ):
-    """No recipients of its own, and no platform-wide list (#678)."""
+    """Its own team's, as identity lists them now; a member is not told."""
+    identity_contacts.add(TEAM_ID, uuid.uuid4(), "admin@team.example", role="admin")
+    identity_contacts.add(TEAM_ID, uuid.uuid4(), "member@team.example", role="member")
+    identity_contacts.add(uuid.uuid4(), uuid.uuid4(), "owner@other.example", role="owner")
     assessment = _assessment()
 
-    with caplog.at_level("WARNING", logger="apps.core.utils"):
+    _result(assessment, status="non_compliant", risk_level="critical")
+
+    (message,) = mailoutbox
+    assert message.to == [OWNER, "admin@team.example"]
+    assert identity_contacts.asked[-1]["json"] == {
+        "team_id": TEAM_ID,
+        "roles": ["admin", "owner"],
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_compliance_notification_nobody_can_be_told_of_says_so(
+    attempts, mailoutbox, identity_contacts, caplog
+):
+    """No owner or admin with an address, and no platform-wide list (#678)."""
+    identity_contacts.memberships.clear()
+    assessment = _assessment()
+
+    with caplog.at_level("WARNING", logger="apps.core.notifications"):
         _result(assessment, status="non_compliant", risk_level="critical")
 
-    assert [(a["subject"], a["sent"]) for a in attempts] == [
-        ("High Risk Compliance Finding", False)
-    ]
+    (attempt,) = attempts
+    assert attempt["subject"] == "High Risk Compliance Finding"
+    assert attempt["delivery"].sent is False
+    assert attempt["delivery"].reason == (
+        "the team has no owner or admin with an active account and an address"
+    )
     assert mailoutbox == []
     assert (
-        "Notification not sent, it has no recipients (compliance): "
-        "High Risk Compliance Finding"
+        "Notification not sent (compliance), the team has no owner or admin "
+        "with an active account and an address: High Risk Compliance Finding"
     ) in caplog.text

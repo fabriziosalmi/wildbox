@@ -57,7 +57,12 @@ Every analysis runs as the user who submitted it:
   reuses the identity of the previous task on the same worker (#596).
 - Every tool call sends that identity as `X-Wildbox-*` headers together with
   `GATEWAY_INTERNAL_SECRET`, so downstream services apply the caller's team
-  scope. Without `GATEWAY_INTERNAL_SECRET` every tool call fails.
+  scope. Without `GATEWAY_INTERNAL_SECRET` every tool call fails. The call
+  states `X-Wildbox-Auth-Type: service`: the tools service checks an API
+  key's `tools:execute` scope itself and refuses a request that does not
+  say what its credential is. The scopes of the key that started the
+  analysis do not travel with the call; the gateway checked `tools:execute`
+  when the analysis was submitted (#637).
 - Only the owner can read or cancel a task. A task that belongs to another
   user, or whose owner record is missing, answers `404`, so task ids cannot be
   probed (#659).
@@ -95,7 +100,7 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
   "task_id": "0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6",
   "status": "pending",
   "created_at": "2026-10-03T10:00:00Z",
-  "result_url": "/v1/analyze/0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6"
+  "result_url": "/api/v1/agents/analyze/0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6"
 }
 ```
 
@@ -106,7 +111,11 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
 ### Read the result
 
 While the task runs, `GET` returns its status (`pending`, `running`,
-`failed`). Once it completed it returns the result:
+`failed`). A failed task has no report: `error` says why (no model key,
+the model unreachable or refusing, a timeout, a report the model did not
+produce), in the words of `app/failures.py`, and the task counts in
+`failed_today`. Nothing but the model's structured report produces a
+verdict. Once the task completed, `GET` returns the result:
 
 | Field | Content |
 | --- | --- |
@@ -190,7 +199,7 @@ Settings are read from the environment (`app/config.py`):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | none | Claude API key. Without it the service starts, `/health` reports `not_configured` and analyses fail |
+| `ANTHROPIC_API_KEY` | none | Claude API key. Without it the service starts, `/health` reports `not_configured`, submissions are accepted and each task fails at once, saying that AI analysis is not configured |
 | `ANTHROPIC_MODEL` | `claude-opus-4-8` | Model id |
 | `ANTHROPIC_TEMPERATURE` | `0.1` | Sampling temperature |
 | `ANTHROPIC_MAX_TOKENS` | `4096` | Maximum output tokens |
@@ -202,7 +211,7 @@ Settings are read from the environment (`app/config.py`):
 | `WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, for `vulnerability_search_tool`; the host must be in Guardian's `ALLOWED_HOSTS` |
 | `LOG_LEVEL` | `INFO` | Log level |
 | `DEBUG` | `false` | Debug flag |
-| `ENVIRONMENT` | `development` | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development` |
+| `ENVIRONMENT` | none | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development`; unset or empty is not |
 | `CORS_ORIGINS` | empty | Comma-separated allowed origins |
 | `ANALYZE_RATE_LIMIT` | `5/minute` | Analyses each user may submit, in the `limits` notation (`5/minute;50/day` for several) |
 | `ANALYZE_TEAM_RATE_LIMIT` | empty (no ceiling) | Optional ceiling for all users of one team together |

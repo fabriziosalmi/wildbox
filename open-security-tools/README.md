@@ -61,6 +61,15 @@ and `X-Gateway-Secret`. The service (`app/auth.py`, using
 - `403` when `X-Gateway-Secret` does not match `GATEWAY_INTERNAL_SECRET`,
 - `503` when `GATEWAY_INTERNAL_SECRET` is not set in the service environment.
 
+The gateway also forwards the credential's type and an API key's scopes
+(`X-Wildbox-Auth-Type`, `X-Wildbox-Scopes`), and the routes that run a tool
+or cancel a task (`POST /api/tools/{tool}`, `POST /api/tools/{tool}/async`,
+`DELETE /api/tasks/{task_id}`) check `tools:execute` again on them
+(`require_tools_execute` in `app/auth.py`): `403` `INSUFFICIENT_SCOPE` for a
+key without it, and `403` `GATEWAY_AUTH_TYPE_REQUIRED` for a request that
+does not state its auth type, which a gateway older than this service does
+not. Reading tools and tasks is checked by the gateway alone (#637).
+
 See [docs/GATEWAY_AUTHENTICATION_GUIDE.md](../docs/GATEWAY_AUTHENTICATION_GUIDE.md)
 for the gateway side.
 
@@ -354,7 +363,7 @@ root stack, `docker-compose.yml` sets them for each container.
 | `API_KEY`                 | none (required)         | See below                                                    |
 | `GATEWAY_INTERNAL_SECRET` | none                    | Must match the gateway's; without it every route returns `503` |
 | `REDIS_URL`               | none                    | Celery broker and backend, task ownership records            |
-| `ENVIRONMENT`             | `development`           | `development`, `staging` or `production`; `/openapi.json` is served only in `development` |
+| `ENVIRONMENT`             | none                    | `development`, `staging` or `production`; `/openapi.json` is served only in `development`, and not when the variable is unset |
 | `DEBUG`                   | `false`                 |                                                              |
 | `LOG_LEVEL`               | `INFO`                  |                                                              |
 | `CORS_ORIGINS`            | `http://localhost:3000` | Comma-separated                                              |

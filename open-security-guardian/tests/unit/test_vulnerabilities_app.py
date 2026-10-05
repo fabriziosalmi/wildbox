@@ -76,6 +76,7 @@ def api(settings, monkeypatch):
         "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": "admin",
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
+        "HTTP_X_WILDBOX_AUTH_TYPE": "session",
     }
 
     def get(url):

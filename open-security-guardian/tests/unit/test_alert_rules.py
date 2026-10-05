@@ -48,6 +48,7 @@ def _headers(role="admin"):
         "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": role,
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
+        "HTTP_X_WILDBOX_AUTH_TYPE": "session",
     }
 
 
@@ -414,7 +415,13 @@ def test_without_recipients_the_notification_is_recorded_undelivered(
     notification = AlertNotification.objects.get(rule=rule)
     assert (notification.kind, notification.delivered) == ("firing", False)
     assert notification.recipients == []
-    assert "notification not sent (no recipients configured)" in caplog.text
+    # The rule names nobody and guardian cannot ask identity for its team's
+    # owners and admins here: the record and the log say why (#705).
+    assert notification.failure_reason == (
+        "guardian is not set up to ask identity for addresses "
+        "(GUARDIAN_CONTACTS_SECRET)"
+    )
+    assert f"notification not sent ({notification.failure_reason})" in caplog.text
 
 
 @pytest.mark.django_db

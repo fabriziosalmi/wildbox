@@ -66,6 +66,12 @@ services:
       # value in .env is kept and switches the notice off, for a deployment
       # that does not run guardian.
       - GUARDIAN_INTERNAL_URL=${GUARDIAN_INTERNAL_URL-http://open-security-guardian:8013/internal/team-memberships/revoke/}
+      # What guardian-worker presents to POST /internal/team-contacts to
+      # learn who may be e-mailed about a team (#705). A secret of its own:
+      # the worker holds no GATEWAY_INTERNAL_SECRET, and identity does not
+      # start when the two are equal. Empty: the route answers 503 and
+      # guardian asks nothing.
+      - GUARDIAN_CONTACTS_SECRET=${GUARDIAN_CONTACTS_SECRET:-}
       - CREATE_INITIAL_ADMIN=${CREATE_INITIAL_ADMIN:-true}
       - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
@@ -389,10 +395,12 @@ services:
       # and the setting had no effect wherever it was written.
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10000}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
-      # Used to inject n8n's HTTP basic-auth on proxied /api/v1/automations/ requests
-      # (only relevant when the optional "automations" profile is enabled).
-      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
+      # The origins whose pages may call the API from a browser (#712). The
+      # gateway answers their preflights and names them in its responses;
+      # it reads the same setting the services do. The default is the
+      # dashboard's development server. An entry that is not an origin
+      # (scheme, host, optional port) stops the gateway at startup.
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
     networks:
       - wildbox
     # Every service whose hostname appears in an `upstream` block of
@@ -699,8 +707,26 @@ services:
       - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # Prefix of the links in the SLA and assignment e-mails; empty gives
-      # relative links (guardian/settings.py BASE_URL).
+      # The worker is what sends guardian's e-mail (#705). No host, no mail
+      # server: a notification is recorded as not sent, not printed to this
+      # container's log as it was. With a host, a sender is required
+      # (guardian/mailconf.py checks every value at start-up).
+      - EMAIL_HOST=${GUARDIAN_EMAIL_HOST:-}
+      - EMAIL_PORT=${GUARDIAN_EMAIL_PORT:-}
+      - EMAIL_USE_TLS=${GUARDIAN_EMAIL_USE_TLS:-}
+      - EMAIL_USE_SSL=${GUARDIAN_EMAIL_USE_SSL:-}
+      - EMAIL_HOST_USER=${GUARDIAN_EMAIL_HOST_USER:-}
+      - EMAIL_HOST_PASSWORD=${GUARDIAN_EMAIL_HOST_PASSWORD:-}
+      - DEFAULT_FROM_EMAIL=${GUARDIAN_DEFAULT_FROM_EMAIL:-}
+      # Where the worker asks identity who may be e-mailed about a team, and
+      # the secret it presents: its own, not GATEWAY_INTERNAL_SECRET, which
+      # this container does not hold. Empty URL: identity's name on this
+      # network. Empty secret: guardian asks nothing, and e-mails only the
+      # addresses typed into an alert rule or a report schedule.
+      - GUARDIAN_TEAM_CONTACTS_URL=${GUARDIAN_TEAM_CONTACTS_URL:-}
+      - GUARDIAN_CONTACTS_SECRET=${GUARDIAN_CONTACTS_SECRET:-}
+      # The address users open the dashboard at: what a link in an e-mail
+      # starts with. Empty: the e-mails carry no link.
       - GUARDIAN_BASE_URL=${GUARDIAN_BASE_URL:-}
       # Seconds between reminders of an alert rule that keeps firing, or
       # off; empty means one day (guardian/schedule.py, #549).
@@ -1179,8 +1205,10 @@ services:
 
   # Automations Service (n8n workflow automation) — OPTIONAL.
   # Off by default; enable with `docker compose --profile automations up -d`.
-  # Nothing else hard-depends on it; the gateway resolves it dynamically and the
-  # /api/v1/automations/ route simply 502s until this profile is started.
+  # Nothing depends on it and the gateway does not route to it (#714): its
+  # workflows call the API outbound, through the gateway, and its editor is
+  # reached on the loopback port below. Create n8n's owner account right
+  # after the first start; see open-security-automations/README.md.
   automations:
     image: n8nio/n8n:1.74.0
     container_name: open-security-automations
@@ -1189,18 +1217,21 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      # Bind to localhost only. N8N_BASIC_AUTH protects the editor/REST API but
-      # NOT webhook endpoints (/webhook/*), which are unauthenticated by design —
-      # exposing 0.0.0.0:5678 would let anyone on the network trigger workflows.
-      # 127.0.0.1 keeps it reachable for local admin (e.g. via an SSH tunnel)
-      # without exposing it to the network; containers still reach it over the
-      # docker network by service name. Matches tools-flower (also 127.0.0.1).
+      # Bind to localhost only: this port is the only way to n8n's editor.
+      # n8n's own accounts protect the editor and the REST API, but not the
+      # webhook endpoints (/webhook/*), which are unauthenticated by design,
+      # and not the owner setup of an instance that has no owner yet --
+      # exposing 0.0.0.0:5678 would let anyone on the network trigger
+      # workflows, or claim a new instance. 127.0.0.1 keeps it reachable for
+      # local admin (e.g. via an SSH tunnel) without exposing it to the
+      # network; containers still reach it over the docker network by service
+      # name. Matches tools-flower (also 127.0.0.1).
       - "127.0.0.1:5678:5678"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      # No N8N_BASIC_AUTH_*: n8n 1.x has no basic auth and ignores them
+      # (#714). The editor is protected by the owner account created on
+      # first start.
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http

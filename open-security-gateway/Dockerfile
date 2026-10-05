@@ -48,6 +48,16 @@ RUN cd /usr/local/openresty/lualib/resty \
         3b093b4be129f0d3a8ee723dc4b6c1d4d18da466d556ce1b9e3ee314a0b98b7f http_connect.lua \
         | sha256sum -c -
 
+# The base image ships a server of its own, /etc/nginx/conf.d/default.conf
+# (server_name localhost, port 80, its welcome page). nginx.conf includes
+# conf.d/*.conf, so left in place it was loaded beside wildbox_gateway.conf
+# and answered port 80 for Host: localhost: the HEALTHCHECK below got 404,
+# a container run from this image was reported unhealthy, and port 80 served
+# the welcome page instead of the redirect to HTTPS (#713). The Compose stack
+# hid it by mounting nginx/ over /etc/nginx. Only this project's
+# configuration belongs in the image.
+RUN rm -f /etc/nginx/conf.d/default.conf
+
 # Copy configuration files
 COPY nginx/ /etc/nginx/
 COPY scripts/ /usr/local/bin/

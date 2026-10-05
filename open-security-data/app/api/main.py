@@ -38,7 +38,7 @@ from app.schemas.api import *
 # requires.
 from app.models import SensorMetadata as SensorMetadataRow  # noqa: E402
 from app.models import TelemetryEvent as TelemetryEventRow  # noqa: E402
-from app.auth import get_current_user, GatewayUser
+from app.auth import get_current_user, get_ingest_user, GatewayUser
 from open_security_shared.api_docs import api_docs_urls
 from open_security_shared.tenancy import team_filter, team_or_global_filter
 
@@ -742,7 +742,7 @@ def percent_change(previous: int, current: int) -> Optional[float]:
 @app.post("/api/v1/ingest", response_model=TelemetryBatchResponse, tags=["Telemetry"])
 async def ingest_telemetry_batch(
     batch: TelemetryBatch,
-    current_user: GatewayUser = Depends(get_current_user),
+    current_user: GatewayUser = Depends(get_ingest_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -753,6 +753,11 @@ async def ingest_telemetry_batch(
     scope) and forwards the key's team. Every event and the sensor's record
     are stored under that team and nothing else: the batch carries no team,
     and one it claims is ignored (#628).
+
+    The scope is checked here as well, on the scopes the gateway forwards
+    (get_ingest_user, #637): an API key needs data:ingest, data:write or
+    write, as at the gateway. Every other route of the service needs read
+    or write, which data:ingest does not satisfy.
     """
     team_id = current_user.team_id
     # Bound the batch. The neighbouring bulk-lookup endpoint enforces this same
@@ -995,7 +1000,7 @@ if __name__ == "__main__":
     )
     
     logger.info("Starting Open Security Data API")
-    logger.info(f"Environment: {config.environment}")
+    logger.info(f"Environment: {config.environment or '(not declared)'}")
     logger.info(f"Debug mode: {config.debug}")
     logger.info(f"Database URL: {config.database.url.split('@')[-1] if '@' in config.database.url else 'Not configured'}")
     

@@ -161,8 +161,9 @@ class Command(BaseCommand):
         
         self.stdout.write(
             self.style.WARNING(
-                f'Queued overdue notifications for {count} assessments; '
-                'compliance notifications have no recipients and are not sent'
+                f'Queued overdue notifications for {count} assessments, for '
+                "each team's owners and admins; the worker log says which "
+                'could not be sent'
             )
         )
 
@@ -205,8 +206,9 @@ class Command(BaseCommand):
         
         self.stdout.write(
             self.style.WARNING(
-                f'Queued expiry notifications for {count} exceptions; '
-                'compliance notifications have no recipients and are not sent'
+                f'Queued expiry notifications for {count} exceptions, for '
+                "each team's owners and admins; the worker log says which "
+                'could not be sent'
             )
         )
 

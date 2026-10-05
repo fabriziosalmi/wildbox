@@ -172,8 +172,10 @@ npm run dev
 
 Then open `http://localhost:3000`. The browser has to trust the gateway's
 certificate (or you accept it once at `https://localhost`), otherwise every
-API call fails. The gateway's CORS allowlist accepts `localhost` and
-`127.0.0.1` origins on any port.
+API call fails. The gateway accepts cross-origin calls from the origins in
+`CORS_ORIGINS` only; `docker-compose.yml` defaults it to
+`http://localhost:3000`, this server's origin. For another port or host,
+set `CORS_ORIGINS` in `.env` and recreate the gateway.
 
 ### Production image
 

@@ -248,7 +248,7 @@ def analysis_task(task_id="task-1"):
         "completed_at": None,
         "progress": None,
         "error": None,
-        "result_url": f"/v1/analyze/{task_id}",
+        "result_url": f"/api/v1/agents/analyze/{task_id}",
     }
 
 

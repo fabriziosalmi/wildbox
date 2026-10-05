@@ -203,7 +203,6 @@ def main():
         "GATEWAY_INTERNAL_SECRET": generate_hex(32),
         "API_KEY": generate_api_key("prod"),
         "INITIAL_ADMIN_PASSWORD": generate_password(24),
-        "N8N_BASIC_AUTH_PASSWORD": generate_password(16),
         "N8N_ENCRYPTION_KEY": generate_hex(32),
         "NEXTAUTH_SECRET": generate_base64(32),
         # Encrypts cloud credentials before CSPM writes them to Redis
@@ -226,6 +225,10 @@ def main():
         # everything but /health.
         "SENSOR_API_KEY": generate_hex(32),
         "DATA_SECRET_KEY": generate_hex(32),
+        # What guardian-worker presents to identity to learn who may be
+        # e-mailed about a team (#705). Its own value: the worker holds no
+        # GATEWAY_INTERNAL_SECRET, and identity refuses one equal to it.
+        "GUARDIAN_CONTACTS_SECRET": generate_hex(32),
     }
 
     # Read template
@@ -294,7 +297,6 @@ def main():
     print("   • GATEWAY_INTERNAL_SECRET")
     print("   • API_KEY")
     print("   • INITIAL_ADMIN_PASSWORD")
-    print("   • N8N_BASIC_AUTH_PASSWORD")
     print("   • N8N_ENCRYPTION_KEY")
     print("   • NEXTAUTH_SECRET")
     print("   • CSPM_CREDENTIAL_KEY")

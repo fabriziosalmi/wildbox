@@ -26,10 +26,11 @@ the main ones are:
 | `POSTGRES_PASSWORD` | PostgreSQL superuser password |
 | `REDIS_PASSWORD` | Redis password |
 | `GUARDIAN_SECRET_KEY`, `CSPM_SECRET_KEY`, `DATA_SECRET_KEY` | Per-service secret keys |
+| `GUARDIAN_CONTACTS_SECRET` | Authenticates guardian's worker to the identity service, to learn who may be e-mailed about a team. Optional, and never the value of `GATEWAY_INTERNAL_SECRET` |
 | `CSPM_CREDENTIAL_KEY` | Encrypts cloud credentials stored by CSPM (cloud security posture management) |
 | `SENSOR_API_KEY` | Authenticates the sensor's local API |
 | `FLOWER_PASSWORD` | Celery Flower for the tools workers |
-| `N8N_BASIC_AUTH_PASSWORD`, `N8N_ENCRYPTION_KEY` | The optional automations service |
+| `N8N_ENCRYPTION_KEY` | The optional automations service |
 | `API_KEY` | Static key shared by the tools API, its workers and the services that call it |
 | `NEXTAUTH_SECRET` | Dashboard sessions |
 | `GRAFANA_ADMIN_PASSWORD` | Generated, but no service in `docker-compose.yml` uses it |

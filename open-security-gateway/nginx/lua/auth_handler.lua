@@ -765,8 +765,9 @@ local ROUTE_SCOPES = {
     { path = "/api/v1/tools", read = "tools:read", write = "tools:execute" },
     { path = "/api/v1/agents", read = "tools:read", write = "tools:execute" },
     { path = "/api/v1/tasks", read = "tools:read", write = "tools:execute" },
-    -- Automation (n8n) workflow management is administrative.
-    { path = "/api/v1/automations", read = "tools:admin", write = "tools:admin" },
+    -- No row for /api/v1/automations: the gateway does not route to n8n
+    -- any more (#714), and no route requires tools:admin, which a key may
+    -- still hold and which satisfies tools:read and tools:execute.
     -- Guardian: vulnerability, asset and compliance data.
     { path = "/api/v1/guardian", read = "data:read", write = "data:write", delete = "data:delete" },
     -- Sensor telemetry ingest (#628): its own scope, so that a sensor's key
@@ -814,10 +815,12 @@ end
 --
 -- ngx.var.uri is not that path once the location has rewritten it, and
 -- rewrite directives run before access_by_lua. The automations location
--- strips its prefix that way, so the map saw "/rest/workflows" instead of
+-- stripped its prefix that way, so the map saw "/rest/workflows" instead of
 -- "/api/v1/automations/rest/workflows": it required the generic "read" or
 -- "write" where tools:admin was meant, and mapped whatever followed the
--- prefix as a path of its own. The server block copies $uri into
+-- prefix as a path of its own. That location is gone (#714); a location
+-- that rewrites is still mapped by the path it was chosen for, not by the
+-- one it rewrites to. The server block copies $uri into
 -- $wildbox_route_uri before any location runs; a configuration that does
 -- not declare it leaves every path unmapped, which fails closed.
 local function route_uri()
@@ -901,8 +904,77 @@ local function enforce_scopes(auth_data)
     ngx.exit(ngx.HTTP_FORBIDDEN)
 end
 
+-- What the credential is and what it may do, for the service (#637).
+--
+-- The gateway enforced an API key's scopes and then forwarded the user, the
+-- team and the role alone: a service could not tell a sensor's data:ingest
+-- key from its owner's session, so the scope map above was the only check
+-- there was, and a mistake in it had nothing behind it. The service now
+-- gets what the decision was made on, and checks it again where it matters
+-- (open-security-shared: scopes.py, gateway_auth.require_scope):
+--
+--   X-Wildbox-Auth-Type  "api_key" for an API key, "session" for a login
+--                        session (a JWT). Always sent.
+--   X-Wildbox-Scopes     the key's scopes, separated by single spaces. "*"
+--                        for a key that is not limited (identity reports no
+--                        scope list for it). Not sent for a session, which
+--                        has no scopes and is not limited by them.
+--
+-- Both are the gateway's to say: clean_request_headers() removes a client's
+-- own, and proxy_params.conf sends them from variables that only this
+-- function fills in, so a location that does not authenticate forwards
+-- neither.
+local AUTH_TYPE_SESSION = "session"
+local AUTH_TYPE_API_KEY = "api_key"
+local UNRESTRICTED_SCOPE = "*"
+
+-- A scope as identity grants them: "*", a name, or name:action. Anything
+-- else is not forwarded: the services refuse a list they cannot read, and
+-- a scope that is no scope satisfied nothing here either.
+local function forwardable_scope(scope)
+    if type(scope) ~= "string" then
+        return false
+    end
+    return scope == UNRESTRICTED_SCOPE
+        or scope:match("^[a-z][a-z0-9_-]*$") ~= nil
+        or scope:match("^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$") ~= nil
+end
+
+-- The auth type and the scopes header ("" for none) of a decision.
+local function credential_headers(auth_data, token_type)
+    -- By what identity answered as well as by the header the credential
+    -- came in: a decision that names an API key is one.
+    local auth_type = AUTH_TYPE_SESSION
+    if token_type == "api_key" or names_api_key(auth_data) then
+        auth_type = AUTH_TYPE_API_KEY
+    end
+
+    local scopes = auth_data.scopes
+    if type(scopes) ~= "table" then
+        -- Not limited by scopes (see enforce_scopes). For a key that is a
+        -- privilege, and it is written out rather than left to be inferred
+        -- from a missing header.
+        if auth_type == AUTH_TYPE_API_KEY then
+            return auth_type, UNRESTRICTED_SCOPE
+        end
+        return auth_type, ""
+    end
+
+    local forwarded = {}
+    for _, scope in ipairs(scopes) do
+        if forwardable_scope(scope) then
+            forwarded[#forwarded + 1] = scope
+        else
+            utils.log("warn", "Scope not forwarded: not a scope name", {
+                user_id = auth_data.user_id
+            })
+        end
+    end
+    return auth_type, table.concat(forwarded, " ")
+end
+
 -- Set authentication headers for backend services
-local function set_auth_headers(auth_data, config)
+local function set_auth_headers(auth_data, config, token_type)
     -- SECURITY: Strip ALL client-supplied auth headers BEFORE setting validated ones.
     -- This prevents identity spoofing via forged X-Wildbox-* headers.
     utils.clean_request_headers()
@@ -919,6 +991,15 @@ local function set_auth_headers(auth_data, config)
     ngx.req.set_header("X-Wildbox-User-ID", auth_data.user_id)
     ngx.req.set_header("X-Wildbox-Team-ID", auth_data.team_id)
     ngx.req.set_header("X-Wildbox-Role", auth_data.role)
+
+    -- The credential (#637). An empty $wildbox_scopes sends no header.
+    local auth_type, scopes = credential_headers(auth_data, token_type)
+    ngx.var.wildbox_auth_type = auth_type
+    ngx.var.wildbox_scopes = scopes
+    ngx.req.set_header("X-Wildbox-Auth-Type", auth_type)
+    if scopes ~= "" then
+        ngx.req.set_header("X-Wildbox-Scopes", scopes)
+    end
 
     -- Response headers for client
     ngx.header["X-Wildbox-Team-ID"] = auth_data.team_id
@@ -939,7 +1020,16 @@ local function service_unavailable(retry_after)
     ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
 end
 
--- Main authentication handler
+-- Main authentication handler.
+--
+-- Only for a location whose upstream is a Wildbox service: a request let
+-- through is sent on with X-Gateway-Secret and the caller's identity, which
+-- such a service checks and trusts. Whoever else holds the secret can state
+-- any user, team and role to every service, so nothing that is not Wildbox's
+-- may sit behind a location that calls this. n8n did (#711), and is not
+-- routed to any more (#714); tests/scripts and the harness
+-- (test/upstream_header_tests.sh) fail for a location that proxies anywhere
+-- else.
 function _M.authenticate()
     local request_start = ngx.now()
 
@@ -1090,7 +1180,7 @@ function _M.authenticate()
     apply_rate_limiting(auth_data)
 
     -- Set authentication headers for backend services
-    set_auth_headers(auth_data, config)
+    set_auth_headers(auth_data, config, token_type)
 
     local request_time = (ngx.now() - request_start) * 1000
     utils.log("debug", "Authorization completed", {

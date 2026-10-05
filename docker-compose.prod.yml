@@ -294,6 +294,9 @@ services:
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=warn
+      # As for the services below: only what the operator lists, and nothing
+      # when it is empty (the dashboard on the gateway's own origin).
+      - CORS_ORIGINS=${CORS_ORIGINS}
     deploy:
       resources:
         limits:
@@ -379,6 +382,9 @@ services:
   # The broker and the database are on data; egress for what the tasks
   # reach outside the stack: port scans of asset addresses, threat-intel
   # URLs, SMTP and chat webhooks. Nothing looks the worker up by name.
+  # identity is on data too: the worker asks it there who may be e-mailed
+  # about a team (#705), with GUARDIAN_CONTACTS_SECRET. It is not on
+  # backend and holds no GATEWAY_INTERNAL_SECRET.
   guardian-worker:
     restart: always
     networks: !override

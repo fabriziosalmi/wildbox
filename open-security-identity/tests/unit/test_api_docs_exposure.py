@@ -53,8 +53,15 @@ print({MARKER!r} + json.dumps(statuses))
 
 
 def statuses(environment, **overrides):
-    """The status of each documentation path under ENVIRONMENT=environment."""
-    env = {**os.environ, **SETTINGS, "ENVIRONMENT": environment, **overrides}
+    """The status of each documentation path under ENVIRONMENT=environment.
+
+    ``None`` starts the service without the variable.
+    """
+    env = {**os.environ, **SETTINGS, **overrides}
+    # None: the variable is absent, as in a bare `docker run`.
+    env.pop("ENVIRONMENT", None)
+    if environment is not None:
+        env["ENVIRONMENT"] = environment
     result = subprocess.run(
         [sys.executable, "-c", PROBE, APP, DOCS, REDOC, SCHEMA],
         cwd=SERVICE_ROOT,
@@ -81,3 +88,11 @@ def statuses(environment, **overrides):
 )
 def test_schema_and_docs_are_served_in_development_only(environment, expected):
     assert statuses(environment) == expected
+
+
+@pytest.mark.parametrize("environment", [None, "", "  "])
+def test_an_environment_that_is_not_declared_is_not_development(environment):
+    # A service started without ENVIRONMENT (a bare `docker run`) took the
+    # missing value for "development" and published its route map (#722).
+    # Compose renders an undefined variable as an empty string: same answer.
+    assert statuses(environment) == OUTSIDE_DEVELOPMENT

@@ -213,12 +213,14 @@ curl --cacert "$CA" -X POST https://<host>/api/v1/agents/analyze \
   "completed_at": null,
   "progress": null,
   "error": null,
-  "result_url": "/v1/analyze/550e8400-e29b-41d4-a716-446655440000"
+  "result_url": "/api/v1/agents/analyze/550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-`result_url` is the service-side path. Through the gateway, read the result at
-`/api/v1/agents/analyze/{task_id}`.
+`result_url` is where to read the task: its path on the gateway, without scheme
+or host, to resolve against the address you called (`https://<host>` +
+`result_url`). It is always `/api/v1/agents/analyze/{task_id}`; no request
+header changes it.
 
 ---
 
@@ -250,13 +252,27 @@ curl --cacert "$CA" https://<host>/api/v1/agents/analyze/550e8400-e29b-41d4-a716
   "completed_at": null,
   "progress": "Running AI analysis...",
   "error": null,
-  "result_url": "/v1/analyze/550e8400-e29b-41d4-a716-446655440000"
+  "result_url": "/api/v1/agents/analyze/550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-`status` is `pending`, `running` or `failed` here. A failed task carries
-`"error": "Analysis failed. Please retry or contact support."`; the details
+`status` is `pending`, `running` or `failed` here.
+
+**A failed task has no report.** An analysis that could not run, or could not
+finish, answers `status: failed` with the reason in `error`; it is never
+answered as a completed analysis, and no verdict, confidence or evidence is
+produced by anything but the model's own structured report (#717). The details
 are in the service logs.
+
+| `error` | When |
+| --- | --- |
+| `AI analysis is not configured on this server: no model API key is set.` | `ANTHROPIC_API_KEY` is empty; the task fails before anything runs |
+| `The AI model could not be reached, or refused the request. Nothing was analyzed.` | The model's API answered an error or was unreachable, or failed three times in a row, after which calls to it are suspended for two minutes |
+| `The analysis did not finish within its time limit.` | The analysis timed out |
+| `The investigation ran, but its report could not be generated. No verdict was produced.` | The tools ran, and the model did not return the structured report |
+| `The analysis had no user identity to act for and was not run.` | The task reached the worker without a complete caller (#594) |
+| `The analysis failed because of an internal error.` | Anything else |
+| `Analysis failed. Please retry or contact support.` | The cause was not recorded, for example a worker stopped at its hard time limit |
 
 **Response once the task has completed (200 OK)**: the analysis result, which
 has no `status` field:

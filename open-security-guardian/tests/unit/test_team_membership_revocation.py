@@ -72,6 +72,7 @@ def api(monkeypatch):
             "HTTP_X_WILDBOX_TEAM_ID": str(team),
             "HTTP_X_WILDBOX_ROLE": role,
             "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
+            "HTTP_X_WILDBOX_AUTH_TYPE": "session",
         }
         if data is not None:
             kwargs.update(data=data, content_type="application/json")
@@ -782,10 +783,16 @@ def _overdue(team_id, assignee):
     return vulnerability
 
 
-def _with_address(team_id, address):
+def _with_address(identity_contacts, team_id, address):
+    """A member of the team, here and in identity, which holds the address.
+
+    identity goes on answering for them in these tests, as if it had not
+    removed them: what is tested is that guardian's own record of who is in
+    the team is enough to keep the e-mail back (#705 took the address off
+    guardian's copy of the user; identity is asked for it).
+    """
     member = tf.user(team_id)
-    member.email = address
-    member.save(update_fields=["email"])
+    identity_contacts.add(team_id, member.username, address)
     return member
 
 
@@ -795,15 +802,16 @@ def _with_address(team_id, address):
     [("member", True), ("not-seen", False), ("row-deleted", False)],
 )
 def test_an_sla_violation_is_not_e_mailed_to_a_former_member(
-    teams, mailoutbox, state, told
+    teams, mailoutbox, identity_contacts, state, told
 ):
     """The notice was lost, so the assignment is still there: no e-mail all the same."""
     from apps.vulnerabilities.tasks import check_sla_violations
 
     team_a, team_b = teams
-    member = _with_address(team_a, "left@example.com")
+    member = _with_address(identity_contacts, team_a, "left@example.com")
     # Still a member of another team: that does not make them one here.
     TeamMembership.objects.create(team_id=team_b, user=member)
+    identity_contacts.add(team_b, member.username, "left@example.com")
     vulnerability = _overdue(team_a, member)
     if state == "not-seen":
         _age(team_a, member, WINDOW + timedelta(days=1))
@@ -826,12 +834,14 @@ def test_an_sla_violation_is_not_e_mailed_to_a_former_member(
 
 
 @pytest.mark.django_db
-def test_an_assignment_is_not_e_mailed_to_a_former_member(teams, mailoutbox, caplog):
+def test_an_assignment_is_not_e_mailed_to_a_former_member(
+    teams, mailoutbox, identity_contacts, caplog
+):
     from apps.vulnerabilities.tasks import notify_vulnerability_assignment
 
     team_a, _ = teams
-    member = _with_address(team_a, "left@example.com")
-    colleague = _with_address(team_a, "stays@example.com")
+    member = _with_address(identity_contacts, team_a, "left@example.com")
+    colleague = _with_address(identity_contacts, team_a, "stays@example.com")
     assigner = tf.user(team_a)
     gone = _overdue(team_a, member)
     kept = _overdue(team_a, colleague)
