@@ -13,10 +13,15 @@ class NetworkScannerInput(BaseToolInput):
     network: str = Field(
         ...,
         description=(
-            "Address, CIDR range or last-octet range (192.168.1.10-20) to scan; "
-            "at most 1024 addresses"
+            "Address, CIDR range (a.b.c.0/24) or last-octet range (a.b.c.10-20) "
+            "to scan; at most 1024 addresses. Private and other internal "
+            "ranges, such as 192.168.1.0/24, are refused unless the operator "
+            "allows them (TOOLS_ALLOWED_INTERNAL_TARGETS)"
         ),
-        example="192.168.1.0/24",
+        # A value the default target policy accepts: the dashboard shows it
+        # as the field's placeholder. It was 192.168.1.0/24, which the
+        # service refuses (#646).
+        example="8.8.8.8",
     )
     # main.py implements ping and tcp; "comprehensive" and any other value
     # ran a ping scan (#611).
