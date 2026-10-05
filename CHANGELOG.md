@@ -124,6 +124,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `TOOLS_ALLOWED_INTERNAL_TARGETS`. They are now `8.8.8.8` and the
   host the Nmap project keeps for test scans, and the field descriptions
   name the setting (#646).
+- **An error detail that is a dict or a list reaches the client as JSON,
+  not as a Python dict string** (#655). The shared error handler built
+  `error.message` with `str()` unless the dict had a `reason`, so the
+  refusals of the gateway authentication dependency read
+  `"{'error': 'Gateway authentication required', 'message': ..., 'code':
+  'GATEWAY_AUTH_REQUIRED'}"` in tools, data, agents and responder.
+  `error.message` is now the dict's `reason`, else its `message`, else
+  its `error`, else the status phrase, and the dict is under
+  `error.details`, so the code is at `error.details.code`. A list detail
+  goes to `error.details` too. `error.message` is never empty.
+- **cspm answers the errors its endpoints raise in the canonical body**
+  (#655). A handler of its own replaced the shared one, so they left as
+  `{"error": "HTTPException", "message": ..., "details": {"status_code":
+  ...}, "timestamp": ...}`, with the same Python dict string for a dict
+  detail. They are now `{"error": {"code", "message", "type",
+  "request_id"}}`, as cspm's 422 and its 404 for an unknown path already
+  were, and as every other service answers. A client that read the
+  top-level `message` of a cspm error must read `error.message`.
+- **Input that a validator refuses answers 422, not 500.** When a model's
+  validator raised `ValueError`, the field errors could not be rendered
+  as JSON and the request ended in an internal error: an IOC value of
+  the wrong format sent to `POST /api/v1/agents/analyze`, for one.
 
 - **A guardian webhook endpoint path is unique per team, not across
   guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642

@@ -398,4 +398,29 @@ test.describe('tool schema to form', () => {
     expect(serverFieldErrors({ error: { message: 'x' } }, names)).toEqual({ fields: {}, other: [] })
     expect(serverFieldErrors(undefined, names)).toEqual({ fields: {}, other: [] })
   })
+
+  test('details that hold no field errors yield none', () => {
+    const names = ['input_text', 'iterations']
+    // A refusal by the gateway authentication dependency: `details` is the
+    // dict the service raised, `message` its explanation (#655). It has a
+    // `message` and a `code` of its own, and no `errors`.
+    const refusal = {
+      error: {
+        code: 403,
+        message: 'Direct access is not permitted; requests must traverse the gateway.',
+        type: 'HTTPException',
+        details: {
+          error: 'Gateway authentication required',
+          message: 'Direct access is not permitted; requests must traverse the gateway.',
+          code: 'GATEWAY_SECRET_REQUIRED',
+        },
+      },
+    }
+    expect(serverFieldErrors(refusal, names)).toEqual({ fields: {}, other: [] })
+    // A list detail that is not a list of `{loc, msg}`.
+    const list = {
+      error: { code: 422, message: 'Unprocessable Entity', details: ['a is required'] },
+    }
+    expect(serverFieldErrors(list, names)).toEqual({ fields: {}, other: [] })
+  })
 })
