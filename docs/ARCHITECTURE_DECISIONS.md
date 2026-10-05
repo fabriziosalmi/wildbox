@@ -44,7 +44,7 @@ than overlooked (WILDBO-REL-03):
 | --- | --- | --- |
 | **Gateway** | Everything. It is the only ingress and the only authenticator. | Health checks + `restart: unless-stopped`; a circuit breaker keeps an identity outage from hanging it. |
 | **Identity** | New authorization decisions. | The gateway caches decisions for `AUTH_CACHE_TTL` (300s), so an outage degrades gradually; the circuit breaker returns 503 rather than hanging. |
-| **Redis** | Tool execution, playbook runs, CSPM scans and AI enrichment, together. It holds the only copy of that operational state. | `--appendonly yes` and `maxmemory-policy noeviction`, so overload fails writes loudly instead of deleting records. Backed up by the `backup` compose profile. |
+| **Redis** | Tool execution, playbook runs, CSPM scans and AI enrichment, together. It holds the only copy of that operational state. | `--appendonly yes` and `maxmemory-policy noeviction`, so overload fails writes loudly instead of deleting records. Backed up by `make backup` and the `backup` compose profile; restored with `scripts/restore_redis.sh`. |
 | **PostgreSQL** | Authentication and threat-intelligence storage. | Health-gated startup; backed up (all three databases) with a tested restore path (`make restore-drill`). |
 
 The tools service is additionally single-instance by design; see the note on
