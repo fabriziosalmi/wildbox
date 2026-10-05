@@ -139,8 +139,10 @@ async def authorize_request(
                     detail="Token has been revoked",
                 )
 
-            # Build authorization response. Bearer (interactive) auth is not
-            # scope-limited — scopes=None means unrestricted at the gateway.
+            # Build authorization response. A session has no scopes and is
+            # not limited by them: scopes=None. The gateway tells the services
+            # so with X-Wildbox-Auth-Type: session and no X-Wildbox-Scopes
+            # (#637).
             return AuthorizationResponse(
                 is_authenticated=True,
                 user_id=str(user.id),
@@ -205,8 +207,12 @@ async def authorize_request(
             api_key_obj.last_used_at = datetime.utcnow()
             await db.commit()
 
-            # API keys carry least-privilege scopes. NULL (legacy key created
-            # before scoping) => unrestricted; a list is enforced at the gateway.
+            # API keys carry least-privilege scopes: always a list. The
+            # column is NOT NULL, and a key that is not limited holds ["*"],
+            # written out when it is created (api_keys.py) and by migration
+            # f5a6b7c8d9e0 for the keys that predate scoping (WILDBO-DOM-07).
+            # The gateway enforces the list and forwards it to the services
+            # in X-Wildbox-Scopes (#637).
             return AuthorizationResponse(
                 is_authenticated=True,
                 user_id=str(user.id),

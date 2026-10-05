@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import Any, Dict, Iterator, Mapping, Optional
 import httpx
+from open_security_shared.scopes import AUTH_TYPE_HEADER, AUTH_TYPE_SERVICE
 
 from ..config import settings
 
@@ -325,6 +326,11 @@ class WildboxAPIClient:
             "X-Wildbox-User-ID": caller["user_id"],
             "X-Wildbox-Team-ID": caller["team_id"],
             "X-Wildbox-Role": caller["role"],
+            # What this call is (#637): a Wildbox service acting for the
+            # caller, whose own credential the gateway checked on the route
+            # that started the analysis. The services refuse a request that
+            # needs a scope and does not say what its credential is.
+            AUTH_TYPE_HEADER: AUTH_TYPE_SERVICE,
             "X-Gateway-Secret": self.gateway_secret,
             # As the gateway sends it (nginx/includes/proxy_params.conf): the
             # analysis was submitted over HTTPS, and TLS ends at the gateway.

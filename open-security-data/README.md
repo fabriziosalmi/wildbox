@@ -50,6 +50,17 @@ service and forwards `X-Wildbox-*` identity headers together with the shared
 Only `/health`, `/metrics` and the development-only API docs answer without
 gateway headers.
 
+The gateway requires an API-key scope of every request: `data:ingest` (or
+`data:write`, or `write`) to post telemetry, `read` for every other `GET`
+and `write` for every other method. The service checks the same scope
+again, on the credential's type and scopes the gateway forwards
+(`X-Wildbox-Auth-Type`, `X-Wildbox-Scopes`): a `data:ingest` key reaches
+`/api/v1/ingest` and no other route, even if the gateway let it through. A
+session is not limited by scopes. A request that carries the gateway's
+secret without `X-Wildbox-Auth-Type` answers 403
+`GATEWAY_AUTH_TYPE_REQUIRED`: rebuild the gateway together with this
+service (#637).
+
 ## Running it
 
 Start the data service as part of the Wildbox stack from the repository root;

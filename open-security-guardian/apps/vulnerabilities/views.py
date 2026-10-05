@@ -32,7 +32,6 @@ from .serializers import (
 from .filters import VulnerabilityFilter
 from .tasks import (
     update_vulnerability_risk_scores, notify_vulnerability_assignment,
-    scan_vulnerability_remediation
 )
 
 
@@ -84,7 +83,15 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         vulnerability = self.get_object()
         assigned_to_id = request.data.get('assigned_to')
         assignee_group = request.data.get('assignee_group')
-        
+
+        # With neither, nothing was assigned and the answer still said
+        # "assigned successfully" (#644).
+        if not assigned_to_id and not assignee_group:
+            return Response(
+                {'error': "Either 'assigned_to' or 'assignee_group' is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         if assigned_to_id:
             try:
                 # A member of the caller's team only (#642).
@@ -110,60 +117,69 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
             'assignee_group': vulnerability.assignee_group
         })
     
-    @action(detail=True, methods=['post'])
-    def close(self, request, pk=None):
-        """Close vulnerability with reason"""
-        vulnerability = self.get_object()
-        reason = request.data.get('reason', '')
-        resolution_method = request.data.get('resolution_method', 'fixed')
-        
+    def _close(self, vulnerability, reason='', resolution_method='fixed'):
+        """Resolve one vulnerability; what ``close`` and a bulk close do."""
+        user = self.request.user
+        # The status it really had: the entry said "open" whatever it was.
+        old_status = vulnerability.status
         vulnerability.status = VulnerabilityStatus.RESOLVED
         vulnerability.resolved_at = timezone.now()
-        
+
         # Add to metadata
         if 'resolution' not in vulnerability.metadata:
             vulnerability.metadata['resolution'] = {}
         vulnerability.metadata['resolution'].update({
             'method': resolution_method,
             'reason': reason,
-            'resolved_by': request.user.id,
+            'resolved_by': user.id,
             'resolved_at': timezone.now().isoformat()
         })
-        
+
         vulnerability.save()
-        
+
         # Create history entry
         VulnerabilityHistory.objects.create(
             vulnerability=vulnerability,
             field_name='status',
-            old_value='open',
-            new_value='resolved',
+            old_value=old_status,
+            new_value=VulnerabilityStatus.RESOLVED,
             change_reason=f"Closed: {reason}",
-            changed_by=request.user
+            changed_by=user
         )
-        
+
+    def _reopen(self, vulnerability, reason=''):
+        """Reopen one vulnerability; what ``reopen`` and a bulk reopen do."""
+        old_status = vulnerability.status
+        vulnerability.status = VulnerabilityStatus.OPEN
+        vulnerability.resolved_at = None
+        vulnerability.save()
+
+        # Create history entry
+        VulnerabilityHistory.objects.create(
+            vulnerability=vulnerability,
+            field_name='status',
+            old_value=old_status,
+            new_value=VulnerabilityStatus.OPEN,
+            change_reason=f"Reopened: {reason}",
+            changed_by=self.request.user
+        )
+
+    @action(detail=True, methods=['post'])
+    def close(self, request, pk=None):
+        """Close vulnerability with reason"""
+        vulnerability = self.get_object()
+        self._close(
+            vulnerability,
+            reason=request.data.get('reason', ''),
+            resolution_method=request.data.get('resolution_method', 'fixed'),
+        )
         return Response({'message': 'Vulnerability closed successfully'})
-    
+
     @action(detail=True, methods=['post'])
     def reopen(self, request, pk=None):
         """Reopen closed vulnerability"""
         vulnerability = self.get_object()
-        reason = request.data.get('reason', '')
-        
-        vulnerability.status = VulnerabilityStatus.OPEN
-        vulnerability.resolved_at = None
-        vulnerability.save()
-        
-        # Create history entry
-        VulnerabilityHistory.objects.create(
-            vulnerability=vulnerability,
-            field_name='status',
-            old_value='resolved',
-            new_value='open',
-            change_reason=f"Reopened: {reason}",
-            changed_by=request.user
-        )
-        
+        self._reopen(vulnerability, reason=request.data.get('reason', ''))
         return Response({'message': 'Vulnerability reopened successfully'})
     
     @action(detail=True, methods=['post'])
@@ -258,32 +274,56 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
+            # Only what the request names, as the ``assign`` action does: a
+            # group given alone unassigned every user, and a user given
+            # alone cleared every group (#644).
             for vuln in vulnerabilities:
-                vuln.assigned_to = assigned_to
-                vuln.assignee_group = data.get('assignee_group', '')
+                if assigned_to is not None:
+                    vuln.assigned_to = assigned_to
+                if data.get('assignee_group'):
+                    vuln.assignee_group = data['assignee_group']
                 vuln.save()
                 updated_count += 1
-        
+
         elif action_type == 'close':
             for vuln in vulnerabilities:
-                vuln.status = VulnerabilityStatus.RESOLVED
-                vuln.resolved_at = timezone.now()
-                vuln.save()
+                self._close(vuln, reason=data.get('reason', ''))
                 updated_count += 1
-        
+
+        elif action_type == 'reopen':
+            for vuln in vulnerabilities:
+                self._reopen(vuln, reason=data.get('reason', ''))
+                updated_count += 1
+
         elif action_type == 'tag':
             tag = data['tag']
             for vuln in vulnerabilities:
                 vuln.add_tag(tag)
                 updated_count += 1
-        
+
+        elif action_type == 'untag':
+            tag = data['tag']
+            for vuln in vulnerabilities:
+                vuln.remove_tag(tag)
+                updated_count += 1
+
         elif action_type == 'priority':
             priority = data['priority']
             for vuln in vulnerabilities:
                 vuln.priority = priority
                 vuln.save()
                 updated_count += 1
-        
+
+        else:
+            # An action the serializer accepts and nothing above performs:
+            # "reopen" and "untag" were, and answered "Bulk action completed
+            # on 0 vulnerabilities" (#644). Refuse instead of reporting
+            # work that was not done.
+            return Response(
+                {'action': [f'"{action_type}" is not a supported bulk action.']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         return Response({
             'message': f'Bulk action completed on {updated_count} vulnerabilities',
             'updated_count': updated_count
@@ -360,14 +400,28 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         serializer = VulnerabilityStatsSerializer(stats)
         return Response(serializer.data)
     
+    #: The longest window ``trends`` computes: it runs four queries per day.
+    MAX_TREND_DAYS = 366
+
     @action(detail=False, methods=['get'])
     def trends(self, request):
         """Get vulnerability trends over time"""
-        days = int(request.query_params.get('days', 30))
+        # ?days=abc answered 500, and nothing bounded the window (#644).
+        try:
+            days = int(request.query_params.get('days', 30))
+        except (TypeError, ValueError):
+            days = -1
+        if not 0 <= days <= self.MAX_TREND_DAYS:
+            return Response(
+                {'days': [f'A whole number of days from 0 to {self.MAX_TREND_DAYS}.']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         end_date = timezone.now().date()
         start_date = end_date - timedelta(days=days)
-        
-        # Generate daily trend data, from the caller's team's findings (#642)
+
+        # Generate daily trend data from the rows the list would show: the
+        # caller's team's findings (#642) and, for a member, those assigned
+        # to or created by them (get_queryset).
         vulnerabilities = self.get_queryset()
         trends = []
         current_date = start_date

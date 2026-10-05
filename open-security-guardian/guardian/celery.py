@@ -42,7 +42,6 @@ TASK_QUEUES = {
         'apps.assets.tasks.discover_assets',
         'apps.assets.tasks.execute_discovery_rule',
         'apps.assets.tasks.scan_asset_ports',
-        'apps.vulnerabilities.tasks.scan_vulnerability_remediation',
     ),
     'reporting': (
         'apps.reporting.tasks.generate_report',

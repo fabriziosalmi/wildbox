@@ -41,7 +41,7 @@ def client():
     install_error_handlers(app)
     app.include_router(router_module.router)
     app.dependency_overrides[verify_api_key] = lambda: GatewayUser(
-        user_id=str(uuid.uuid4()), team_id=str(uuid.uuid4()), role="member"
+        user_id=str(uuid.uuid4()), team_id=str(uuid.uuid4()), role="member", auth_type="session"
     )
     return TestClient(app, raise_server_exceptions=False)
 

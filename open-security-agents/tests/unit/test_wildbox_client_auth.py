@@ -40,6 +40,10 @@ def test_forwards_caller_gateway_identity(client):
     assert headers["X-Wildbox-Role"] == "admin"
     assert headers["X-Gateway-Secret"] == "GW-SECRET"
     assert "X-API-Key" not in headers
+    # A service acting for the caller, said so: tools and data refuse a
+    # request that needs a scope and does not state its credential (#637).
+    assert headers["X-Wildbox-Auth-Type"] == "service"
+    assert "X-Wildbox-Scopes" not in headers
 
 
 def test_without_a_caller_the_call_fails_and_says_why(client):

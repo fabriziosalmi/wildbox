@@ -26,7 +26,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 from pydantic import ValidationError
 
@@ -41,6 +40,7 @@ from app.tools import wildbox_client as client_module  # noqa: E402
 from app.tools.langchain_tools import ALL_TOOLS, enabled_tools  # noqa: E402
 from app.tools.wildbox_client import _caller_identity, caller_identity  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from scripted_model import ScriptedModel  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COMPOSE = REPO_ROOT / "docker-compose.yml"
@@ -60,14 +60,8 @@ GUARDIAN_LINE = "vulnerabilities tracked in Guardian"
 TEAM_DATA_RULE = "into the arguments of another tool"
 
 
-class ToolCallingFakeModel(FakeMessagesListChatModel):
-    """A scripted chat model that records the tools it was bound to."""
-
-    bound: list = []
-
-    def bind_tools(self, tools, **kwargs):
-        type(self).bound = [tool.name for tool in tools]
-        return self
+# A scripted chat model that records the tools it was bound to.
+ToolCallingFakeModel = ScriptedModel
 
 
 def build_agent(monkeypatch, team_data, responses=None):

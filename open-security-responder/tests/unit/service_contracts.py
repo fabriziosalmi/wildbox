@@ -299,6 +299,10 @@ def enum_values(path, class_name):
 # --- A service's answer to a request it would refuse -----------------------
 
 IDENTITY_HEADERS = ("X-Wildbox-User-ID", "X-Wildbox-Team-ID", "X-Wildbox-Role")
+# The services that check an API-key scope themselves (#637), and what a
+# request may say its credential is. The responder says "service".
+SCOPE_CHECKING_SERVICES = ("tools", "data", "guardian")
+AUTH_TYPES = ("session", "api_key", "service")
 
 
 def routes_of(service):
@@ -367,7 +371,10 @@ def refusal(service, request, secret):
     https_redirect); 404 for a route the service does not declare; 403 for a
     request without the gateway identity headers or with the wrong
     X-Gateway-Secret, as open_security_shared.gateway_auth (tools, agents,
-    data) and Guardian's GatewayAuthMiddleware answer it.
+    data) and Guardian's GatewayAuthMiddleware answer it; and 403 for one
+    that does not say what its credential is (X-Wildbox-Auth-Type), as
+    tools, data and guardian answer it wherever they check an API-key scope
+    (#637).
     """
     location = https_redirect(service, request)
     if location:
@@ -379,4 +386,6 @@ def refusal(service, request, secret):
         return 403, "GATEWAY_AUTH_REQUIRED"
     if headers.get("X-Gateway-Secret") != secret:
         return 403, "GATEWAY_SECRET_REQUIRED"
+    if service in SCOPE_CHECKING_SERVICES and headers.get("X-Wildbox-Auth-Type") not in AUTH_TYPES:
+        return 403, "GATEWAY_AUTH_TYPE_REQUIRED"
     return None

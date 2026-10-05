@@ -19,6 +19,9 @@ def _gateway_headers(team_id: str, secret: str) -> Dict[str, str]:
         "X-Wildbox-User-ID": str(uuid.uuid4()),
         "X-Wildbox-Team-ID": team_id,
         "X-Wildbox-Role": "member",
+        # What the gateway says of a login session (#637): the data service
+        # refuses a request that does not state its credential.
+        "X-Wildbox-Auth-Type": "session",
         "X-Gateway-Secret": secret,
     }
 
