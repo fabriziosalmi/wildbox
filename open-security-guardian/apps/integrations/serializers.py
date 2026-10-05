@@ -1,18 +1,27 @@
 """Serializers for the integrations API.
 
-Fields are listed explicitly rather than with ``'__all__'``: these models hold
-credentials for external systems. ``ExternalSystem.auth_config`` carries API
-keys, bearer tokens and basic-auth passwords, ``WebhookEndpoint.secret_token``
-is the webhook verification secret, and ``NotificationChannel.config`` holds
-channel credentials such as Slack/Teams webhook URLs or SMTP passwords. They
-are accepted on write and never returned on read. ``IntegrationLog`` is
-read-only through the API and leaves out ``request_data`` and
-``response_data``: the raw payloads of calls to an external system can carry
-the same credentials (authorization headers, OAuth token responses).
+Fields are listed explicitly rather than with ``'__all__'``, so that a column
+added to one of these models is not served until someone decides it should
+be.
+
+None of these models holds a credential (#728). ``ExternalSystem.auth_config``
+(API keys, bearer tokens, basic-auth passwords), ``WebhookEndpoint.secret_token``
+and ``NotificationChannel.config`` (Slack and Teams webhook URLs, SMTP
+passwords) were accepted on write, stored as plain text and never returned,
+and nothing in guardian read them: it contacts no external system, receives
+no webhook and delivers nothing through a channel. The columns were dropped,
+and a request that sends a value for one of the three is answered 400 on
+that field (``RefusedFieldsMixin``), not accepted and discarded.
+
+``IntegrationLog`` is read-only through the API and leaves out
+``request_data`` and ``response_data``: the raw payloads of calls to an
+external system can carry credentials (authorization headers, OAuth token
+responses). Nothing writes an integration log today.
 """
 
 from rest_framework import serializers
 
+from apps.core.refused_fields import RefusedFieldsMixin
 from apps.core.tenancy import (
     TeamScopedModelSerializer,
     context_team_id,
@@ -29,9 +38,26 @@ from .models import (
 )
 
 
-class ExternalSystemSerializer(TeamScopedModelSerializer):
+SYSTEM_CREDENTIAL_REFUSED = (
+    "guardian does not store the credentials of an external system: it "
+    "contacts none, so nothing would use them. Leave this field out."
+)
+WEBHOOK_SECRET_REFUSED = (
+    "guardian does not store a webhook secret: it receives no webhooks, so "
+    "nothing would verify one. Leave this field out."
+)
+CHANNEL_CONFIG_REFUSED = (
+    "guardian does not store a channel's configuration: it delivers nothing "
+    "through a channel, so nothing would use a webhook URL, a password or a "
+    "token. Leave this field out."
+)
+
+
+class ExternalSystemSerializer(RefusedFieldsMixin, TeamScopedModelSerializer):
     is_healthy = serializers.ReadOnlyField()
     success_rate = serializers.ReadOnlyField()
+
+    refused_fields = {"auth_config": SYSTEM_CREDENTIAL_REFUSED}
 
     class Meta:
         model = ExternalSystem
@@ -45,7 +71,6 @@ class ExternalSystemSerializer(TeamScopedModelSerializer):
             "base_url",
             "api_endpoint",
             "auth_type",
-            "auth_config",
             "verify_ssl",
             "timeout_seconds",
             "retry_attempts",
@@ -83,7 +108,6 @@ class ExternalSystemSerializer(TeamScopedModelSerializer):
             "updated_at",
             "created_by",
         )
-        extra_kwargs = {"auth_config": {"write_only": True}}
 
 
 class IntegrationMappingSerializer(TeamScopedModelSerializer):
@@ -131,7 +155,9 @@ class SyncRecordSerializer(TeamScopedModelSerializer):
         read_only_fields = ("id", "created_at", "last_sync_at")
 
 
-class WebhookEndpointSerializer(TeamScopedModelSerializer):
+class WebhookEndpointSerializer(RefusedFieldsMixin, TeamScopedModelSerializer):
+    refused_fields = {"secret_token": WEBHOOK_SECRET_REFUSED}
+
     class Meta:
         model = WebhookEndpoint
         fields = (
@@ -139,7 +165,6 @@ class WebhookEndpointSerializer(TeamScopedModelSerializer):
             "system",
             "name",
             "endpoint_url",
-            "secret_token",
             "event_types",
             "filters",
             "verify_signature",
@@ -159,7 +184,6 @@ class WebhookEndpointSerializer(TeamScopedModelSerializer):
             "created_at",
             "updated_at",
         )
-        extra_kwargs = {"secret_token": {"write_only": True}}
 
     def validate_endpoint_url(self, value):
         """A path is taken if a webhook of the caller's own team uses it (#677).
@@ -203,14 +227,15 @@ class IntegrationLogSerializer(TeamScopedModelSerializer):
         read_only_fields = fields
 
 
-class NotificationChannelSerializer(TeamScopedModelSerializer):
+class NotificationChannelSerializer(RefusedFieldsMixin, TeamScopedModelSerializer):
+    refused_fields = {"config": CHANNEL_CONFIG_REFUSED}
+
     class Meta:
         model = NotificationChannel
         fields = (
             "id",
             "name",
             "channel_type",
-            "config",
             "event_types",
             "severity_filter",
             "recipients",
@@ -229,4 +254,3 @@ class NotificationChannelSerializer(TeamScopedModelSerializer):
             "updated_at",
             "created_by",
         )
-        extra_kwargs = {"config": {"write_only": True}}

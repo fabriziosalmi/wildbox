@@ -37,6 +37,27 @@ The only scanning Guardian performs is the asset port scan and discovery in
 `apps/assets/tasks.py`. Of the discovery rule types, only `network_scan` is
 implemented (`IMPLEMENTED_DISCOVERY_TYPES`).
 
+### No stored credentials
+
+Because nothing connects anywhere, these records hold no credential (#728).
+`Scanner.api_key` and `Scanner.password`, `ExternalSystem.auth_config`,
+`WebhookEndpoint.secret_token` and `NotificationChannel.config` were columns
+that kept what the API was sent as plain text, were never returned and had no
+reader. They were dropped, with their values (`scanners` migration 0003,
+`integrations` migration 0004), and the serializers answer 400 for a value
+sent in one of them (`apps/core/refused_fields.py`) instead of accepting a
+secret they would discard.
+
+The code that first connects to a scanner or an external system brings its
+credential back, and not as plain text: encrypt it with a key the database
+does not hold, as cspm does for cloud credentials
+(`open-security-cspm/app/credential_crypto.py`), require the key at start,
+keep the field write-only, and pass no credential as a Celery task argument.
+`tests/unit/test_no_stored_credentials.py` fails for a model field or a
+served serializer field named like a secret (`password`, `token`, `secret`,
+`api_key`, `credential`) until it is listed in that file's `PROTECTED` with
+how it is protected.
+
 ### An action does what its answer says
 
 These apps used to serve twenty actions that answered
