@@ -799,8 +799,9 @@ password, and a server the container cannot reach.
 counts a notification as failed when it stops retrying, which is immediately
 for a secret file it cannot read and after `group_interval` (5 minutes in the
 examples) for a wrong password or an unreachable server, and the alert fires
-about 5 minutes after that. An invalid configuration file keeps Alertmanager
-restarting; `WildboxAlertmanagerDown` then fires in Prometheus.
+5 to 6 minutes after that: about 11 minutes after the first failed attempt in
+the second case. An invalid configuration file keeps Alertmanager restarting;
+`WildboxAlertmanagerDown` then fires in Prometheus.
 
 In the production overlay Alertmanager is on the `backend` network with
 Prometheus. That network has a route out, so a mail server or webhook outside
