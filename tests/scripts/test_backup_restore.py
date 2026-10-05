@@ -406,8 +406,13 @@ esac
 exit 0
 """
 
-# The system directories only: the test decides which client tools exist.
-SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+# What the backup script runs besides the database clients. PATH is this
+# directory alone, so the test decides which client tools exist: a CI runner
+# has a real pg_dump in /usr/bin, and a workstation may have redis-cli.
+SYSTEM_TOOLS = (
+    "bash basename cat chmod cut date dirname du env find grep gzip head "
+    "mkdir mv rm sed sort tail tr wc"
+).split()
 
 
 @pytest.fixture
@@ -415,7 +420,9 @@ def host(tmp_path):
     h = Harness(tmp_path)
     for tool in ("pg_dump", "pg_restore", "psql", "redis-cli"):
         _executable(h.bin / tool, FAKE_CLIENT)
-    h.path = f"{h.bin}{os.pathsep}{SYSTEM_PATH}"
+    for tool in SYSTEM_TOOLS:
+        (h.bin / tool).symlink_to(shutil.which(tool))
+    h.path = str(h.bin)
     return h
 
 
