@@ -44,7 +44,7 @@ REQUIRED_SECRETS = [
     "SENSOR_API_KEY",
     "DATA_SECRET_KEY",
     # Keys the HMAC of stored API-key digests. identity refuses to start
-    # without it when ENVIRONMENT=production (#648).
+    # without it unless ENVIRONMENT=development (#648, #736).
     "API_KEY_HASH_SECRET",
 ]
 

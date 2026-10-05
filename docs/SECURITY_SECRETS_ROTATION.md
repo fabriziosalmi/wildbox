@@ -103,7 +103,7 @@ It is required:
   without it;
 - identity refuses to start with a value shorter than 32 characters, a
   placeholder from `.env.example`, or one with fewer than 10 distinct
-  characters, and, with `ENVIRONMENT=production`, without a value
+  characters, and, unless `ENVIRONMENT` is `development`, without a value
   (`open-security-identity/app/config.py`).
 
 `make generate-secrets` writes a random value for a new deployment. A

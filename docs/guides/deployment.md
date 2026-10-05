@@ -70,7 +70,10 @@ than secrets:
   dashboard and the API share the gateway's origin, as they do in this
   stack: an empty value allows no cross-origin requests, and same-origin
   requests need none
-- `ENVIRONMENT=production` (the template default)
+- `ENVIRONMENT=production` (the template default). Required: Compose refuses
+  to start without it, and `docker-compose.prod.yml` sets `production` on
+  every service whatever `.env` says. Only `development` serves the API
+  schemas and skips the start-up checks for secrets
 - `NEXT_PUBLIC_GATEWAY_URL`: leave it empty. The gateway serves the
   dashboard, and an empty value makes the dashboard call the API on the
   origin it was loaded from. See [The dashboard's browser

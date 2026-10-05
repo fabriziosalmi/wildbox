@@ -44,7 +44,7 @@ services:
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,https://wildbox.local
       # This overlay is a development stack, so say so: .env from
       # generate_secrets.py sets ENVIRONMENT=production, and data refuses
-      # DEBUG=true in production ("DEBUG must be False in production"), so
+      # DEBUG=true outside development ("DEBUG must be False"), so
       # `make start` left it crash-looping.
       - ENVIRONMENT=development
       - DEBUG=true
@@ -56,6 +56,11 @@ services:
 
   data-scheduler:
     environment:
+      # As for data above: this overlay turns DEBUG on, and the scheduler
+      # loads the same configuration, which refuses DEBUG anywhere but in
+      # development. Without this line `make start` left it crash-looping
+      # with the generated .env (#736).
+      - ENVIRONMENT=development
       # CRITICAL: Align with Data service and .env password
       - DATABASE_URL=${DATA_DATABASE_URL:?DATA_DATABASE_URL is required}
       - DEBUG=true

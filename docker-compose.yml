@@ -292,10 +292,10 @@ services:
       - "127.0.0.1:8002:8002"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
-      # app/config.py refuses to start without it when ENVIRONMENT is
-      # production, which .env.example sets. Nothing passed it, so a freshly
-      # generated .env produced a data service that crash-looped on
-      # "SECRET_KEY must be set in production".
+      # app/config.py refuses to start without it in every environment but
+      # development. Nothing passed it, so a freshly generated .env, which
+      # says production, produced a data service that crash-looped on
+      # "SECRET_KEY must be set".
       - SECRET_KEY=${DATA_SECRET_KEY:?DATA_SECRET_KEY is required}
       - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
@@ -333,10 +333,10 @@ services:
     command: python -m app.scheduler.main
     environment:
       - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
-      # app/config.py refuses to start without it when ENVIRONMENT is
-      # production, which .env.example sets. Nothing passed it, so a freshly
-      # generated .env produced a data service that crash-looped on
-      # "SECRET_KEY must be set in production".
+      # app/config.py refuses to start without it in every environment but
+      # development. Nothing passed it, so a freshly generated .env, which
+      # says production, produced a data service that crash-looped on
+      # "SECRET_KEY must be set".
       - SECRET_KEY=${DATA_SECRET_KEY:?DATA_SECRET_KEY is required}
       - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
