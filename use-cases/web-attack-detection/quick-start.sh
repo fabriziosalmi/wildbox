@@ -31,12 +31,14 @@ if ! docker info > /dev/null 2>&1; then
 fi
 echo -e "${GREEN}✓${NC} Docker is running"
 
-# Check if docker-compose is available
-if ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}Error: docker-compose is not installed${NC}"
+# Check that Docker Compose is available: the plugin ("docker compose"), which
+# is what the rest of Wildbox uses. The standalone Compose v1 binary is not
+# needed, and no longer shipped with Docker.
+if ! docker compose version > /dev/null 2>&1; then
+    echo -e "${RED}Error: Docker Compose is not available (docker compose version failed)${NC}"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} docker-compose is available"
+echo -e "${GREEN}✓${NC} Docker Compose is available"
 
 # Check if Python 3 is available
 if ! command -v python3 &> /dev/null; then
@@ -49,13 +51,13 @@ echo ""
 echo "Step 2: Creating test environment..."
 echo "--------------------------------------"
 
-# Create test directory
-TEST_DIR="/tmp/wildbox-test"
-mkdir -p ${TEST_DIR}/logs
+# Create test directory (WILDBOX_TEST_DIR chooses another one)
+TEST_DIR="${WILDBOX_TEST_DIR:-/tmp/wildbox-test}"
+mkdir -p "${TEST_DIR}/logs"
 echo -e "${GREEN}✓${NC} Created test directory: ${TEST_DIR}"
 
 # Copy sample logs
-cp sample-logs/nginx-access.log ${TEST_DIR}/logs/access.log
+cp sample-logs/nginx-access.log "${TEST_DIR}/logs/access.log"
 echo -e "${GREEN}✓${NC} Copied sample logs to ${TEST_DIR}/logs/access.log"
 
 echo ""
@@ -67,9 +69,9 @@ WILDBOX_ROOT="../../"
 cd ${WILDBOX_ROOT}
 
 # Check if services are running
-if ! docker-compose ps | grep -q "Up"; then
+if ! docker compose ps | grep -q "Up"; then
     echo -e "${YELLOW}Wildbox services not running. Starting them now...${NC}"
-    docker-compose up -d
+    docker compose up -d
     echo "Waiting for services to be healthy (30 seconds)..."
     sleep 30
 else
@@ -83,7 +85,7 @@ if [[ -f "${WILDBOX_CA}" ]] && curl -sf --cacert "${WILDBOX_CA}" https://localho
     echo -e "${GREEN}✓${NC} Gateway is healthy at https://localhost"
 else
     echo -e "${RED}Error: the gateway is not responding at https://localhost${NC}"
-    echo "Try: docker-compose ps gateway"
+    echo "Try: docker compose ps gateway"
     exit 1
 fi
 
@@ -149,7 +151,7 @@ if command -v python3 &> /dev/null; then
     # Generate additional test logs
     echo "Generating 100 test log entries..."
     python3 sample-logs/generate_logs.py \
-        --output ${TEST_DIR}/logs/access.log \
+        --output "${TEST_DIR}/logs/access.log" \
         --count 100 \
         --attack-rate 0.4 2>/dev/null || echo -e "${YELLOW}Warning: Log generation failed${NC}"
     echo -e "${GREEN}✓${NC} Generated test logs"
@@ -162,16 +164,16 @@ echo "Step 6: Displaying sample data..."
 echo "----------------------------------"
 
 echo "First 5 log entries:"
-head -5 ${TEST_DIR}/logs/access.log
+head -5 "${TEST_DIR}/logs/access.log"
 
 echo ""
 echo "Attack patterns detected in sample:"
 echo -n "  SQL Injection attempts: "
-grep -c "OR\|UNION\|DROP TABLE" ${TEST_DIR}/logs/access.log || echo "0"
+grep -c "OR\|UNION\|DROP TABLE" "${TEST_DIR}/logs/access.log" || echo "0"
 echo -n "  XSS attempts: "
-grep -c "<script>\|onerror=" ${TEST_DIR}/logs/access.log || echo "0"
+grep -c "<script>\|onerror=" "${TEST_DIR}/logs/access.log" || echo "0"
 echo -n "  Path Traversal attempts: "
-grep -c "\.\./\.\./\.\." ${TEST_DIR}/logs/access.log || echo "0"
+grep -c "\.\./\.\./\.\." "${TEST_DIR}/logs/access.log" || echo "0"
 
 echo ""
 echo "=============================================="

@@ -595,6 +595,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config.yaml`, the configuration for a host, listed the container's
   `/host/...` paths too and now lists `/etc`, `/bin`, `/usr/bin` and
   `/opt`.
+- **The web-attack-detection quick start runs with Docker Compose v2**
+  (#725). `quick-start.sh` stopped with "docker-compose is not
+  installed" on a machine that has only the `docker compose` plugin,
+  which is all a current Docker installs and what every other script of
+  the repository uses. It now checks `docker compose version` and calls
+  `docker compose`; the use case's README and testing guide show the
+  same commands.
 
 ### Changed
 
