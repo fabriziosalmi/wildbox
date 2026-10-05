@@ -33,7 +33,34 @@ collection:
   file_monitoring: true
   user_events: true
   system_inventory: true
+  # Forward logs. What is forwarded is the log_sources section below.
   log_forwarding: false
+
+# Log sources: what the log forwarder reads when collection.log_forwarding is
+# true. See README.md, "Log forwarding".
+#
+# Without this section the forwarder reads the platform's defaults: on Linux
+# /var/log/syslog, /var/log/auth.log and the systemd journal; on macOS
+# /var/log/system.log and the unified log; on Windows the Security, System
+# and Application event logs. With it, exactly the sources it lists and
+# nothing else ("log_sources: []" forwards no log).
+#
+# In the container these are the container's paths, and the compose files
+# mount no host log: mount the directory read-only first, for example
+# "/var/log/nginx:/host/var/log/nginx:ro", and name the mounted path here.
+# Everything a source matches is sent to Wildbox: name log directories only.
+#
+# log_sources:
+#   - name: nginx_access                      # the events' type is log.<name>
+#     type: file                              # file (default), journald, windows_event, unified_log
+#     path: /host/var/log/nginx/access.log    # absolute; a file or a pattern (*, ?, [])
+#     format: nginx                           # syslog, nginx, apache or raw (default)
+#     enabled: true                           # default true
+#     read_from: end                          # end (default) or beginning
+#   - name: app
+#     path: /host/var/log/app/*.log
+#   - name: journal
+#     type: journald
 
 # File Integrity Monitoring
 fim:

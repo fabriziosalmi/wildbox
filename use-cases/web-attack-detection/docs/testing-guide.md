@@ -51,13 +51,26 @@ and shows your team's telemetry only.
 3. Update sensor config to point to test logs:
 
    ```yaml
+   collection:
+     log_forwarding: true
+
    log_sources:
      - name: nginx_access
+       type: file
        path: /tmp/wildbox-test/access.log
+       format: nginx
+       read_from: beginning
    ```
 
-   The sensor does not read `log_sources` yet (#638): until it does, copy
-   the test logs to `/var/log/nginx/access.log` on a test host instead.
+   The sensor reads exactly this file. `read_from: beginning` also sends the
+   sample lines already in it when the sensor starts; with the default,
+   `end`, only lines written afterwards are sent. When it starts, the sensor
+   logs `Log source 'nginx_access': reading /tmp/wildbox-test/access.log from
+   its beginning`, or a warning naming the source if it cannot read the file.
+
+   `generate_logs.py`, used in the scenarios below, rewrites its output file
+   at every run. The sensor notices that the file was truncated and reads it
+   again from its beginning, so each run's lines are sent once.
 
 4. Start the sensor and verify ingestion:
 
@@ -300,7 +313,11 @@ docker-compose exec sensor python main.py --config /etc/security-sensor/config.y
 
 **Common Fixes**:
 
-- Ensure log file path is correct in config
+- Ensure log file path is correct in config: the sensor's log has a
+  `Log source '<name>'` line for each source it reads, and a warning with
+  the reason for each file it does not
+- With `read_from: end` (the default) only lines written after the sensor
+  started are sent
 - Check the gateway is running: `docker-compose ps gateway`
 - Set `SENSOR_DATA_LAKE_API_KEY` to an identity API key with the
   `data:ingest` scope; without one the sensor logs that forwarding is

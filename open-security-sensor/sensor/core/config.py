@@ -3,11 +3,12 @@ Configuration management for the Security Sensor
 """
 
 import os
+import re
 import yaml
 import logging
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from dataclasses import asdict, dataclass, field
+from typing import Dict, List, Optional, Any, Tuple
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,235 @@ class CollectionConfig:
     system_inventory: bool = True
     log_forwarding: bool = False
 
+# What the log forwarder reads (#638). The section used to be ignored: the
+# forwarder read a fixed list of paths whatever the file said.
+LOG_SOURCE_TYPES = ("file", "journald", "windows_event", "unified_log")
+LOG_FILE_FORMATS = ("syslog", "nginx", "apache", "raw")
+LOG_READ_FROM = ("end", "beginning")
+# The one format each of the other types produces.
+_FIXED_LOG_FORMATS = {
+    "journald": "json",
+    "unified_log": "json",
+    "windows_event": "windows_event",
+}
+_LOG_SOURCE_KEYS = (
+    "name",
+    "type",
+    "path",
+    "format",
+    "enabled",
+    "read_from",
+    "log_name",
+)
+MAX_LOG_SOURCES = 64
+# A source's name becomes the event type ("log.<name>") and a tag.
+_LOG_SOURCE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+# Same pattern the forwarder applies before it names the log to PowerShell.
+_WINDOWS_LOG_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 _-]{0,63}$")
+_WILDCARDS = re.compile(r"[*?\[]")
+
+
+def has_wildcard(path: str) -> bool:
+    """Is this path a glob pattern?"""
+    return bool(_WILDCARDS.search(path))
+
+
+def log_source_root(path: str) -> str:
+    """The directory a file source is confined to.
+
+    The longest leading run of directories the path names without a wildcard:
+    ``/var/log/nginx`` for ``/var/log/nginx/access.log`` and for
+    ``/var/log/nginx/*.log``, ``/var/www`` for ``/var/www/*/logs/access.log``.
+    The forwarder reads no file that resolves outside it.
+    """
+    drive, tail = os.path.splitdrive(path)
+    parts = tail.replace("\\", "/").split("/") if os.name == "nt" else tail.split("/")
+    kept = []
+    for part in parts[:-1]:
+        if has_wildcard(part):
+            break
+        kept.append(part)
+    root = "/".join(kept)
+    return (drive + root) if root else (drive + "/")
+
+
+@dataclass
+class LogSourceConfig:
+    """One entry of ``log_sources``: something the log forwarder reads.
+
+    ``type: file`` tails ``path``, a file or a glob pattern, and parses each
+    line as ``format``. The other types read a system log and take no path.
+    """
+
+    name: str
+    type: str = "file"
+    path: Optional[str] = None
+    format: str = "raw"
+    enabled: bool = True
+    # Where to start in a file that exists when the sensor starts. A file that
+    # appears later is always read from its beginning.
+    read_from: str = "end"
+    log_name: Optional[str] = None  # windows_event only
+
+    @property
+    def root(self) -> Optional[str]:
+        return log_source_root(self.path) if self.path else None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {key: value for key, value in asdict(self).items() if value is not None}
+
+
+def parse_log_sources(raw: Any) -> Tuple[List[LogSourceConfig], List[str]]:
+    """The ``log_sources`` section as sources, and what is wrong with it.
+
+    Every problem names its entry, so that one start-up reports them all. An
+    entry with a problem yields no source: a section with errors stops the
+    sensor (see ``SensorConfig.validate``) rather than run with part of it.
+    Whether a path exists or can be read is not checked here: that changes
+    while the sensor runs, and the forwarder reports it per source.
+    """
+    if raw is None:
+        return [], [
+            "log_sources is present but empty: list the sources, write "
+            "'log_sources: []' to forward no log, or remove the key to read "
+            "the platform's default sources"
+        ]
+    if not isinstance(raw, list):
+        return [], [
+            f"log_sources must be a list of sources, got {type(raw).__name__}"
+        ]
+    if len(raw) > MAX_LOG_SOURCES:
+        return [], [
+            f"log_sources has {len(raw)} entries; at most {MAX_LOG_SOURCES} "
+            f"are supported (a glob pattern covers many files in one entry)"
+        ]
+
+    sources: List[LogSourceConfig] = []
+    errors: List[str] = []
+    names = set()
+    for index, entry in enumerate(raw):
+        where = f"log_sources[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{where} must be a mapping with a name and a path")
+            continue
+        name = entry.get("name")
+        if isinstance(name, str) and name:
+            where = f"{where} ({name!r})"
+        problems = _log_source_problems(entry)
+        if isinstance(name, str) and name in names:
+            problems.append(f"the name {name!r} is used by an earlier source")
+        if problems:
+            errors.extend(f"{where}: {problem}" for problem in problems)
+            continue
+        names.add(name)
+        source_type = entry.get("type", "file")
+        sources.append(
+            LogSourceConfig(
+                name=name,
+                type=source_type,
+                path=entry.get("path"),
+                format=entry.get("format")
+                or _FIXED_LOG_FORMATS.get(source_type, "raw"),
+                enabled=entry.get("enabled", True),
+                read_from=entry.get("read_from", "end"),
+                log_name=entry.get("log_name"),
+            )
+        )
+    return sources, errors
+
+
+def _log_source_problems(entry: Dict[str, Any]) -> List[str]:
+    """What is wrong with one ``log_sources`` entry."""
+    problems = []
+
+    unknown = sorted(str(key) for key in entry if key not in _LOG_SOURCE_KEYS)
+    if unknown:
+        # Refused, not ignored: 'enable: false' would otherwise leave a
+        # source the operator meant to switch off forwarding its file.
+        problems.append(
+            f"unknown key(s) {', '.join(unknown)}; the keys are "
+            f"{', '.join(_LOG_SOURCE_KEYS)}"
+        )
+
+    name = entry.get("name")
+    if not isinstance(name, str) or not _LOG_SOURCE_NAME.match(name):
+        problems.append(
+            "name is required: 1 to 64 letters, digits, '_', '.' or '-', "
+            "starting with a letter or a digit"
+        )
+
+    if not isinstance(entry.get("enabled", True), bool):
+        problems.append(
+            f"enabled must be true or false, got {entry.get('enabled')!r}"
+        )
+
+    source_type = entry.get("type", "file")
+    if source_type not in LOG_SOURCE_TYPES:
+        problems.append(
+            f"unknown type {source_type!r}; the types are "
+            f"{', '.join(LOG_SOURCE_TYPES)}"
+        )
+        return problems
+
+    source_format = entry.get("format")
+    if source_type == "file":
+        problems.extend(_log_path_problems(entry.get("path")))
+        if source_format is not None and source_format not in LOG_FILE_FORMATS:
+            problems.append(
+                f"unknown format {source_format!r}; the formats of a file "
+                f"source are {', '.join(LOG_FILE_FORMATS)}"
+            )
+        if entry.get("read_from", "end") not in LOG_READ_FROM:
+            problems.append(
+                f"read_from must be one of {', '.join(LOG_READ_FROM)}, got "
+                f"{entry.get('read_from')!r}"
+            )
+        if "log_name" in entry:
+            problems.append("log_name applies to type windows_event only")
+        return problems
+
+    fixed = _FIXED_LOG_FORMATS[source_type]
+    if source_format is not None and source_format != fixed:
+        problems.append(
+            f"a {source_type} source has the format {fixed}; remove format"
+        )
+    for key in ("path", "read_from"):
+        if key in entry:
+            problems.append(f"{key} applies to type file only")
+    if source_type == "windows_event":
+        log_name = entry.get("log_name")
+        if not isinstance(log_name, str) or not _WINDOWS_LOG_NAME.match(log_name):
+            problems.append(
+                "log_name is required for type windows_event: the event "
+                "log's name, such as Security"
+            )
+    elif "log_name" in entry:
+        problems.append("log_name applies to type windows_event only")
+    return problems
+
+
+def _log_path_problems(path: Any) -> List[str]:
+    """What is wrong with a file source's ``path``."""
+    if not isinstance(path, str) or not path:
+        return ["path is required for type file"]
+    if "\x00" in path:
+        return ["path must not contain a NUL character"]
+    if not os.path.isabs(path):
+        return [f"path must be absolute, got {path!r}"]
+    if "**" in path:
+        return [
+            f"path {path!r}: '**' is not supported; a pattern does not "
+            f"descend into directories it does not name"
+        ]
+    root = log_source_root(path)
+    if has_wildcard(path) and os.path.splitdrive(root)[1] in ("/", "\\", ""):
+        return [
+            f"path {path!r}: a pattern must name the directory it reads, "
+            f"not match from the filesystem root"
+        ]
+    return []
+
+
 @dataclass
 class FIMConfig:
     """File Integrity Monitoring configuration"""
@@ -187,13 +417,24 @@ class SensorConfig:
     performance: PerformanceConfig = field(default_factory=PerformanceConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
-    
+    # What the log forwarder reads. None: the configuration has no
+    # log_sources section, and the forwarder reads the platform's defaults.
+    # A list, even an empty one: exactly these sources.
+    log_sources: Optional[List[LogSourceConfig]] = None
+    # What parse_log_sources found wrong with the section.
+    log_source_errors: List[str] = field(default_factory=list, repr=False)
+
     def validate(self) -> List[str]:
         """Validate configuration and return list of errors"""
         errors = []
-        
+
         # Validate data lake configuration
         errors.extend(self.data_lake.validate())
+
+        # A log source that cannot be understood stops the sensor, as a
+        # destination that cannot work does: reading something other than
+        # what the operator wrote is not a safe fallback.
+        errors.extend(self.log_source_errors)
 
         # Validate performance limits
         if self.performance.max_memory_mb < 32:
@@ -387,12 +628,21 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
         enable_api=net_data.get('enable_api', True),
         api_key=net_data.get('api_key')
     )
-    
+
+    # Log sources. The key's presence is what matters: absent, the forwarder
+    # reads the platform's defaults; present, exactly what it lists.
+    log_sources = None
+    log_source_errors: List[str] = []
+    if 'log_sources' in config_data:
+        log_sources, log_source_errors = parse_log_sources(config_data['log_sources'])
+
     return SensorConfig(
         data_lake=data_lake,
         collection=collection,
         fim=fim,
         performance=performance,
         logging=logging_config,
-        network=network
+        network=network,
+        log_sources=log_sources,
+        log_source_errors=log_source_errors,
     )
