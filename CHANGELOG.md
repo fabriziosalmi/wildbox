@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which `monitoring/prometheus.yml` scrapes; it is now registered by the
   shared package, as in the other services (#646).
 
+### Fixed
+
+- **tools registers one `GET /health` handler instead of two.** The
+  second, with `uptime_seconds` and `tools_loaded`, never ran: the first
+  one registered answers. The response does not change (#646).
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

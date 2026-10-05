@@ -154,10 +154,14 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(async_router)  # Async execution endpoints
     
-    # Health check endpoint with more details
+    # The service's one health route: the image's HEALTHCHECK and the compose
+    # healthcheck probe it (curl -f http://localhost:8000/health), and so do
+    # the integration tests, directly on the service port. A second handler
+    # for the same path used to be registered further down; FastAPI serves
+    # the first one registered, so that one never ran (#646).
     @app.get("/health", tags=["System"])
     async def health_check():
-        """Enhanced health check endpoint."""
+        """Health of this service: status, loaded tools, active executions."""
         start_time = time.time()
         try:
             active_executions = execution_manager.get_active_executions()
@@ -271,20 +275,7 @@ def create_app() -> FastAPI:
     # Store startup time for uptime calculation
     global startup_time
     startup_time = time.time()
-    
-    # Health check endpoint
-    @app.get("/health")
-    async def health_check():
-        """Health check endpoint for Docker and monitoring."""
-        uptime = time.time() - startup_time
-        return {
-            "status": "healthy",
-            "uptime_seconds": round(uptime, 2),
-            "version": "1.0.0",
-            "tools_loaded": len(discovered_tools),
-            "timestamp": time.time()
-        }
-    
+
     # Root redirect
     @app.get("/api")
     async def api_root():

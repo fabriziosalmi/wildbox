@@ -59,3 +59,27 @@ def test_the_json_metrics_route_that_always_failed_is_gone(client):
     response = client.get("/api/system/metrics")
 
     assert response.status_code == 404
+
+
+# --- /health ---------------------------------------------------------------
+
+
+def test_exactly_one_health_route_is_registered(app):
+    # Two handlers used to be registered for GET /health. The second, the
+    # one documented "for Docker and monitoring", never answered.
+    assert len(_get_routes(app, "/health")) == 1
+
+
+def test_health_answers_what_the_probes_read(client):
+    # compose and the image probe it with `curl -f`: any 2xx is healthy.
+    # tests/integration/test_ci_integration.py reads `status`.
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["service"] == "tools"
+    assert body["tools_count"] == len(body["available_tools"]) > 0
+    # The fields of the handler that never ran are not part of the answer.
+    assert "uptime_seconds" not in body
+    assert "tools_loaded" not in body
