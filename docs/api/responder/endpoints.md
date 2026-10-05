@@ -153,13 +153,15 @@ curl -s --cacert "$CA" -X POST "$BASE/playbooks/simple_notification/execute" \
   "playbook_id": "simple_notification",
   "playbook_name": "Simple Logging Test",
   "status": "accepted",
-  "status_url": "/v1/runs/6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+  "status_url": "/api/v1/responder/runs/6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
   "message": "Playbook 'Simple Logging Test' execution started"
 }
 ```
 
-`status_url` is the service path. Through the gateway, read the run at
-`/api/v1/responder/runs/{run_id}`.
+`status_url` is where to [read the run](#read-a-run): its path on the gateway,
+without scheme or host, to resolve against the address you called
+(`https://<host>` + `status_url`). It is always
+`/api/v1/responder/runs/{run_id}`; no request header changes it.
 
 An unknown `playbook_id` answers `404`. The run is recorded with the user the
 gateway authenticated (user, team and role), and its steps act for that user; see
@@ -312,7 +314,6 @@ Response, shortened to one connector:
   "connectors": {
     "data": {
       "name": "data",
-      "config": {"data_url": "http://open-security-data:8002"},
       "actions": {
         "search_indicators": "Search threat indicators by value, type and confidence",
         "lookup_indicators": "Look up a list of indicators and report which are known"
@@ -323,8 +324,9 @@ Response, shortened to one connector:
 }
 ```
 
-`config` shows the service URLs the connector calls (see
-[Configuration](#configuration)); the `system` connector has none.
+Each connector is listed with its `name` and its `actions`, nothing else. The
+service addresses the connectors call are deployment configuration (see
+[Configuration](#configuration)) and are not in the response.
 
 ---
 
@@ -423,6 +425,9 @@ in the same container as the API):
 The URL defaults are the services' addresses in `docker-compose.yml`, which also
 sets them. Each must be an absolute `http` or `https` URL with a host and no query,
 or the service does not start (`open-security-responder/app/config.py`).
+
+The responder has no SQL database: runs and the worker queue are in Redis. It
+reads no `DATABASE_URL`, and `docker-compose.yml` passes it none.
 
 ---
 

@@ -10,9 +10,14 @@ echo "Dashboard Pages Verification Test"
 echo "========================================"
 echo ""
 
+# The health URLs are the ones `make health` uses: guardian's is /health/,
+# and /health answers 301 (#656).
+# shellcheck source=scripts/lib/health_endpoints.sh
+. "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/health_endpoints.sh"
+
 # Wait for services to be ready
-echo "⏳ Waiting 30 seconds for all services to start..."
-sleep 30
+echo "⏳ Waiting ${STARTUP_WAIT:-30} seconds for all services to start..."
+sleep "${STARTUP_WAIT:-30}"
 
 # guardian is called through the gateway with a personal API key from
 # identity: it has no API keys of its own (#629).
@@ -68,10 +73,12 @@ test_json_endpoint() {
     
     echo -n "Testing $name... "
     
+    # -f: an error status is a failure even when its body is JSON that the
+    # filter happens to accept, such as a 503 with a "status" field.
     if [ -n "$headers" ]; then
-        response=$(curl -s -H "$headers" "$url")
+        response=$(curl -fsS -H "$headers" "$url" 2>&1) || response="HTTP error: $response"
     else
-        response=$(curl -s "$url")
+        response=$(curl -fsS "$url" 2>&1) || response="HTTP error: $response"
     fi
     
     # Check if response is valid JSON
@@ -102,10 +109,8 @@ echo ""
 echo "========================================="
 echo "2. Testing Guardian/Vulnerabilities APIs"
 echo "========================================="
-test_json_endpoint "Guardian Health" \
-    "http://localhost:8013/health" \
-    "" \
-    ".status"
+test_endpoint "Guardian Health" \
+    "$(wb_health_url guardian)"
 
 test_json_endpoint "Vulnerabilities List" \
     "http://localhost:80/api/v1/guardian/vulnerabilities/vulnerabilities/" \
@@ -122,7 +127,7 @@ echo "========================================="
 echo "3. Testing Threat Intelligence APIs"
 echo "========================================="
 test_endpoint "Data Service Health" \
-    "http://localhost:8002/health"
+    "$(wb_health_url data)"
 
 test_json_endpoint "Threat Feeds" \
     "http://localhost:8002/api/v1/feeds/" \
@@ -160,14 +165,14 @@ echo "========================================="
 echo "6. Testing Identity Service"
 echo "========================================="
 test_endpoint "Identity Health" \
-    "http://localhost:8001/health"
+    "$(wb_health_url identity)"
 
 echo ""
 echo "========================================="
 echo "7. Testing Gateway Routes"
 echo "========================================="
 test_endpoint "Gateway Health" \
-    "http://localhost:80/health"
+    "$(wb_health_url gateway)"
 
 echo ""
 echo "========================================="

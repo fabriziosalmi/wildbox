@@ -147,8 +147,6 @@ exclude:
   - TESTING_STRATEGY.md
   - vendor/README.md
   - vendor/fonts/README.md
-  - api/vendor/redoc/README.md
-  - api/vendor/fonts/README.md
   # The November 2024 platform audit: report, remediation checklist and
   # summary. They describe code that has since changed and are superseded by
   # security/status.md; kept in the repository, not published.

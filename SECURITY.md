@@ -72,9 +72,9 @@ The guides on the documentation site are the reference; in short:
   documentation, and cspm serves it only with `DEBUG=true`.
 - **Updates**: rebuild the images after pulling a release, and read
   [UPGRADING.md](UPGRADING.md) first.
-- **Backups**: `make backup` and `make restore-drill`; backups contain
-  sensitive data, so encrypt them (`GPG_RECIPIENT`) and keep them off the
-  server.
+- **Backups**: `make backup` (PostgreSQL and Redis) and
+  `make restore-drill`; backups contain sensitive data, so encrypt them
+  (`GPG_RECIPIENT`) and keep them off the server.
 
 ---
 
