@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **guardian has no platform-wide notification recipient** (#678).
+  Alert rules, scheduled reports and compliance notifications without
+  recipients fell back to a `DEFAULT_NOTIFICATION_RECIPIENTS` setting,
+  and every SLA violation was copied to `SECURITY_TEAM_EMAIL`. Nothing
+  defined either, so no such e-mail was sent; an operator who did define
+  them would have sent every team's asset names, vulnerability titles and
+  findings to one mailbox, across the team boundary of #642. Both are no
+  longer read. An alert rule and a report schedule e-mail the recipients
+  their team gave them, and an SLA violation e-mails the vulnerability's
+  assignee. A notification without recipients is not sent, and says so:
+  an alert notification is recorded with `delivered: false`, an SLA
+  violation is recorded once in the vulnerability's history as not
+  sent, and the worker logs a warning for each. Compliance notifications
+  have no recipients of their own, so none is e-mailed until a team can
+  name them. The SLA check no longer records a notification as sent when
+  its delivery failed. Unit tests define both settings and check that
+  nothing reaches them; eleven mutations of the fix each fail a test.
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

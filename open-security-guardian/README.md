@@ -109,7 +109,9 @@ writes.
 - **Background work stays in the team.** A discovery rule creates assets
   for its team, an alert rule measures its team's data and notifies its
   own recipients, a scheduled report holds its template's team's data and
-  is written under `MEDIA_ROOT/reports/<team id>/`.
+  is written under `MEDIA_ROOT/reports/<team id>/`. No notification has a
+  platform-wide recipient: one without recipients of its own is not sent
+  (see the [deployment guide](../docs/guides/deployment.md#notification-recipients)).
   `GET /api/v1/tasks/<task_id>/` answers for the tasks your team dispatched
   and 404 for any other.
 - **Rows written before guardian kept a team have none.** No team reaches
