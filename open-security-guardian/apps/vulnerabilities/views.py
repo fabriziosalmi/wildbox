@@ -226,7 +226,9 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
             vulnerability=vulnerability
         ).order_by('-timestamp')
         
-        serializer = VulnerabilityHistorySerializer(history, many=True)
+        serializer = VulnerabilityHistorySerializer(
+            history, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
     
     # There is no ``attachments`` action. It listed VulnerabilityAttachment
@@ -239,7 +241,9 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def bulk_action(self, request):
         """Perform bulk actions on vulnerabilities"""
-        serializer = VulnerabilityBulkActionSerializer(data=request.data)
+        serializer = VulnerabilityBulkActionSerializer(
+            data=request.data, context=self.get_serializer_context()
+        )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
@@ -393,7 +397,9 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         else:
             stats['avg_resolution_time_days'] = 0
         
-        serializer = VulnerabilityStatsSerializer(stats)
+        serializer = VulnerabilityStatsSerializer(
+            stats, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
     
     #: The longest window ``trends`` computes: it runs four queries per day.
@@ -454,7 +460,9 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
             
             current_date += timedelta(days=1)
         
-        serializer = VulnerabilityTrendSerializer(trends, many=True)
+        serializer = VulnerabilityTrendSerializer(
+            trends, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
 

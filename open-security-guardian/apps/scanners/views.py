@@ -95,7 +95,9 @@ class ScannerViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
                 'last_30d': scans.filter(created_at__gte=now - timedelta(days=30)).count(),
             },
         }
-        serializer = ScannerStatsSerializer(data)
+        serializer = ScannerStatsSerializer(
+            data, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
 
@@ -135,7 +137,9 @@ class ScanViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         """Get scan results"""
         scan = self.get_object()
         results = ScanResult.objects.filter(scan=scan)
-        serializer = ScanResultSerializer(results, many=True)
+        serializer = ScanResultSerializer(
+            results, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
 
