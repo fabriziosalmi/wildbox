@@ -327,23 +327,32 @@ class DataForwarder:
         batch_payload = build_batch(current_batch, self.sensor_id)
 
         # Send batch with retries
-        success = await self._send_batch_with_retries(batch_payload)
+        outcome = await self._send_batch_with_retries(batch_payload)
 
-        if success:
+        if outcome == SENT:
             self.stats["batches_sent"] += 1
             self.stats["events_forwarded"] += batch_size
             self.stats["last_successful_send"] = datetime.now(timezone.utc).isoformat()
             logger.debug(f"Successfully forwarded batch of {batch_size} events")
         else:
-            # Re-add failed events to buffer for retry (with limit to prevent memory issues)
-            if len(self.batch_buffer) < self.config.performance.max_queue_size:
+            # Re-add failed events to buffer for retry (with limit to prevent
+            # memory issues) -- unless the batch was refused. A refused batch
+            # put back in the buffer is sent again with every flush and
+            # refused again, and whatever is collected meanwhile goes out
+            # with it and is lost: one batch the gateway finds too large or
+            # malformed (HTTP 413, 422) stopped all forwarding for good.
+            if (
+                outcome == RETRY
+                and len(self.batch_buffer) < self.config.performance.max_queue_size
+            ):
                 self.batch_buffer.extend(current_batch[:100])  # Limit to 100 events
 
             self.stats["events_failed"] += batch_size
             logger.error(f"Failed to forward batch of {batch_size} events")
 
-    async def _send_batch_with_retries(self, batch_payload: Dict[str, Any]) -> bool:
-        """Send batch with retry logic"""
+    async def _send_batch_with_retries(self, batch_payload: Dict[str, Any]) -> str:
+        """Send batch with retry logic; SENT, RETRY (every attempt failed for
+        a reason that may pass) or REFUSED."""
 
         for attempt in range(self.config.data_lake.retry_attempts):
             try:
@@ -354,11 +363,11 @@ class DataForwarder:
                 outcome = await self._send_http_request(batch_payload)
 
                 if outcome == SENT:
-                    return True
+                    return SENT
                 if outcome == REFUSED:
                     # Retrying a refused key or a malformed batch sends the
                     # same request to get the same answer.
-                    return False
+                    return REFUSED
 
                 # Wait before retry
                 if attempt < self.config.data_lake.retry_attempts - 1:
@@ -378,7 +387,7 @@ class DataForwarder:
                 if attempt < self.config.data_lake.retry_attempts - 1:
                     await asyncio.sleep(self.config.data_lake.retry_delay)
 
-        return False
+        return RETRY
 
     async def _apply_rate_limiting(self):
         """Apply rate limiting to prevent overwhelming the API"""
