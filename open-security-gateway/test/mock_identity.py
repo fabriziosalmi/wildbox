@@ -3,9 +3,16 @@
 Stdlib-only stand-in for open-security-identity, faithful to the real
 /internal/authorize contract (see open-security-identity/app/internal.py):
 
-- 403 {"detail": "Invalid gateway secret"} when X-Gateway-Secret is missing
-  or does not match EXPECTED_GATEWAY_SECRET (proof-of-origin, #133/#134);
+- 403 "Invalid gateway secret" when X-Gateway-Secret is missing or does not
+  match EXPECTED_GATEWAY_SECRET (proof-of-origin, #133/#134);
 - 401 for unknown/invalid tokens;
+- every error in the body identity answers, the one all services share
+  (open_security_shared.errors): {"error": {"code", "message", "type",
+  "request_id"}}, with the X-Request-ID the gateway sent. The mock answered a
+  top-level detail, the default of FastAPI, which identity has not answered since
+  it installed the shared handlers; the gateway reads only the status, so no
+  test was wrong, but a gateway that came to read the body would have been
+  tested against a shape identity does not produce (#736);
 - 200 with {is_authenticated, user_id, team_id, role, permissions, scopes}
   for the fixture tokens below.
 
@@ -223,6 +230,20 @@ SERVICE_CORS_ORIGINS = {
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def _error(self, status, message, error_type="HTTPException"):
+        """Answer an error as identity does: the canonical body."""
+        self._reply(
+            status,
+            {
+                "error": {
+                    "code": status,
+                    "message": message,
+                    "type": error_type,
+                    "request_id": self.headers.get("X-Request-ID") or "unknown",
+                }
+            },
+        )
+
     def _reply(self, status, payload):
         body = json.dumps(payload).encode()
         self.send_response(status)
@@ -265,13 +286,14 @@ class Handler(BaseHTTPRequestHandler):
 
         secret = self.headers.get("X-Gateway-Secret") or ""
         if not EXPECTED_SECRET or not hmac.compare_digest(secret, EXPECTED_SECRET):
-            self._reply(403, {"detail": "Invalid gateway secret"})
+            self._error(403, "Invalid gateway secret")
             return
 
         try:
             request = json.loads(raw_body or b"{}")
         except ValueError:
-            self._reply(400, {"detail": "Malformed authorize request"})
+            # A body that is not JSON: identity's request validation, 422.
+            self._error(422, "Request validation failed", "ValidationError")
             return
 
         token = request.get("token", "")
@@ -289,7 +311,7 @@ class Handler(BaseHTTPRequestHandler):
         if key is not None:
             key_id, delay_ms, expires_at = key
             if key_id in revoked_api_keys or (expires_at and expires_at <= time.time()):
-                self._reply(401, {"detail": "Invalid or inactive API key"})
+                self._error(401, "Invalid or inactive API key")
                 return
             time.sleep(delay_ms / 1000)
             auth = {
@@ -320,7 +342,7 @@ class Handler(BaseHTTPRequestHandler):
         claims = jwt_claims(token) if auth is None else None
         if claims is not None:
             if claims["jti"] in revoked_jtis:
-                self._reply(401, {"detail": "Token has been revoked"})
+                self._error(401, "Token has been revoked")
                 return
             user_id = claims.get("sub", "user-jwt")
             # A team per session unless the session lists its user's teams:
@@ -331,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(teams, list):
                 remaining = [t for t in teams if (user_id, t) not in removed_members]
                 if not remaining:
-                    self._reply(401, {"detail": "User not found or inactive"})
+                    self._error(401, "User not found or inactive")
                     return
                 team_id = remaining[0]
             # Past the blacklist check and the membership query: the real
@@ -345,7 +367,12 @@ class Handler(BaseHTTPRequestHandler):
                 "scopes": None,
             }
         if auth is None:
-            self._reply(401, {"detail": "Invalid or inactive credentials"})
+            # In identity's words: app/internal.py for a key it does not
+            # know, app/auth.py (verify_access_token) for a token.
+            if request.get("token_type") == "api_key":
+                self._error(401, "Invalid or inactive API key")
+            else:
+                self._error(401, "Could not validate credentials")
             return
 
         self._reply(

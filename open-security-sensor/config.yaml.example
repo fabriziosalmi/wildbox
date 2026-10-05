@@ -23,8 +23,16 @@ data_lake:
   batch_size: 100
   flush_interval: 30
   timeout: 30
-  retry_attempts: 3
+  # A batch the gateway does not take for a reason that may pass (a network
+  # error, HTTP 429, a 5xx answer) is kept and sent again: after retry_delay
+  # seconds, then twice as long each time, up to retry_max_delay.
   retry_delay: 5
+  retry_max_delay: 300
+  # What may wait for the gateway: this many events and this many bytes of
+  # serialized events. When either is reached the sensor stops collecting
+  # until a batch is accepted; it drops nothing to make room.
+  buffer_max_events: 5000
+  buffer_max_bytes: 16777216  # 16 MiB
 
 # Telemetry Collection
 collection:
@@ -35,6 +43,13 @@ collection:
   system_inventory: true
   # Forward logs. What is forwarded is the log_sources section below.
   log_forwarding: false
+
+# Where the sensor keeps what must outlive a restart: the log forwarder's
+# read positions (log-positions.json). In the container this is the
+# sensor_data volume. Overridden by SENSOR_DATA_DIR. The directory must exist
+# and be writable by the sensor's user; one sensor per directory. Without it
+# positions are kept in memory only and read_from applies at every start.
+data_dir: /var/lib/security-sensor
 
 # Log sources: what the log forwarder reads when collection.log_forwarding is
 # true. See README.md, "Log forwarding".
@@ -56,7 +71,9 @@ collection:
 #     path: /host/var/log/nginx/access.log    # absolute; a file or a pattern (*, ?, [])
 #     format: nginx                           # syslog, nginx, apache or raw (default)
 #     enabled: true                           # default true
-#     read_from: end                          # end (default) or beginning
+#     read_from: end                          # end (default) or beginning: where
+#                                             # to start the first time; later
+#                                             # starts go on from data_dir
 #   - name: app
 #     path: /host/var/log/app/*.log
 #   - name: journal
@@ -66,7 +83,12 @@ collection:
 fim:
   enabled: true
   paths:
-    # Host paths (mounted as /host/*)
+    # The sensor's own paths; in the container, the container's. These four
+    # are where a host's directories would be mounted, and no compose file
+    # mounts them: as shipped, the monitor watches nothing, says so when it
+    # starts and reports it in GET /api/v1/components. Mount the directories
+    # to watch read-only first, for example "/etc:/host/etc:ro"; see
+    # README.md, "File integrity monitoring".
     - "/host/etc"
     - "/host/bin"
     - "/host/usr/bin"

@@ -72,6 +72,39 @@ def test_production_without_the_secret_refuses_to_start(monkeypatch, environment
     assert JWT_OLD not in message
 
 
+@pytest.mark.parametrize(
+    "environment", ["staging", "test", "prod", "dev", "development-eu", "", "  "]
+)
+def test_any_environment_that_is_not_development_requires_the_secret(
+    monkeypatch, environment
+):
+    """The test was for the exact value "production" (#736): "staging", a
+    misspelt name or an empty variable started on the fallback."""
+    with pytest.raises(ValidationError) as excinfo:
+        _settings(monkeypatch, ENVIRONMENT=environment)
+    message = str(excinfo.value)
+    assert "API_KEY_HASH_SECRET is required unless ENVIRONMENT=development" in message
+    assert JWT_OLD not in message
+
+
+def test_an_environment_that_is_not_declared_requires_the_secret(monkeypatch):
+    """A bare `docker run`: no ENVIRONMENT at all."""
+    with pytest.raises(ValidationError, match="API_KEY_HASH_SECRET is required"):
+        _settings(monkeypatch)
+
+
+def test_an_undeclared_environment_with_the_secret_starts(monkeypatch):
+    settings = _settings(monkeypatch, API_KEY_HASH_SECRET=HASH_SECRET)
+    assert settings.environment == ""
+    assert settings.api_key_hash_secret == HASH_SECRET
+
+
+@pytest.mark.parametrize("environment", ["development", "Development", " development "])
+def test_only_development_may_start_without_the_secret(monkeypatch, environment):
+    settings = _settings(monkeypatch, ENVIRONMENT=environment)
+    assert settings.api_key_hash_secret is None
+
+
 def test_production_with_a_blank_secret_refuses_to_start(monkeypatch):
     """Compose renders an unset variable as an empty string."""
     with pytest.raises(ValidationError, match="API_KEY_HASH_SECRET is required"):

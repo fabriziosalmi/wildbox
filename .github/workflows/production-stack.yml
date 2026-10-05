@@ -22,6 +22,9 @@ on:
       - 'monitoring/**'
       - 'scripts/check_redis_config.py'
       - 'scripts/generate_secrets.py'
+      # What the job also runs: the validator, and the integration suite.
+      - 'scripts/validate_secrets.py'
+      - 'tests/integration/**'
       - '.env.example'
       - '.github/workflows/production-stack.yml'
   workflow_dispatch:

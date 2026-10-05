@@ -46,7 +46,12 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = VulnerabilityFilter
-    search_fields = ['title', 'description', 'cve_id', 'asset__name']
+    # The one ?search= of this list (#724): the filter set had a second one,
+    # applied as well, so only what both searched could match.
+    search_fields = [
+        'title', 'description', 'cve_id', 'asset__name', 'asset__ip_address',
+        'scanner', 'service',
+    ]
     ordering_fields = ['risk_score', 'cvss_v3_score', 'created_at', 'due_date', 'severity']
     ordering = ['-risk_score', '-created_at']
     

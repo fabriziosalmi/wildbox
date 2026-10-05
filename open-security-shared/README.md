@@ -59,7 +59,7 @@ the extras of the modules it uses:
 
 | Extra | Modules | Requires |
 | --- | --- | --- |
-| none | `api_docs`, `circuit_breaker`, `scopes` | the standard library |
+| none | `api_docs`, `circuit_breaker`, `environment`, `scopes` | the standard library |
 | `fastapi` | `errors`, `gateway_auth`, `tenancy`, `security_middleware` | FastAPI, Pydantic 2 |
 | `auth` | `auth_utils` | FastAPI, PyJWT, passlib with bcrypt |
 | `metrics` | `observability` | FastAPI, prometheus-client 0.20 or later |

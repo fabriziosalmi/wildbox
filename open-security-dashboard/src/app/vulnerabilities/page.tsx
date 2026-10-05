@@ -103,8 +103,9 @@ export default function VulnerabilitiesPage() {
   } = useQuery<VulnerabilityListResponse, ApiError>({
     queryKey: ['vulnerabilities', search, severityFilter, statusFilter, page],
     queryFn: () => {
-      // guardian serves the list at /api/v1/vulnerabilities/ and pages it
-      // itself (PAGE_SIZE 50); it has no page_size parameter.
+      // guardian serves the list at /api/v1/vulnerabilities/, fifty rows
+      // a page unless page_size asks otherwise. Each parameter here is one
+      // the list reads: a guardian unit test fails for one it does not.
       const params = new URLSearchParams({ page: page.toString() })
       if (search.trim()) params.append('search', search.trim())
       if (severityFilter !== 'all') params.append('severity', severityFilter)
@@ -302,7 +303,7 @@ export default function VulnerabilitiesPage() {
                 />
               </div>
               <Select value={severityFilter} onValueChange={setSeverityFilter}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-[140px]" data-testid="severity-filter">
                   <SelectValue placeholder="Severity" />
                 </SelectTrigger>
                 <SelectContent>
@@ -315,7 +316,7 @@ export default function VulnerabilitiesPage() {
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-[140px]" data-testid="status-filter">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -446,8 +447,8 @@ export default function VulnerabilitiesPage() {
               </div>
             )}
 
-            {/* Pagination: guardian decides the page size and says whether
-                there is a previous or next page. */}
+            {/* Pagination: guardian says whether there is a previous or
+                next page. */}
             {!vulnsError && (vulnerabilities?.previous || vulnerabilities?.next) && (
               <div className="mt-6 flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">

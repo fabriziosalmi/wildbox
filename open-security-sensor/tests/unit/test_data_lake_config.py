@@ -159,7 +159,10 @@ def test_an_invalid_setting_stops_the_sensor(tmp_path):
 @pytest.mark.parametrize(
     "shipped", ["config.yaml.example", "config.yaml", "config.docker.yaml"]
 )
-def test_the_shipped_configurations_load(shipped):
+def test_the_shipped_configurations_load(shipped, tmp_path, monkeypatch):
+    # The container's configurations name the container's data directory,
+    # which the image creates; here it is this test's.
+    monkeypatch.setenv("SENSOR_DATA_DIR", str(tmp_path))
     config = load_config(str(SERVICE_ROOT / shipped))
 
     assert config.data_lake.tls_verify is True

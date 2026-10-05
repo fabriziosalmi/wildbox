@@ -24,15 +24,24 @@ logger = logging.getLogger(__name__)
 
 class SensorDaemon:
     """Main sensor daemon class"""
-    
+
     def __init__(self, config_path: str = None):
         self.config_path = config_path
         self.config = None
         self.agent = None
         self.running = False
-        
+        # Set when a signal, or stop(), asks the sensor to stop.
+        self._stop_requested = None
+
     async def start(self):
-        """Start the sensor daemon"""
+        """Run the sensor until it is asked to stop, and until it has
+        stopped.
+
+        It used to return, and the process to end, as soon as a stop was
+        asked for: the agent's own stopping, which sends the last batches
+        and writes the log positions, was a task still running, cancelled
+        with the event loop within a second.
+        """
         try:
             # Load configuration. A configuration error is the operator's to
             # fix, so say what it is and stop, without a traceback; logging
@@ -45,50 +54,70 @@ class SensorDaemon:
 
             # Setup logging
             setup_logging(self.config.logging)
-            
+
             logger.info(f"Starting Open Security Sensor v{__version__}")
             logger.info(f"Platform: {get_platform_info()}")
-            
+
             # Initialize the agent
             self.agent = SecuritySensorAgent(self.config)
-            
+
             # Setup signal handlers
+            self._stop_requested = asyncio.Event()
             self._setup_signal_handlers()
-            
+
             # Start the agent
             await self.agent.start()
             self.running = True
-            
+
             logger.info("Security Sensor started successfully")
-            
-            # Keep running until stopped
-            while self.running:
-                await asyncio.sleep(1)
-                
+
+            # Keep running until asked to stop: a signal that came while
+            # the agent was starting is not lost.
+            await self._stop_requested.wait()
+
         except Exception as e:
             logger.error(f"Failed to start sensor: {e}", exc_info=True)
             return 1
-        
+
+        # Here, and not in a task nobody waits for.
+        await self._stop()
         return 0
-    
+
     async def stop(self):
-        """Stop the sensor daemon"""
+        """Ask the sensor to stop; start() returns when it has."""
+        if self._stop_requested is not None:
+            self._stop_requested.set()
+
+    async def _stop(self):
         logger.info("Stopping Security Sensor...")
         self.running = False
-        
+
         if self.agent:
             await self.agent.stop()
-        
+
         logger.info("Security Sensor stopped")
-    
+
+    def _request_stop(self, signum):
+        logger.info(f"Received signal {signum}, initiating shutdown...")
+        self._stop_requested.set()
+
     def _setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown"""
-        def signal_handler(signum, frame):
-            logger.info(f"Received signal {signum}, initiating shutdown...")
-            asyncio.create_task(self.stop())
-        
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        """Stop on SIGINT and SIGTERM"""
+        loop = asyncio.get_running_loop()
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            try:
+                # Wakes the event loop at once, wherever it is waiting.
+                loop.add_signal_handler(signum, self._request_stop, signum)
+            except (NotImplementedError, RuntimeError):
+                # An event loop without signal support (Windows): the
+                # handler runs outside the loop and hands over to it.
+                signal.signal(
+                    signum,
+                    lambda received, frame: loop.call_soon_threadsafe(
+                        self._request_stop, received
+                    ),
+                )
+
 
 async def _test_connection(config: SensorConfig) -> dict:
     """One empty batch through the forwarder's own session."""

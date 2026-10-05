@@ -86,7 +86,8 @@ plus `/api/v1/guardian`.
 
 ### Pagination links
 
-Lists are paginated 50 rows to a page (`apps/core/pagination.py`). The `next`
+Lists are paginated 50 rows to a page (`apps/core/pagination.py`);
+`?page_size=N` asks for another size, up to 200 (#724). The `next`
 and `previous` links are relative references under the gateway's path, such
 as `/api/v1/guardian/assets/assets/?page=2`, with no scheme and no host: a
 client resolves them against the URL it requested. They used to be absolute

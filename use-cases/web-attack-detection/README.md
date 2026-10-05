@@ -83,10 +83,10 @@ If you haven't already, start the Wildbox platform:
 
 ```bash
 cd /path/to/wildbox
-docker-compose up -d
+docker compose up -d
 
 # Wait for services to be healthy
-docker-compose ps
+docker compose ps
 
 # The gateway answers on HTTPS with a certificate it generated; trust it
 export WILDBOX_CA=$PWD/open-security-gateway/ssl/wildbox.crt
@@ -472,13 +472,13 @@ Correlate with **open-security-data** threat feeds:
 
 ```bash
 # Check sensor logs
-docker-compose logs sensor
+docker compose logs sensor
 
 # Verify configuration
-docker-compose exec sensor cat /etc/security-sensor/config.yaml
+docker compose exec sensor cat /etc/security-sensor/config.yaml
 
 # Test the connection to the gateway with the configured key
-docker-compose exec sensor python main.py --config /etc/security-sensor/config.yaml --test-connection
+docker compose exec sensor python main.py --config /etc/security-sensor/config.yaml --test-connection
 ```
 
 The sensor stops at start-up with a message naming the setting when the
@@ -490,17 +490,17 @@ endpoint is not an `https://` gateway URL, the key is not an identity key
 ```bash
 # What does the sensor read, and what could it not read? Each source is
 # logged at start-up, and a file it cannot read is a warning naming it
-docker-compose logs sensor | grep "Log source"
+docker compose logs sensor | grep "Log source"
 
 # Verify log file exists and is readable
 ls -la /var/log/nginx/access.log
 
 # Check sensor has permission to read logs (in the container: is the
 # directory mounted, and can uid 999 read the file?)
-docker-compose exec sensor head -1 /host/var/log/nginx/access.log
+docker compose exec sensor head -1 /host/var/log/nginx/access.log
 
 # Is forwarding enabled, and what did the last batch get?
-docker-compose logs sensor | grep -i -E "forwarding|gateway|batch"
+docker compose logs sensor | grep -i -E "forwarding|gateway|batch"
 
 # Verify the data service is receiving data for your team
 curl --cacert "$WILDBOX_CA" -H "$H" https://localhost/api/v1/data/telemetry/stats

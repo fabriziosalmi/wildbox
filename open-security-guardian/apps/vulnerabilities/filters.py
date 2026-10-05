@@ -9,29 +9,39 @@ from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
 
+from apps.core.filters import either
+
 from .models import Vulnerability, VulnerabilityStatus, VulnerabilitySeverity, ThreatLevel
 
 
 class VulnerabilityFilter(django_filters.FilterSet):
-    """Filter set for vulnerability queries"""
-    
-    # Text search
-    search = django_filters.CharFilter(method='filter_search', label='Search')
-    
+    """Filter set for vulnerability queries
+
+    ``?search=`` is not here: it is DRF's SearchFilter over the viewset's
+    ``search_fields``. A second ``search`` in this filter set was applied as
+    well, so a row had to match both (#724).
+    """
+
+    # The choice filters take one value or several (``?severity=high`` or
+    # ``?severity=high&severity=critical``) and answer the rows that have any
+    # of them. They carry no ``lookup_expr``: a MultipleChoiceFilter compares
+    # the column with each value in turn, so with ``lookup_expr='in'`` it
+    # asked for ``severity IN ('h', 'i', 'g', 'h')``, the characters of the
+    # value, and no row ever matched (#724).
+
     # Status filters
     status = django_filters.MultipleChoiceFilter(
         choices=VulnerabilityStatus.choices,
         field_name='status',
-        lookup_expr='in'
     )
-    
+
     # Severity filters
     severity = django_filters.MultipleChoiceFilter(
         choices=VulnerabilitySeverity.choices,
         field_name='severity',
-        lookup_expr='in'
     )
-    
+
+
     # Risk score range
     risk_score_min = django_filters.NumberFilter(
         field_name='risk_score',
@@ -73,8 +83,11 @@ class VulnerabilityFilter(django_filters.FilterSet):
         lookup_expr='iexact',
         label='Asset Criticality'
     )
+    # By the environment's name. ``asset__environment`` is the foreign key,
+    # which has no ``iexact``: every request that used the filter answered
+    # 500 (#724).
     asset_environment = django_filters.CharFilter(
-        field_name='asset__environment',
+        field_name='asset__environment__name',
         lookup_expr='iexact',
         label='Environment'
     )
@@ -96,21 +109,14 @@ class VulnerabilityFilter(django_filters.FilterSet):
     
     # Priority filters
     priority = django_filters.MultipleChoiceFilter(
-        choices=[
-            ('p1', 'P1 - Emergency'),
-            ('p2', 'P2 - High'),
-            ('p3', 'P3 - Medium'),
-            ('p4', 'P4 - Low')
-        ],
+        choices=Vulnerability._meta.get_field('priority').choices,
         field_name='priority',
-        lookup_expr='in'
     )
-    
+
     # Threat level filters
     threat_level = django_filters.MultipleChoiceFilter(
         choices=ThreatLevel.choices,
         field_name='threat_level',
-        lookup_expr='in'
     )
     
     # Date filters
@@ -188,124 +194,50 @@ class VulnerabilityFilter(django_filters.FilterSet):
         model = Vulnerability
         fields = []
     
-    def filter_search(self, queryset, name, value):
-        """Global search across multiple fields"""
-        if not value:
-            return queryset
-        
-        return queryset.filter(
-            Q(title__icontains=value) |
-            Q(description__icontains=value) |
-            Q(cve_id__icontains=value) |
-            Q(asset__name__icontains=value) |
-            Q(asset__ip_address__icontains=value) |
-            Q(scanner__icontains=value) |
-            Q(service__icontains=value)
-        )
-    
+    # A true/false filter answers the rows that are so for ``true`` and the
+    # others for ``false``. ``false`` answered every row, as if the filter
+    # had not been given (#724).
+
     def filter_unassigned(self, queryset, name, value):
-        """Filter for unassigned vulnerabilities"""
-        if value:
-            return queryset.filter(
-                Q(assigned_to__isnull=True) & 
-                Q(assignee_group__isnull=True)
-            )
-        return queryset
-    
+        """Vulnerabilities assigned to nobody: no user and no group.
+
+        ``assignee_group`` is a string, empty when there is no group and
+        never NULL: compared with NULL, nothing was ever unassigned (#724).
+        """
+        return either(
+            queryset, value, Q(assigned_to__isnull=True) & Q(assignee_group='')
+        )
+
     def filter_overdue(self, queryset, name, value):
-        """Filter for overdue vulnerabilities"""
-        if value:
-            return queryset.filter(
-                due_date__lt=timezone.now(),
-                status=VulnerabilityStatus.OPEN
-            )
-        return queryset
-    
+        """Open vulnerabilities whose due date has passed"""
+        return either(
+            queryset,
+            value,
+            Q(due_date__lt=timezone.now(), status=VulnerabilityStatus.OPEN),
+        )
+
     def filter_due_today(self, queryset, name, value):
-        """Filter for vulnerabilities due today"""
-        if value:
-            today = timezone.now().date()
-            return queryset.filter(
-                due_date__date=today,
-                status=VulnerabilityStatus.OPEN
-            )
-        return queryset
-    
+        """Open vulnerabilities due today"""
+        today = timezone.now().date()
+        return either(
+            queryset, value, Q(due_date__date=today, status=VulnerabilityStatus.OPEN)
+        )
+
     def filter_due_this_week(self, queryset, name, value):
-        """Filter for vulnerabilities due this week"""
-        if value:
-            now = timezone.now()
-            week_end = now + timedelta(weeks=1)
-            return queryset.filter(
-                due_date__range=(now, week_end),
-                status=VulnerabilityStatus.OPEN
-            )
-        return queryset
-    
+        """Open vulnerabilities due within the next seven days"""
+        now = timezone.now()
+        return either(
+            queryset,
+            value,
+            Q(
+                due_date__range=(now, now + timedelta(weeks=1)),
+                status=VulnerabilityStatus.OPEN,
+            ),
+        )
+
     def filter_has_tag(self, queryset, name, value):
         """Filter for vulnerabilities with specific tag"""
         if not value:
             return queryset
-        
+
         return queryset.filter(tags__contains=[value])
-
-
-class VulnerabilityDateRangeFilter(django_filters.FilterSet):
-    """Specialized filter for date range queries"""
-    
-    date_range = django_filters.DateFromToRangeFilter(
-        field_name='first_discovered',
-        label='Discovery Date Range'
-    )
-    
-    resolution_date_range = django_filters.DateFromToRangeFilter(
-        field_name='resolved_at',
-        label='Resolution Date Range'
-    )
-    
-    class Meta:
-        model = Vulnerability
-        fields = ['date_range', 'resolution_date_range']
-
-
-class VulnerabilityRiskFilter(django_filters.FilterSet):
-    """Specialized filter for risk-based queries"""
-    
-    high_risk = django_filters.BooleanFilter(
-        method='filter_high_risk',
-        label='High Risk (Score >= 7.0)'
-    )
-    
-    critical_assets = django_filters.BooleanFilter(
-        method='filter_critical_assets',
-        label='Critical Assets Only'
-    )
-    
-    active_threats = django_filters.BooleanFilter(
-        method='filter_active_threats',
-        label='Active Threat Intelligence'
-    )
-    
-    class Meta:
-        model = Vulnerability
-        fields = []
-    
-    def filter_high_risk(self, queryset, name, value):
-        """Filter for high risk vulnerabilities"""
-        if value:
-            return queryset.filter(risk_score__gte=7.0)
-        return queryset
-    
-    def filter_critical_assets(self, queryset, name, value):
-        """Filter for vulnerabilities on critical assets"""
-        if value:
-            return queryset.filter(asset__criticality='critical')
-        return queryset
-    
-    def filter_active_threats(self, queryset, name, value):
-        """Filter for vulnerabilities with active threat intelligence"""
-        if value:
-            return queryset.filter(
-                threat_level__in=[ThreatLevel.IMMINENT, ThreatLevel.ACTIVE]
-            )
-        return queryset
