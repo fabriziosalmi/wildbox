@@ -24,6 +24,7 @@ from .serializers import (
 )
 from .tasks import discover_assets, scan_asset_ports, update_asset_inventory
 from .filters import AssetFilter
+from .networks import SCAN_TYPES, NetworkRefused, scan_network
 from apps.core.permissions import IsAssetManager, IsGatewayAdminOrReadOnly
 from apps.core.tenancy import TeamScopedViewSetMixin, record_team_task
 
@@ -129,23 +130,33 @@ class AssetViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def discover(self, request):
         """Initiate asset discovery"""
-        network_range = request.data.get('network_range')
+        # Checked before anything is queued (#724): a value that is not a
+        # network was only found out by the worker, after its retries, and a
+        # range of any size was accepted.
+        try:
+            network = scan_network(request.data.get('network_range'))
+        except NetworkRefused as refused:
+            return Response(
+                {'network_range': [str(refused)]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         scan_type = request.data.get('scan_type', 'basic')
-        
-        if not network_range:
-            return Response({'error': 'Network range is required'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-        
+        if scan_type not in SCAN_TYPES:
+            return Response(
+                {'scan_type': [f'One of: {", ".join(SCAN_TYPES)}.']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Trigger asset discovery task; the hosts it finds are the
         # caller's team's assets (#642).
         team_id = self.get_team_id()
         task = record_team_task(
-            discover_assets.delay(network_range, scan_type, team_id=str(team_id)),
+            discover_assets.delay(str(network), scan_type, team_id=str(team_id)),
             team_id,
         )
-        
+
         return Response({
-            'message': f'Asset discovery initiated for {network_range}',
+            'message': f'Asset discovery initiated for {network}',
             'task_id': task.id
         })
 

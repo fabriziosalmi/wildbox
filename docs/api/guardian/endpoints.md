@@ -306,7 +306,7 @@ Custom actions:
 | `POST` | `assets/assets/{id}/add_port/` | Adds a port record to the asset (`201`) |
 | `POST` | `assets/assets/{id}/add_tag/` | Body `{"tag": "..."}` |
 | `DELETE` | `assets/assets/{id}/remove_tag/` | Body `{"tag": "..."}` |
-| `POST` | `assets/assets/discover/` | Body `{"network_range": "...", "scan_type": "basic"}`; queues a discovery task and returns `task_id` |
+| `POST` | `assets/assets/discover/` | Body `{"network_range": "192.0.2.0/24", "scan_type": "basic"}`; queues a discovery of that network and returns `task_id`. `network_range` is a network in CIDR notation, or one address, of at most 1,024 addresses (a `/22` of IPv4); `scan_type` is `basic` (the default) or `comprehensive`, which also scans the ports of the hosts found. Anything else answers `400` on that field and queues nothing |
 | `GET` | `assets/assets/statistics/` | Totals by type, criticality and status |
 | `POST` | `assets/groups/{id}/apply_rules/` | Applies the group's assignment rules |
 | `POST` | `assets/groups/{id}/add_assets/` | Adds assets to the group |
@@ -316,6 +316,14 @@ Custom actions:
 | `POST` | `assets/discovery-rules/{id}/disable/` | Disables the rule |
 | `GET` | `assets/software/inventory/` | Software inventory across assets |
 | `GET` | `assets/ports/summary/` | Port summary across assets |
+
+A discovery rule of type `network_scan` lists what it sweeps in
+`target_specification`: `networks`, 1 to 32 networks in CIDR notation, each of at
+most 1,024 addresses, and optionally `scan_type` (`basic` or `comprehensive`). The
+bound is the one the tools service puts on a scan target. Before #724 neither
+`discover/` nor a rule checked the size of a network, and `discover/` did not check
+that `network_range` was one. A rule stored with a larger network keeps it, and
+its runs skip that network.
 
 Asset fields accepted on create include `name` (required), `description`,
 `asset_type` (`server`, `workstation`, `network_device`, `mobile_device`,

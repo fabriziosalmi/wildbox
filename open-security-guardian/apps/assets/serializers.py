@@ -17,6 +17,9 @@ from django.contrib.auth.models import User
 
 from apps.core.schedules import InvalidSchedule, schedule_timezone, validate_cron
 
+from .networks import (
+    MAX_RULE_NETWORKS, SCAN_TYPES, NetworkRefused, scan_network,
+)
 from .models import (
     Asset, Environment, BusinessFunction, AssetGroup,
     AssetSoftware, AssetPort, AssetDiscoveryRule, IMPLEMENTED_DISCOVERY_TYPES
@@ -173,14 +176,22 @@ class AssetDiscoveryRuleSerializer(TeamScopedModelSerializer):
                     "Network scan requires 'networks', a list of networks in "
                     "CIDR notation, in target specification."
                 )
+            if len(networks) > MAX_RULE_NETWORKS:
+                raise serializers.ValidationError(
+                    f"A rule lists at most {MAX_RULE_NETWORKS} networks."
+                )
             for network in networks:
-                # discover_assets would raise on each run otherwise.
+                # What discover_assets would refuse on each run: not a
+                # network, or more addresses than one discovery sweeps (#724).
                 try:
-                    ipaddress.ip_network(str(network), strict=False)
-                except ValueError:
-                    raise serializers.ValidationError(
-                        f"{network!r} is not a network in CIDR notation."
-                    )
+                    scan_network(network)
+                except NetworkRefused as refused:
+                    raise serializers.ValidationError(str(refused))
+            scan_type = value.get('scan_type', 'basic')
+            if scan_type not in SCAN_TYPES:
+                raise serializers.ValidationError(
+                    f"'scan_type' is one of: {', '.join(SCAN_TYPES)}."
+                )
         elif discovery_type == 'cloud_api':
             if 'provider' not in value:
                 raise serializers.ValidationError("Cloud API requires 'provider' in target specification.")

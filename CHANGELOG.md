@@ -503,6 +503,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads `error.message` before `detail`, so neither changes; a client
   that read `detail` from an identity 404, 500 or 503 must read
   `error.message`.
+- **guardian: a discovery is checked before it is queued, and sweeps
+  at most 1,024 addresses** (#724). `POST assets/assets/discover/`
+  accepted any `network_range`: a value that is not a network answered
+  "Asset discovery initiated" and failed in the worker after three
+  retries, and `10.0.0.0/8` was sixteen million connection attempts in
+  one task. A discovery rule checked that its networks parse, not their
+  size. Both now refuse, with 400, a network of more than 1,024
+  addresses (the tools service's bound on a scan target), a value that
+  is not a network, and a `scan_type` other than `basic` or
+  `comprehensive`; a rule lists at most 32 networks. The task refuses
+  the same ranges, so a rule stored with a larger network skips it.
 - **guardian: `total_open` in `vulnerabilities/trends/` is the number
   open on that day** (#724). For a past day it was the vulnerabilities
   discovered by then whose status is open now, so one open for a month
