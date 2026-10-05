@@ -368,6 +368,24 @@ jobs:
       - name: Automation workflows call existing API routes
         run: python3 scripts/check_automation_workflows.py
 
+      # The gateway's development Compose file mounted /var/run/docker.sock
+      # into gliderlabs/logspout:latest (#680): root on the host for an
+      # unmaintained image at whatever version the registry served. Only the
+      # root Compose file was ever validated, so nothing noticed. This reads
+      # every tracked Compose file and refuses a runtime socket mount, an
+      # image that names no version, a privileged setting and a port
+      # published on every interface; deliberate exceptions go in
+      # scripts/container_hygiene_allowlist.txt with a reason.
+      #
+      # The same script reads every tracked Dockerfile (#657): four images
+      # ran `pip install --upgrade pip` before the hash-checked install, and
+      # all eight let pip download setuptools to build the shared package.
+      # It refuses a pip install that is not hash-checked or offline, an npm
+      # install that is not `npm ci`, a base image without a digest, and a
+      # download that is piped to a shell or that nothing verifies.
+      - name: Compose files and Dockerfiles pin and verify what they run
+        run: python3 scripts/check_container_hygiene.py
+
       # Tier 1 -- real defects, whole tree, always blocking.
       - name: Flake8 (correctness, whole tree)
         run: |

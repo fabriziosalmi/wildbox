@@ -95,7 +95,7 @@ services:
 
   # Development tools container
   integration-tester:
-    image: curlimages/curl:latest
+    image: curlimages/curl:8.22.0
     container_name: wildbox-integration-tester
     networks:
       - wildbox
