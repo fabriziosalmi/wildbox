@@ -202,14 +202,20 @@ class ConnectorRegistry:
     def list_connectors(self) -> Dict[str, Dict[str, Any]]:
         """
         List all registered connectors
-        
+
+        This is what GET /v1/connectors answers to any member of any team:
+        each connector's name and its actions. A connector's ``config`` is
+        not in it. It holds the addresses of the other services on the
+        internal network (WILDBOX_*_URL), which a caller cannot reach and
+        has no use for, and which describe how the deployment is laid out
+        (#654).
+
         Returns:
-            Dictionary mapping connector names to their metadata
+            Dictionary mapping connector names to their name and actions
         """
         return {
             name: {
                 "name": connector.name,
-                "config": connector.config,
                 "actions": connector.get_available_actions()
             }
             for name, connector in self._connectors.items()

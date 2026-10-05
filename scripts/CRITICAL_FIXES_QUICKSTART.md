@@ -653,7 +653,6 @@ LOG_LEVEL=INFO
 # DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/identity
 # DATA_DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/data
 # GUARDIAN_DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/guardian
-# RESPONDER_DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/responder
 
 # Redis URL
 REDIS_URL=redis://wildbox-redis:6379/0

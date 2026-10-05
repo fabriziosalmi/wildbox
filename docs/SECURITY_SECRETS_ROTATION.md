@@ -151,8 +151,8 @@ updated by the script: edit them by hand.
 This password lives in two places. PostgreSQL reads `POSTGRES_PASSWORD` only
 when it initializes an empty data directory; on an existing deployment the
 password is stored in the server. The services do not read the variable at
-all: they connect with `DATABASE_URL`, `DATA_DATABASE_URL`,
-`GUARDIAN_DATABASE_URL` and `RESPONDER_DATABASE_URL`, which embed it.
+all: they connect with `DATABASE_URL`, `DATA_DATABASE_URL` and
+`GUARDIAN_DATABASE_URL`, which embed it.
 
 The script changes both places or neither, and needs the stack running:
 
@@ -182,7 +182,7 @@ The script changes both places or neither, and needs the stack running:
 Then recreate the services it names, for example:
 
 ```bash
-docker compose up -d --no-deps identity data data-scheduler guardian guardian-worker guardian-beat responder
+docker compose up -d --no-deps identity data data-scheduler guardian guardian-worker guardian-beat
 ```
 
 Until then they keep the connections they already have and fail to open new
