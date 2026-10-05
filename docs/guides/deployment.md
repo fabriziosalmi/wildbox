@@ -767,8 +767,9 @@ The example also shows, commented out, how to send a bearer token read from
 
 Alertmanager runs as UID 65534 (`nobody`) and reads a secret file each time it
 notifies, which is why the file is given to that user on a Linux host. Docker
-Desktop maps file ownership itself and needs no `chown`. `monitoring/local/`
-and `monitoring/secrets/` are ignored by Git.
+Desktop on macOS presents a mounted file as owned by the container's user, so
+the `chown` is not needed there. `monitoring/local/` and `monitoring/secrets/`
+are ignored by Git.
 
 Then, for either example, set the configuration file in `.env`, check it and
 recreate the container (also after every later change to the file):
