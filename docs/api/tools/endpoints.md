@@ -309,10 +309,20 @@ curl -s --cacert "$CA" -X POST https://<host>/api/v1/tools/hash_generator/async 
 }
 ```
 
-The submit endpoint does not check the tool name or the input: an unknown
-tool, an input that fails validation, or a target the network target
-policy refuses all show up later as a task with status `failed` and the
-reason in `error`. A tool that refuses the caller shows up as status `refused`.
+The submission is checked as a synchronous run is, by the same code, and
+nothing that fails the check is queued: **404** (`Tool not found`) for a
+name that is no tool, **422** for an input the tool's schema refuses, with
+the same field errors, and **400** for a target the
+[network target policy](#network-target-policy) refuses
+([#743](https://github.com/fabriziosalmi/wildbox/issues/743)). No task is
+created for any of the three.
+
+The worker checks again when the task runs, because the answer can have
+changed: a host name may resolve to another address by then. A task refused
+at that point reads status `failed` with the reason in `error`; the reason
+names the fields that failed, never their values. Whether the caller may run
+a tool that acts for them is decided when the task runs: a task the tool
+refuses reads status `refused`.
 
 The service records who submitted the task before queuing it. It answers
 **503** (`Asynchronous execution is unavailable`) when it cannot record the
@@ -527,12 +537,12 @@ this service reads the counts on every scrape:
 | `failed` | ran its tool, which raised; or failed in the worker after its retries |
 | `timeout` | was stopped at the soft time limit (9 minutes) or killed at the hard one (10 minutes) |
 | `cancelled` | was canceled with `DELETE /api/v1/tasks/{task_id}`, while it waited or while it ran |
-| `refused` | ended before its tool was started: the caller may not run the tool, the target is not allowed, the input does not validate or no tool has that name |
+| `refused` | ended before its tool was started: the caller may not run the tool, or what the submission accepted is refused when the task runs (the target now resolves to an address that is not allowed, the worker does not have the tool) |
 
 The status a client reads from `GET /api/v1/tasks/{task_id}` is unchanged
-and differs in two places: a task that ended before its tool started
-because of its input, its target or its tool name reads `failed` there,
-and one killed at the hard time limit reads `failed`
+and differs in two places: a task the worker's own check refused when
+it ran (see [the submission](#post-apiv1toolstool_nameasync)) reads
+`failed` there, and one killed at the hard time limit reads `failed`
 (`Task execution failed (TimeLimitExceeded)`). A tool name that is not a
 tool is counted under `tool="unknown"`.
 

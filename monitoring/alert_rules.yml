@@ -113,9 +113,11 @@ groups:
       #   timeout    stopped at the soft time limit or killed at the hard one;
       #   cancelled  revoked, while it waited or while it ran;
       #   refused    ended before the tool was started: the caller may not run
-      #              it, the target is not allowed, the input does not
-      #              validate or no tool has that name. The synchronous path
-      #              answers the last three with a 4xx before a run exists.
+      #              it, or the worker's check refuses what the submission
+      #              accepted (the target now resolves to an address that is
+      #              not allowed). An unknown tool, invalid input and a
+      #              refused target are answered with a 4xx when the task is
+      #              submitted, as on the synchronous path, and are no task.
       #
       # The counter lives as long as the Redis data, not as long as a
       # process, so restarting the api or the worker does not reset it. A

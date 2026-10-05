@@ -23,6 +23,7 @@ from redis.exceptions import RedisError
 from app.auth import require_tools_execute, verify_api_key
 from app.celery_app import celery_app
 from app.logging_config import get_logger
+from app.prerun import PRE_RUN_REFUSALS, check_tool_request, http_error, refusal_log
 from app.task_ownership import (
     TaskOwnership,
     TaskOwnershipUnavailable,
@@ -214,6 +215,24 @@ def submit_tool_async(
         f"Submitting async tool execution: {tool_name}",
         extra={"tool": tool_name, "request_id": request_id},
     )
+
+    # Nothing invalid is queued (#743). What the synchronous route answers
+    # before a run exists is answered here too, from the same check
+    # (app/prerun.py): 404 for a name that is no tool, 422 for input the
+    # tool's model refuses, 400 for a target the policy refuses. This route
+    # used to queue anything and answer 202; the caller then read the
+    # refusal back from the task, after it had taken a place in the queue
+    # and a worker. The task checks again when it runs, since a name can
+    # resolve differently by then. This handler is not a coroutine, so the
+    # policy's name resolution runs in a worker thread.
+    try:
+        check_tool_request(tool_name, input_data)
+    except PRE_RUN_REFUSALS as e:
+        logger.warning(
+            f"Async submission refused, {tool_name!r}: {refusal_log(e)}",
+            extra={"request_id": request_id},
+        )
+        raise http_error(e)
 
     # The caller the request authenticated as. This read request.state.user_id,
     # which nothing sets, so every task ran for the literal caller "anonymous"

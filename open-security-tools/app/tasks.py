@@ -12,7 +12,7 @@ from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
 from app import async_metrics
 from app.celery_app import celery_app
 from app.execution_manager import ExecutionStatus, ToolAuthorizationError, authorize_tool_call
-from app.tool_loader import find_schema_classes
+from app.prerun import PRE_RUN_REFUSALS, check_tool_request, refusal_log
 from app.tool_loader import load_tool_module as _shared_load_tool_module
 from app.logging_config import get_logger
 
@@ -175,35 +175,20 @@ def execute_tool_async(
     )
     
     try:
-        # Dynamically load the tool module
-        logger.debug(f"Loading tool module: {tool_name}")
-        tool_module = _load_tool_module(tool_name)
-        if not tool_module:
-            error_msg = f"Tool '{tool_name}' not found"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        
-        # Get the execute function and input schema
-        execute_func = getattr(tool_module, 'execute_tool', None)
-        if not execute_func:
-            raise ValueError(f"Tool '{tool_name}' missing execute_tool function")
-        
-        # Get input schema class
-        schemas_module = getattr(tool_module, 'schemas', None)
-        input_schema_class = _find_input_schema(schemas_module, tool_name)
-        
-        if not input_schema_class:
-            raise ValueError(f"Tool '{tool_name}' missing input schema")
-        
-        # Validate and convert input
-        validated_input = input_schema_class(**input_data)
-
-        # Target policy (the same check as the synchronous API path): refuse
-        # URLs and network targets that are private, internal or cloud
-        # metadata (#614). TargetRefused is a ValueError, so the task answers
-        # "failed" with the reason below and is not retried.
-        from app.target_policy import enforce_target_policy
-        enforce_target_policy(tool_name, validated_input)
+        # The checks that come before a run, the ones the API applied when it
+        # accepted the task (app/prerun.py): the name is a tool, the input is
+        # what its model accepts, and the target is not private, internal or
+        # cloud metadata (#614). They run again here because the answer can
+        # have changed since: a name resolves to another address, the
+        # operator's allowlist changed, this worker has another set of tools.
+        # A refusal is a ValueError, so the task answers "failed" with the
+        # reason below and is not retried.
+        try:
+            checked = check_tool_request(tool_name, input_data, load=_load_tool_module)
+        except PRE_RUN_REFUSALS as e:
+            raise ValueError(refusal_log(e)) from None
+        execute_func = checked.execute
+        validated_input = checked.validated_input
 
         # Authorize the call exactly as the synchronous path does: a tool
         # that declares user_id needs a caller who may run it, and receives
@@ -331,9 +316,3 @@ def _load_tool_module(tool_name: str):
     """
     return _shared_load_tool_module(tool_name)
 
-
-def _find_input_schema(schemas_module, tool_name: str):
-    """Find the input schema class in a schemas module."""
-    # The same model the synchronous endpoint validates with (#611).
-    input_cls, _ = find_schema_classes(schemas_module)
-    return input_cls

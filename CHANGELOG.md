@@ -497,6 +497,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **tools checks an asynchronous submission as it checks a synchronous
+  run, and queues nothing that fails** (#743).
+  `POST /api/v1/tools/{tool}/async` recorded an owner and queued a task
+  for whatever name and body it was given, and answered 202. The
+  synchronous route answers 404 for a name that is no tool, 422 for
+  input the tool's schema refuses and 400 for a target the network
+  target policy refuses, before a run exists; the asynchronous caller
+  read the same back from the task, as `failed`, after it had taken a
+  place in the queue and a worker. Both routes and the worker now call
+  one check, and the submission gives the answers of the synchronous
+  route, with no task created. The worker checks again when the task
+  runs, because a host name can resolve to another address by then.
+  The error a task stores for refused input names the field and the
+  kind of error; it used to be the validator's own message, which
+  quotes the value refused, and the routes logged that message too. A
+  tool name is one package name: a name with a dot in it, taken from
+  the URL, was imported as a path below the tools package. A client
+  that submitted invalid requests and read the refusal from the task
+  now gets it from the submission.
 - **tools reports one version.** `/health` and `/api` said `1.0.0` while
   the OpenAPI schema and the `X-API-Version` header of the same
   responses said `0.1.6`. All four now read the version written once in

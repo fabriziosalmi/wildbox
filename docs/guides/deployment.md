@@ -630,9 +630,12 @@ certificate analyzers, `network_scanner`, `iot_security_scanner`,
 `container_security_scanner`) refuse internal targets: private, loopback,
 link-local, multicast, reserved and shared addresses, ranges that contain
 one, names that resolve to one, and the stack's own service names. A
-range holds at most 1024 addresses. A synchronous run that is refused
-answers 400 with the reason; an asynchronous run ends as a task with status
-`failed` and the reason in `error`.
+range holds at most 1024 addresses. A run that is refused answers 400
+with the reason, synchronous or asynchronous: the asynchronous submission
+applies the policy before it queues anything. The worker applies it again
+when the task runs, since a name can resolve to another address by then; a
+task refused at that point ends with status `failed` and the reason in
+`error`.
 
 To scan an internal lab, list its ranges and hosts in `.env`, then
 recreate `api` and `tools-worker`:
@@ -891,7 +894,7 @@ configured.
 | `WildboxServiceDown` | Prometheus cannot scrape `/metrics` on identity, tools, data, responder, CSPM or agents for 2 minutes | guardian, the gateway, the dashboard, the workers, PostgreSQL and Redis are not scraped |
 | `WildboxHighErrorRate` | more than 5% of the HTTP requests one of those services handled ended in a 5xx, for 10 minutes | requests the gateway refused or could not forward: each service counts its own |
 | `WildboxSyncToolFailureRate` | more than 25% of the synchronous tool runs (`POST /api/v1/tools/{tool}`) raised an error the tool does not handle, for 15 minutes | asynchronous runs (`.../async`), which the next alert measures. Timeouts, refused runs and a failure the tool reports in its result (`success: false`) are not counted as failures |
-| `WildboxAsyncToolFailureRate` | more than 25% of the asynchronous tool runs (`POST /api/v1/tools/{tool}/async`) failed, for 15 minutes: the tool raised an error it does not handle, or the task failed in the worker after its retries | synchronous runs. Timeouts (a task killed at the hard time limit included), canceled tasks, tasks that ended before the tool started (input that does not validate, a refused target or caller) and a failure the tool reports in its result are not counted as failures. A count the worker could not write to Redis is lost |
+| `WildboxAsyncToolFailureRate` | more than 25% of the asynchronous tool runs (`POST /api/v1/tools/{tool}/async`) failed, for 15 minutes: the tool raised an error it does not handle, or the task failed in the worker after its retries | synchronous runs. Timeouts (a task killed at the hard time limit included), canceled tasks, tasks that ended before the tool started (a caller the tool refuses, a target refused when the task runs) and a failure the tool reports in its result are not counted as failures. A count the worker could not write to Redis is lost |
 | `WildboxAsyncToolTasksNotConsumed` | asynchronous tool tasks have been in the queue for 15 minutes and no worker took any task in that time: `tools-worker` is stopped, restarting or cannot reach Redis | a backlog that a busy worker is working through, and tasks a worker had already taken when it was killed: the broker returns those to the queue only after its visibility timeout, an hour |
 | `WildboxAsyncToolMetricsUnreadable` | the tools API has not been able to read the asynchronous counters from Redis for 10 minutes | nothing else: while it fires, the two alerts above cannot |
 | `WildboxAlertmanagerDown` | Prometheus cannot scrape Alertmanager for 5 minutes | it cannot be delivered: it is shown on the Prometheus alerts page only |
