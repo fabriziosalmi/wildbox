@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A 5xx answer no longer carries the text of the exception** (#735).
+  Four identity routes caught an error to answer a 500 of their own with
+  `str(e)` in it, in every environment: the three under
+  `/api/v1/analytics/admin/` (`Failed to generate ...: <exception>`) and
+  `DELETE /api/v1/admin/users/{id}` (`Failed to delete user:
+  <exception>`). The text of an exception names tables, columns, hosts
+  and paths. They now leave the error to the shared handler, which
+  answers the same 500 for every unhandled error and logs the exception
+  with the request id; the deletion still rolls back first. In tools,
+  the orchestrator reported a workflow step that failed inside the
+  service with the text of the connection error, the class of the
+  exception, or the module path of a failed import; a step now says
+  `Tool execution failed: a service it needs is unavailable`,
+  `Internal error executing tool` or `Tool '<name>' not found`, and the
+  cause is logged. What a caller got wrong (a refused target, an invalid
+  parameter) is still said in full. A sweep of every service for a 5xx
+  response built from a caught exception finds no other.
+- **agents no longer quotes the IOC value it refuses** (#735). The
+  validation message was `Invalid format for <type> IOC: '<value>'`, and
+  a validator's message is returned as written; it now stops at the
+  type.
+- **tools no longer logs, or reports from a workflow, the tool input it
+  refuses** (#735). A tool input that failed validation left the
+  response without its values (#585) and went to the log entire: the
+  route logged `str()` of the validation error, which quotes every value
+  refused, a credential among them if a field held one. The log now has
+  the fields and the messages. The orchestrator reported an invalid
+  parameter of a workflow step the same way, in the workflow result; it
+  now says `<field>: <message>`. The route's own reduction of a
+  validation error is gone: it uses `field_errors()` of the shared
+  package, as every service does.
 - **A missing `ENVIRONMENT` never means development, and the start-up
   checks for secrets apply to everything that is not development**
   (#736). `docker-compose.yml` passed
@@ -595,6 +626,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still cannot be imported with a current OpenTelemetry SDK, because it
   uses the Jaeger Thrift exporter, last released as 1.21.0, and no image
   installs the extra.
+- **identity dispatches a request once, whatever its handler raises**
+  (#735). Its database middleware wrapped the making of a session and
+  the rest of the application in one `try`, and answered a
+  `ValueError`, `KeyError`, `TypeError`, `ConnectionError`,
+  `TimeoutError` or `SQLAlchemyError` raised by a route by calling the
+  application again. On the Starlette the service pins, the second run
+  was started and cancelled at its first suspension, which comes before
+  any handler in identity: no doubled write or gateway call could be
+  produced through its routes, but where the second run stopped was the
+  framework's to decide. The middleware is removed. The session it made
+  was read by nothing; a stale connection is the pool's to replace
+  (`pool_pre_ping`, `pool_recycle`); a database that cannot be reached
+  is still answered 503, by an exception handler, and that answer now
+  carries `X-Request-ID`. A test reads every middleware of every
+  service and refuses one that calls downstream from an `except` or
+  `finally` clause, in a loop, or twice.
 - **gateway: a dashboard on another origin can call the API: a CORS
   preflight is answered, for the origins in `CORS_ORIGINS`** (#712).
   The production configuration answered 405 to every `OPTIONS` request
