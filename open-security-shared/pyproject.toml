@@ -5,28 +5,61 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "open-security-shared"
 version = "1.0.0"
-description = "Shared utilities for Wildbox security services (gateway auth + auth helpers)."
+description = "Shared utilities for Wildbox security services (gateway auth, error contract, observability)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Wildbox" }]
 
-# Core dependencies: everything the gateway-auth path needs. Importing the
-# package (open_security_shared) eagerly loads auth_utils via __init__, so these
-# must be present wherever the package is installed.
-dependencies = [
-    "fastapi>=0.110",
-    "pydantic>=2",
-    "passlib[bcrypt]>=1.7",
-    "PyJWT>=2.10",
-    "prometheus-client>=0.20",
-]
+# The core has no third-party dependency: importing the package resolves
+# nothing eagerly (see __init__.py), and the modules every service can use
+# without an extra (api_docs, circuit_breaker) need the standard library only.
+#
+# It used to require fastapi, pydantic, passlib, PyJWT and prometheus-client
+# of every service, while the images installed the package with --no-deps:
+# seven of eight did not have all five, and `pip check` failed in them (#722).
+# Guardian is Django and the sensor is aiohttp; neither is to install FastAPI
+# on account of a package whose FastAPI modules it never imports.
+dependencies = []
 
 [project.optional-dependencies]
-# Heavier, optional modules (observability / eventing). They are not on the
-# gateway-auth path and are not required to import open_security_shared.gateway_auth.
-observability = ["opentelemetry-api", "opentelemetry-sdk"]
-events = ["redis>=5", "sqlalchemy>=2", "httpx>=0.27"]
+# One extra per group of modules, each listing what those modules import.
+# [tool.wildbox.module-extras] below says which module needs which; a service
+# names the extras of the modules it imports when it installs the package,
+# and locks their requirements, with hashes, in its own requirements.txt.
+# scripts/check_shared_dependencies.py holds all of it together.
+#
+# A floor here must be met by the lock of every service that uses the extra.
+
+# errors, gateway_auth, tenancy, security_middleware. Starlette comes with
+# FastAPI, in the range FastAPI supports.
+fastapi = ["fastapi>=0.110", "pydantic>=2"]
+# auth_utils: JWT and password hashing helpers.
+auth = ["fastapi>=0.110", "passlib[bcrypt]>=1.7", "PyJWT>=2.10"]
+# observability: request metrics and the /metrics route. Without
+# prometheus-client the module still imports, and serves no metric.
+metrics = ["fastapi>=0.110", "prometheus-client>=0.20"]
+# cqrs, event_sourcing, feature_flags; idempotency with the fastapi extra.
+# sqlalchemy[asyncio]: the modules import sqlalchemy.ext.asyncio, which needs
+# greenlet.
+events = ["redis>=5", "sqlalchemy[asyncio]>=2"]
+# tracing: the distributions the module imports at the top, exporters and
+# instrumentations included. No service image installs it, and installing it
+# does not make the module importable today: tracing.py imports the Jaeger
+# Thrift exporter, whose last release (1.21.0) does not import under a
+# current OpenTelemetry SDK. install_observability() logs that and goes on
+# without tracing. The module has to move to OTLP before a service uses it.
+tracing = [
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-jaeger-thrift",
+    "opentelemetry-exporter-otlp-proto-http",
+    "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-redis",
+    "opentelemetry-instrumentation-sqlalchemy",
+    "opentelemetry-propagator-b3",
+]
 
 [tool.setuptools]
 # The modules live flat in this directory; expose them under the importable
@@ -35,3 +68,22 @@ packages = ["open_security_shared"]
 
 [tool.setuptools.package-dir]
 open_security_shared = "."
+
+# Which extras a module needs, by module name. Every module of the package is
+# listed, the ones that need none included: a module missing here, an import
+# its extras do not provide, or an extra no module uses fails
+# scripts/check_shared_dependencies.py.
+[tool.wildbox.module-extras]
+api_docs = []
+auth_utils = ["auth"]
+circuit_breaker = []
+cqrs = ["events"]
+errors = ["fastapi"]
+event_sourcing = ["events"]
+feature_flags = ["events"]
+gateway_auth = ["fastapi"]
+idempotency = ["fastapi", "events"]
+observability = ["metrics"]
+security_middleware = ["fastapi"]
+tenancy = ["fastapi"]
+tracing = ["tracing"]

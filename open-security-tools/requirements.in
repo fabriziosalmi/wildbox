@@ -34,6 +34,11 @@ redis==5.2.1
 psutil==6.1.1
 celery==5.4.0
 flower==2.0.1
+# The service calls install_observability() (the shared package's `metrics`
+# extra), and monitoring/prometheus.yml lists it as a scrape target. Named
+# here, with the floor open-security-shared/pyproject.toml declares, so the
+# lock provides it on this service's own account (it was there only because flower requires it).
+prometheus-client>=0.20,<1.0.0
 PyMySQL==1.2.0
 pg8000==1.31.5
 pytest==9.0.3

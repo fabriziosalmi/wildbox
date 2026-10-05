@@ -44,7 +44,10 @@ httpx==0.25.2
 aiohttp==3.14.3
 cryptography==50.0.2
 structlog==23.2.0
-prometheus-client==0.19.0
+# The shared package's `metrics` extra (install_observability) requires
+# prometheus-client 0.20 or later; the image build resolves the extra
+# against this lock and fails below that floor (#722).
+prometheus-client>=0.20,<1.0.0
 gunicorn==23.0.0
 python-dateutil==2.8.2
 python-dotenv==1.2.2
