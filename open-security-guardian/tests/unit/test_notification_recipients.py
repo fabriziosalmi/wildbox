@@ -9,8 +9,15 @@ names, vulnerability titles and findings to one mailbox, across the team
 boundary of #642.
 
 They are gone. Here they are defined, as that operator would, and must
-receive nothing; a notification without recipients is not sent, and that is
-logged and, where the notification belongs to a row, recorded on it.
+receive nothing; a notification nobody can be told of is not sent, and that
+is logged and, where the notification belongs to a row, recorded on it.
+
+Since #705 a notification without recipients of its own goes to the owners
+and admins of its team, and the address of an assignee is the one identity
+gives (tests/unit/test_notification_delivery.py). The tests below that set
+an address on guardian's own copy of a user, which no user that came through
+the gateway has, now give it to identity instead; the ones that asserted
+"nobody is told" assert it for a team identity lists nobody for.
 """
 
 import pathlib
@@ -65,11 +72,11 @@ def _overdue(team_id, assignee=None, hours=5):
         assert Vulnerability.objects.filter(due_date__isnull=False).exists()
 
 
-def _member(team_id, email):
-    member = tf.user(team_id)
-    member.email = email
-    member.save(update_fields=["email"])
-    return member
+@pytest.fixture(autouse=True)
+def nobody_platform_wide(mailoutbox):
+    """Whatever a test sends, the platform-wide addresses receive none of it."""
+    yield
+    assert not {PLATFORM, SECURITY_TEAM} & set(_addresses(mailoutbox))
 
 
 def _sla_history(vulnerability):
@@ -116,37 +123,46 @@ def test_guardian_defines_no_platform_wide_recipient(name):
 
 
 @pytest.mark.parametrize("recipients", [None, [], ()])
-def test_a_notification_without_recipients_is_not_sent_and_logged(
-    recipients, mailoutbox, caplog
+@pytest.mark.parametrize("team", [None, "a-team"])
+def test_a_notification_nobody_can_be_told_of_is_not_sent_and_logged(
+    recipients, team, mailoutbox, caplog, identity_contacts, db
 ):
-    from apps.core.utils import send_notification
+    """No address of its own, no owner or admin: nobody, not everybody."""
+    from apps.core import notifications
 
-    with caplog.at_level("WARNING", logger="apps.core.utils"):
-        sent = send_notification(
-            subject="Compliance Assessment Started",
-            template="compliance/assessment_started.html",
-            context={"assessment": "Q3", "framework": "ISO 27001"},
-            notification_type="compliance",
-            recipients=recipients,
+    team_id = uuid.uuid4() if team else None
+    with caplog.at_level("WARNING", logger="apps.core.notifications"):
+        delivery = notifications.notify_team_from_template(
+            team_id,
+            "Compliance Assessment Started",
+            "compliance/assessment_started.html",
+            {"assessment": "Q3", "framework": "ISO 27001"},
+            named=recipients,
+            kind="compliance",
         )
 
-    assert sent is False
+    assert delivery.sent is False and delivery.recipients == ()
+    assert delivery.reason == (
+        notifications.NO_DEFAULT_RECIPIENTS if team else notifications.NO_TEAM
+    )
     assert mailoutbox == []
     assert (
-        "Notification not sent, it has no recipients (compliance): "
+        f"Notification not sent (compliance), {delivery.reason}: "
         "Compliance Assessment Started"
     ) in caplog.text
 
 
 def test_a_notification_goes_to_the_recipients_it_names_only(mailoutbox):
-    from apps.core.utils import send_notification
+    from apps.core.notifications import notify_team_from_template
 
-    assert send_notification(
-        subject="s",
-        template="compliance/assessment_started.html",
-        context={"assessment": "Q3", "framework": "ISO 27001"},
-        recipients=["grc@team-a.example"],
+    delivery = notify_team_from_template(
+        None,
+        "s",
+        "compliance/assessment_started.html",
+        {"assessment": "Q3", "framework": "ISO 27001"},
+        named=["grc@team-a.example"],
     )
+    assert delivery.sent and delivery.recipients == ("grc@team-a.example",)
     assert _addresses(mailoutbox) == ["grc@team-a.example"]
 
 
@@ -222,7 +238,7 @@ def _scheduled_report(team_id, recipients):
 
 @pytest.mark.django_db
 def test_a_scheduled_report_is_announced_to_its_schedules_recipients_only(
-    teams, mailoutbox, caplog
+    teams, mailoutbox, caplog, identity_contacts
 ):
     from apps.reporting.tasks import notify_scheduled_report
 
@@ -236,20 +252,28 @@ def test_a_scheduled_report_is_announced_to_its_schedules_recipients_only(
 
     assert _addresses(mailoutbox) == ["ciso@team-a.example"]
     assert f"Report schedule {silent.schedule_id}" in caplog.text
-    assert "no e-mail sent (the schedule has no recipients)" in caplog.text
+    assert (
+        "no e-mail sent (the team has no owner or admin with an active "
+        "account and an address)"
+    ) in caplog.text
 
 
 # --- SLA violations --------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_an_sla_violation_is_told_to_the_assignee_and_nobody_else(teams, mailoutbox):
+def test_an_sla_violation_is_told_to_the_assignee_and_nobody_else(
+    teams, mailoutbox, identity_contacts
+):
     from apps.vulnerabilities.tasks import check_sla_violations
 
     team_a, team_b = teams
-    assigned = _overdue(team_a, _member(team_a, "dev@team-a.example"))
+    assigned = _overdue(
+        team_a, identity_contacts.member(team_a, "dev@team-a.example")
+    )
     unassigned = _overdue(team_b)
-    no_address = _overdue(team_b, tf.user(team_b))
+    # A member identity holds no address for: nobody to write to.
+    no_address = _overdue(team_b, identity_contacts.member(team_b, ""))
 
     outcome = check_sla_violations.apply().get()
 
@@ -263,7 +287,7 @@ def test_an_sla_violation_is_told_to_the_assignee_and_nobody_else(teams, mailout
 
 @pytest.mark.django_db
 def test_an_sla_violation_nobody_is_told_of_is_recorded_and_logged(
-    teams, mailoutbox, caplog
+    teams, mailoutbox, caplog, identity_contacts
 ):
     from apps.vulnerabilities.tasks import check_sla_violations
 
@@ -276,16 +300,18 @@ def test_an_sla_violation_nobody_is_told_of_is_recorded_and_logged(
     assert first == {"notifications_sent": 0, "notifications_not_sent": 1}
     assert mailoutbox == []
     (reason,) = _sla_history(unassigned)
+    # No assignee, and identity lists no owner or admin for the team.
     assert reason.startswith(
-        "SLA violation notification not sent (no assignee to e-mail)"
+        "SLA violation notification not sent (the team has no owner or admin "
+        "with an active account and an address)"
     )
     assert f"SLA violation of vulnerability {unassigned.id}" in caplog.text
-    assert "not sent (no assignee to e-mail)" in caplog.text
+    assert "not sent (the team has no owner or admin" in caplog.text
 
 
 @pytest.mark.django_db
 def test_an_unassigned_violation_is_recorded_once_then_notified_when_assigned(
-    teams, mailoutbox
+    teams, mailoutbox, identity_contacts
 ):
     """Not a history line a day for every vulnerability nobody is assigned."""
     from apps.vulnerabilities.models import Vulnerability, VulnerabilityHistory
@@ -304,7 +330,7 @@ def test_an_unassigned_violation_is_recorded_once_then_notified_when_assigned(
 
     # Once it has an assignee with an address, they are told.
     Vulnerability.objects.filter(pk=vulnerability.pk).update(
-        assigned_to=_member(team_a, "dev@team-a.example")
+        assigned_to=identity_contacts.member(team_a, "dev@team-a.example")
     )
     assigned = check_sla_violations.apply().get()
     assert assigned == {"notifications_sent": 1, "notifications_not_sent": 0}
@@ -313,17 +339,30 @@ def test_an_unassigned_violation_is_recorded_once_then_notified_when_assigned(
 
 
 @pytest.mark.django_db
-def test_a_failed_delivery_is_not_recorded_as_sent(teams):
-    """send_mail(fail_silently=True) answers 0; the history said "sent"."""
+@pytest.mark.parametrize("failure", [0, OSError("connection refused")])
+def test_a_failed_delivery_is_not_recorded_as_sent(teams, identity_contacts, failure):
+    """A server that takes nothing, or cannot be reached; the history said "sent"."""
     from apps.vulnerabilities.tasks import check_sla_violations
+    from django.core.mail import EmailMultiAlternatives
 
     team_a, _ = teams
-    vulnerability = _overdue(team_a, _member(team_a, "dev@team-a.example"))
+    vulnerability = _overdue(
+        team_a, identity_contacts.member(team_a, "dev@team-a.example")
+    )
 
-    with mock.patch("apps.vulnerabilities.tasks.send_mail", return_value=0) as send:
+    with mock.patch.object(
+        EmailMultiAlternatives,
+        "send",
+        autospec=True,
+        **(
+            {"side_effect": failure}
+            if isinstance(failure, Exception)
+            else {"return_value": failure}
+        ),
+    ) as send:
         outcome = check_sla_violations.apply().get()
 
-    assert send.call_args.kwargs["recipient_list"] == ["dev@team-a.example"]
+    assert send.call_args.args[0].to == ["dev@team-a.example"]
     assert outcome == {"notifications_sent": 0, "notifications_not_sent": 1}
     (reason,) = _sla_history(vulnerability)
     assert reason.startswith("SLA violation notification not sent (delivery failed)")

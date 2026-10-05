@@ -325,7 +325,7 @@ Custom actions:
 | `POST` | `vulnerabilities/{id}/reopen/` | Sets status `open`. Body `reason` |
 | `POST` | `vulnerabilities/{id}/add_tag/` | Body `{"tag": "..."}` |
 | `POST` | `vulnerabilities/{id}/remove_tag/` | Body `{"tag": "..."}` (a `POST` here, unlike assets) |
-| `GET` | `vulnerabilities/{id}/history/` | Change history, as a plain array |
+| `GET` | `vulnerabilities/{id}/history/` | Change history, as a plain array. The SLA check and the assignment notification record here what became of their e-mail: `SLA violation notification sent`, `sent to the team's owners and admins (no assignee to e-mail)` or `not sent (<reason>)` (`field_name` `sla_status`), and `Assignment notification sent` or `not sent (<reason>)` (`field_name` `assignment_notification`) |
 | `GET` | `vulnerabilities/{id}/attachments/` | Attachments, as a plain array |
 | `POST` | `vulnerabilities/bulk_action/` | See below |
 | `GET` | `vulnerabilities/stats/` | Counts by severity and status |
@@ -534,7 +534,7 @@ Custom actions:
 | `POST` | `reports/widgets/{id}/test/` | Tests the widget configuration |
 | `GET` | `reports/metrics/summary/` | Reporting metrics summary |
 | `POST` | `reports/alerts/{id}/test/` | Evaluates the rule now and returns `rule_triggered`, `current_value`, `threshold_value`, `test_time` |
-| `GET` | `reports/alerts/{id}/notifications/` | Notifications the rule sent, newest first (paginated) |
+| `GET` | `reports/alerts/{id}/notifications/` | Notifications of the rule, newest first (paginated). Each has `recipients` (who it was addressed to: the rule's own, or the team's owners and admins), `delivered` and, when it was not delivered, `failure_reason` |
 | `POST` | `reports/alerts/check_all/` | Queues a check of all active rules; returns `task_id` |
 
 Only some reports can be produced (`SUPPORTED_REPORT_TYPES` and

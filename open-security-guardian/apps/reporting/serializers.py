@@ -205,6 +205,6 @@ class AlertNotificationSerializer(TeamScopedModelSerializer):
         model = AlertNotification
         fields = (
             'id', 'kind', 'value', 'threshold_value', 'operator', 'recipients',
-            'delivered', 'created_at',
+            'delivered', 'failure_reason', 'created_at',
         )
         read_only_fields = fields
