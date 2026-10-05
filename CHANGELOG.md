@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **The responder's connector listing no longer prints internal service
+  addresses** (#654). `GET /api/v1/responder/connectors`, which any
+  member of any team can call, answered each connector's `config`: the
+  `WILDBOX_*_URL` addresses of the tools, data, guardian and agents
+  services on the internal network. A caller cannot reach them and has
+  no use for them, and they describe how the deployment is laid out.
+  The listing is now each connector's `name` and `actions`; the
+  `config` field is gone.
+
+### Fixed
+
+- **The responder's `status_url` is a path a client can follow** (#654).
+  `POST /api/v1/responder/playbooks/{id}/execute` answered
+  `"status_url": "/v1/runs/{run_id}"`, the service's own path, which on
+  the gateway is the dashboard, never the run. It is now the run's path
+  on the gateway, `/api/v1/responder/runs/{run_id}`: a constant without
+  scheme or host, as the tools service's `status_url` is, so no `Host`
+  or `X-Forwarded-*` header a client sends can change it. A unit test
+  follows it through the rewrite in the gateway's configuration, so the
+  two cannot drift apart. The endpoint's OpenAPI entry now documents
+  the 202 answer and its fields; it declared a 200 with no schema.
+
+### Removed
+
+- **`RESPONDER_DATABASE_URL`, and the responder's `DATABASE_URL`**
+  (#654). `docker-compose.yml` passed the responder
+  `DATABASE_URL=${RESPONDER_DATABASE_URL:-${DATABASE_URL}}`: a
+  `responder` database that `scripts/init-databases.sql` never creates
+  or, when that variable was unset, identity's own connection string.
+  The responder has no SQL state (its runs and its worker queue are in
+  Redis) and read neither, so the only effect was a PostgreSQL password
+  in a container with no use for it. The variable is removed from
+  `docker-compose.yml`, `.env.example` and the secret-rotation guide,
+  and the responder no longer waits for PostgreSQL to start.
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

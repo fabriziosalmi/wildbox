@@ -141,8 +141,8 @@ updated by the script: edit them by hand.
 PostgreSQL reads `POSTGRES_PASSWORD` only when it initializes an empty data
 directory; on an existing deployment the password lives in the database. The
 script changes only the `POSTGRES_PASSWORD=` line, while `DATABASE_URL`,
-`DATA_DATABASE_URL`, `GUARDIAN_DATABASE_URL` and `RESPONDER_DATABASE_URL`
-embed the password and are left as they are. A complete rotation is:
+`DATA_DATABASE_URL` and `GUARDIAN_DATABASE_URL` embed the password and are
+left as they are. A complete rotation is:
 
 1. Run `./scripts/rotate_secrets.sh --secret POSTGRES_PASSWORD`.
 2. While the old containers are still running, set the same value in the
@@ -154,7 +154,7 @@ embed the password and are left as they are. A complete rotation is:
    docker compose exec postgres psql -U postgres -c '\password postgres'
    ```
 
-3. Replace the old password with the new one in the four connection strings
+3. Replace the old password with the new one in the three connection strings
    above in `.env`.
 4. Recreate all services.
 
