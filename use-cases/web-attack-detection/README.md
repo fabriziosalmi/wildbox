@@ -206,7 +206,7 @@ services:
   sensor:
     volumes:
       - /var/log/nginx:/host/var/log/nginx:ro
-    # The container runs as uid 999 with no capabilities. If the logs are
+    # The container runs as uid 999, not as root. If the logs are
     # not world-readable (Debian and Ubuntu: 640, group adm), add the group
     # that may read them: stat -c %g /var/log/nginx/access.log
     group_add:

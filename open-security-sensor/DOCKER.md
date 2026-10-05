@@ -159,8 +159,8 @@ docker compose logs sensor | grep "Log source"
   read by the sensor's team. Mount the narrowest directory that holds the
   logs you want: the mount is the limit of what a pattern can match. Do not
   mount `/var/log` whole unless all of it may leave the host.
-- The container runs as uid 999 with no capabilities, so it reads only files
-  that user may read. For logs that are not world-readable (`640 root:adm` on
+- The container runs as uid 999, not as root, so it reads only files that
+  user may read. For logs that are not world-readable (`640 root:adm` on
   Debian and Ubuntu), add the owning group's ID to the service with
   `group_add` (`stat -c %g /var/log/nginx/access.log` prints it). A file it
   may not read is a warning in the sensor's log, not an error.

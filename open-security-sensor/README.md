@@ -347,7 +347,7 @@ Kubernetes' `/var/log/containers/*.log`, are not read: name the directory
 they point to.
 
 **In the container** a path is the container's, and the compose files mount
-no host log. The sensor process, uid 999 with no capabilities, can read:
+no host log. The sensor process, uid 999 and not root, can read:
 
 - the image's own files, which hold no host log;
 - its configuration, `/etc/security-sensor/config.yaml`, read-only;
