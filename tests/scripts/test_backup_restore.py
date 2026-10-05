@@ -630,20 +630,6 @@ volumes:
 """
 
 
-def _docker_available():
-    if not shutil.which("docker"):
-        return False
-    probe = subprocess.run(
-        ["docker", "compose", "version"], capture_output=True, timeout=30
-    )
-    if probe.returncode != 0:
-        return False
-    return (
-        subprocess.run(["docker", "info"], capture_output=True, timeout=30).returncode
-        == 0
-    )
-
-
 class Stack:
     """A throwaway PostgreSQL and Redis under this test's own project name."""
 
@@ -744,11 +730,7 @@ class Stack:
 
 
 @pytest.fixture(scope="module")
-def stack(tmp_path_factory):
-    if not _docker_available():
-        if os.environ.get("WILDBOX_REQUIRE_DOCKER_TESTS") == "1":
-            pytest.fail("docker is required for these tests and is not available")
-        pytest.skip("docker is not available")
+def stack(docker, tmp_path_factory):
     s = Stack(tmp_path_factory.mktemp("stack681"))
     try:
         s.compose("up", "-d", "--wait")

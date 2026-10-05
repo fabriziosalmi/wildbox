@@ -704,6 +704,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **No script test can be skipped in CI** (#723). The backup, restore
+  and rotation tests start a throwaway PostgreSQL or Redis and skip
+  where Docker is missing. The step that runs `tests/scripts` already
+  set `WILDBOX_REQUIRE_DOCKER_TESTS=1`, and both test files failed
+  instead of skipping when Docker was missing, each with its own copy
+  of the check. Nothing kept it that way: a test with a skip of its
+  own, or a step that lost the variable, would have left those scripts
+  untested behind a green job. With the variable set,
+  `tests/scripts/conftest.py` now fails every test of the directory
+  that would be skipped, whatever skipped it, the Docker check is one
+  fixture, and a test fails when a workflow runs `tests/scripts`
+  without the variable.
 - **Code Quality checks every Dockerfile** (#657).
   `scripts/check_container_hygiene.py` also reads every tracked
   Dockerfile and fails on a `pip install` that is neither

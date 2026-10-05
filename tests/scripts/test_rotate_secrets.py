@@ -626,23 +626,6 @@ def test_the_tools_service_only_requires_api_key_at_start():
 # --- the real compose files --------------------------------------------------
 
 
-def _docker_available():
-    if not shutil.which("docker"):
-        return False
-    for probe in (["docker", "compose", "version"], ["docker", "info"]):
-        if subprocess.run(probe, capture_output=True, timeout=30).returncode != 0:
-            return False
-    return True
-
-
-@pytest.fixture(scope="module")
-def docker():
-    if not _docker_available():
-        if os.environ.get("WILDBOX_REQUIRE_DOCKER_TESTS") == "1":
-            pytest.fail("docker is required for these tests and is not available")
-        pytest.skip("docker is not available")
-
-
 def _services_reading(variable):
     """Services whose compose environment interpolates ${variable...}."""
     compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
