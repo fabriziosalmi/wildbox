@@ -54,8 +54,10 @@ To change the configuration, edit `config.yaml.example` or use the
 ### Monitoring profile
 
 The `monitoring` profile adds Prometheus (port `9090`) and Grafana (port
-`3000`), both published on all host interfaces. Grafana's admin password comes
-from `GRAFANA_ADMIN_PASSWORD`:
+`3000`), both published on the host's loopback address only
+(`127.0.0.1:9090`, `127.0.0.1:3000`), as the sensor's local API is. To reach
+them from another machine, forward the port over SSH rather than changing
+the binding. Grafana's admin password comes from `GRAFANA_ADMIN_PASSWORD`:
 
 ```bash
 GRAFANA_ADMIN_PASSWORD=<password> SENSOR_API_KEY=<key> \

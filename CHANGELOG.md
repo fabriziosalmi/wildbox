@@ -1191,6 +1191,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   down, and the README and the shipped configurations call the two
   settings what they are, the thresholds of a warning. The sensor still
   measures every 5 seconds (it measured every 10 while the flag was set).
+- **The sensor's `DOCKER.md` says where its monitoring profile listens**
+  (#745). It said Prometheus and Grafana were published on all host
+  interfaces; `open-security-sensor/docker-compose.yml` binds both to
+  `127.0.0.1`, as it does the sensor's local API.
 
 ### Changed
 
