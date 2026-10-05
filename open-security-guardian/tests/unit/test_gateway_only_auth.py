@@ -7,12 +7,18 @@ scoping or the gateway's rate limits. ``APIKeyAuthentication`` did the same
 for DRF, also from ``Authorization: Bearer``.
 
 The key rows these tests use are written into ``core_apikey`` with raw SQL,
-in the table's shape from migration 0001: that is what a deployment upgraded
-from a release with the model still holds until 0002 runs, and the code that
+with the columns of migration 0001: that is what a deployment upgraded from
+a release with the model still holds until 0002 runs, and the code that
 read them is what these tests guard against coming back.
+
+The SQL is the part both databases read alike (#724): the table was created
+with SQLite's ``AUTOINCREMENT``, ``datetime`` and ``1`` for true, so on
+PostgreSQL, which is what guardian runs on, every test of this module
+stopped in its fixture.
 """
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from apps.core.gateway_middleware import GatewayAuthMiddleware
@@ -41,25 +47,28 @@ def legacy_key_row(db):
     owner = User.objects.create(
         username="legacy-key-owner", is_staff=True, is_superuser=True
     )
+    created = datetime(2026, 1, 1, tzinfo=timezone.utc)
     with connection.cursor() as cursor:
+        # Types and literals SQLite and PostgreSQL both take; the key and the
+        # values are parameters, so each driver writes them its own way. The
+        # table goes with the test's transaction on both.
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS core_apikey ("
-            " id integer PRIMARY KEY AUTOINCREMENT,"
-            " created_at datetime NOT NULL, updated_at datetime NOT NULL,"
+            " id integer PRIMARY KEY,"
+            " created_at timestamp NOT NULL, updated_at timestamp NOT NULL,"
             " name varchar(255) NOT NULL, key varchar(255) NOT NULL UNIQUE,"
-            " is_active bool NOT NULL, last_used datetime NULL,"
-            " expires_at datetime NULL, can_read bool NOT NULL,"
-            " can_write bool NOT NULL, can_delete bool NOT NULL,"
+            " is_active boolean NOT NULL, last_used timestamp NULL,"
+            " expires_at timestamp NULL, can_read boolean NOT NULL,"
+            " can_write boolean NOT NULL, can_delete boolean NOT NULL,"
             " rate_limit integer NOT NULL,"
             " user_id integer NOT NULL REFERENCES auth_user (id))"
         )
         cursor.execute(
-            "INSERT INTO core_apikey (created_at, updated_at, name, key,"
+            "INSERT INTO core_apikey (id, created_at, updated_at, name, key,"
             " is_active, last_used, expires_at, can_read, can_write,"
             " can_delete, rate_limit, user_id) VALUES"
-            " ('2026-01-01 00:00:00', '2026-01-01 00:00:00', 'legacy', %s,"
-            " 1, NULL, NULL, 1, 1, 1, 1000, %s)",
-            [_LEGACY_KEY, owner.pk],
+            " (1, %s, %s, 'legacy', %s, %s, NULL, NULL, %s, %s, %s, 1000, %s)",
+            [created, created, _LEGACY_KEY, True, True, True, True, owner.pk],
         )
     return owner
 

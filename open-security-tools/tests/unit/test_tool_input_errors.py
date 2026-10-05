@@ -41,7 +41,10 @@ def client():
     install_error_handlers(app)
     app.include_router(router_module.router)
     app.dependency_overrides[verify_api_key] = lambda: GatewayUser(
-        user_id=str(uuid.uuid4()), team_id=str(uuid.uuid4()), role="member", auth_type="session"
+        user_id=str(uuid.uuid4()),
+        team_id=str(uuid.uuid4()),
+        role="member",
+        auth_type="session",
     )
     return TestClient(app, raise_server_exceptions=False)
 
@@ -82,3 +85,48 @@ def test_a_valid_body_still_runs(client):
 
     assert response.status_code == 200, response.text
     assert [h["algorithm"] for h in response.json()["hash_results"]] == ["sha256"]
+
+
+def test_the_submitted_values_are_not_logged_either(client, caplog):
+    # The route logged str() of pydantic's error, which quotes every value
+    # that was refused: the secret left the response and stayed in the log.
+    with caplog.at_level("DEBUG"):
+        response = client.post(
+            f"/api/tools/{TOOL}",
+            json={"input_text": SECRET_LOOKING, "iterations": SECRET_LOOKING},
+        )
+
+    assert response.status_code == 422, response.text
+    assert SECRET_LOOKING not in caplog.text
+    refusals = [
+        record
+        for record in caplog.records
+        if "Input validation failed" in record.getMessage()
+    ]
+    assert refusals, "the refusal is still logged"
+    for record in refusals:
+        assert SECRET_LOOKING not in str(record.__dict__)
+
+
+def test_the_reduction_is_the_one_every_service_shares():
+    # app/api/router.py had a copy of its own (#735). The checks before a
+    # run now live in app/prerun.py (#743), for the synchronous route, the
+    # asynchronous submission and the task: that is where the shared
+    # reduction is used, and the router keeps none.
+    from app import prerun
+    from app.api import router
+    from open_security_shared import errors
+    from pydantic import BaseModel, ValidationError
+
+    assert prerun.field_errors is errors.field_errors
+    assert not hasattr(router, "field_errors")
+    assert not hasattr(router, "input_field_errors")
+
+    class Model(BaseModel):
+        port: int
+
+    with pytest.raises(ValidationError) as refused:
+        Model(port=SECRET_LOOKING)
+    reduced = prerun.input_field_errors(refused.value)
+    assert reduced == errors.field_errors(refused.value.errors(include_url=False))
+    assert SECRET_LOOKING not in str(reduced)

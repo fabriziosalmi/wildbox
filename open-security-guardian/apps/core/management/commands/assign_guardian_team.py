@@ -9,6 +9,11 @@ to the team that should own them::
     python manage.py assign_guardian_team --team <identity team UUID> --dry-run
     python manage.py assign_guardian_team --team <identity team UUID>
 
+``--list`` counts the rows without a team. ``--dry-run`` says what the run
+with the same arguments would do: which team would get how many rows of each
+model, and which rows (the first few of each model; all of them with
+``-v 2``). It used to print what ``--list`` prints, without the team (#724).
+
 Only models that store their team are updated: the rows that belong to
 another row (a vulnerability's asset, a scan's scanner, a report's
 template) follow it. Compliance frameworks and vulnerability templates
@@ -22,6 +27,9 @@ from apps.core.tenancy import TEAM_FIELD, has_global_rows, team_lookup
 from django.apps import apps
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+
+#: The rows of a model a dry run names, unless asked for all (-v 2).
+DRY_RUN_SAMPLE = 10
 
 
 def team_owned_models():
@@ -55,16 +63,28 @@ class Command(BaseCommand):
         parser.add_argument(
             "--dry-run",
             action="store_true",
-            help="Report what would be assigned and change nothing.",
+            help=(
+                "With --team: name the rows that would be assigned to it, and "
+                "change nothing. -v 2 names every row."
+            ),
         )
 
     def handle(self, *args, **options):
+        if options["list"] and (options["dry_run"] or options["team"] is not None):
+            raise CommandError(
+                "--list counts the rows without a team and takes no --team or "
+                "--dry-run. To see what an assignment would do: "
+                "--team <uuid> --dry-run."
+            )
         if not options["list"] and options["team"] is None:
-            raise CommandError("Give --team <uuid>, or --list to count the rows.")
+            raise CommandError(
+                "Give --team <uuid> (with --dry-run to change nothing), or "
+                "--list to count the rows."
+            )
 
         team = options["team"]
         include_shared = options["include_shared"]
-        apply = not (options["list"] or options["dry_run"])
+        listing, dry_run = options["list"], options["dry_run"]
         total = 0
         with transaction.atomic():
             for model in team_owned_models():
@@ -80,14 +100,35 @@ class Command(BaseCommand):
                         "(--include-shared assigns them)"
                     )
                     continue
-                if apply:
+                if listing:
+                    self.stdout.write(f"{label}: {count} row(s) without a team")
+                elif dry_run:
+                    self.stdout.write(
+                        f"{label}: {count} row(s) would be assigned to {team}"
+                    )
+                    self._name(rows, count, everything=options["verbosity"] >= 2)
+                else:
                     rows.update(**{TEAM_FIELD: team})
                     self.stdout.write(f"{label}: {count} row(s) assigned to {team}")
-                else:
-                    self.stdout.write(f"{label}: {count} row(s) without a team")
                 total += count
 
-        if apply:
-            self.stdout.write(self.style.SUCCESS(f"Assigned {total} row(s) to {team}."))
-        else:
+        if listing:
             self.stdout.write(f"{total} row(s) without a team; nothing changed.")
+        elif dry_run:
+            self.stdout.write(
+                f"Dry run: {total} row(s) would be assigned to {team}; "
+                "nothing changed."
+            )
+        else:
+            self.stdout.write(self.style.SUCCESS(f"Assigned {total} row(s) to {team}."))
+
+    def _name(self, rows, count, everything):
+        """Write the rows a dry run would assign: key and name, oldest first."""
+        shown = rows.order_by("pk")
+        if not everything:
+            shown = shown[:DRY_RUN_SAMPLE]
+        for row in shown:
+            self.stdout.write(f"  {row.pk}  {row}")
+        left = count - len(shown)
+        if left > 0:
+            self.stdout.write(f"  ... and {left} more (-v 2 names them all)")

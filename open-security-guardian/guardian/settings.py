@@ -252,12 +252,25 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # JSON. DRF's browsable API is for development only (#724): it is an
+    # HTML form on every route, and in the image it answered 500 to any
+    # request that asked for text/html ("Missing staticfiles manifest
+    # entry": its pages link static files, the storage below wants the
+    # manifest collectstatic writes, and the image never runs it). With
+    # DEBUG the storage serves the files as they are and the pages work.
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
-    ],
+    ] + (
+        ['rest_framework.renderers.BrowsableAPIRenderer'] if DEBUG else []
+    ),
+    # ``?format=`` chooses nothing: DRF reads it as the renderer to answer
+    # with, so ``reports/reports/?format=pdf``, the list's filter on a
+    # report's format, answered 404 "Not found" for want of a "pdf"
+    # renderer (#724). The Accept header chooses the representation.
+    'URL_FORMAT_OVERRIDE': None,
     # next/previous as relative references under the gateway's path, not
     # absolute URLs on the Host the gateway presents guardian (#643).
+    # ?page_size=N, up to the class's maximum (#724).
     'DEFAULT_PAGINATION_CLASS': 'apps.core.pagination.GatewayPageNumberPagination',
     'PAGE_SIZE': 50,
     'DEFAULT_FILTER_BACKENDS': [

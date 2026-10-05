@@ -9,6 +9,15 @@
 #   4. Review SECURITY.md for complete security checklist
 #
 # See SECURITY.md for complete production security requirements
+#
+# ENVIRONMENT has no default here, on purpose. Every service used to get
+# ${ENVIRONMENT:-development}: a .env without the line, written by hand or
+# older than the variable, started the whole stack as a development one,
+# silently, with the API schemas published and none of the start-up checks
+# for secrets (#736). Compose now refuses to start without it and says so.
+# .env.example and `make generate-secrets` set ENVIRONMENT=production;
+# docker-compose.prod.yml sets production itself on every service, whatever
+# .env says.
 
 networks:
   wildbox:
@@ -41,7 +50,7 @@ services:
     ports:
       - "127.0.0.1:8001:8001"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - DATABASE_URL=${DATABASE_URL}
       # Built here with the password, like every other service's. It was
       # ${REDIS_URL} from .env -- redis://wildbox-redis:6379/0, no password --
@@ -134,7 +143,7 @@ services:
       - API_KEY=${API_KEY}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
       # No rate-limit variables: RATE_LIMIT_REQUESTS and RATE_LIMIT_WINDOW were
@@ -193,7 +202,7 @@ services:
       - API_KEY=${API_KEY}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=DEBUG
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
       # The same allowlist as the api service: asynchronous runs are checked
       # here, in the worker (#614).
@@ -232,7 +241,7 @@ services:
     ports:
       - "127.0.0.1:5555:5555"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       # app.config.Settings requires API_KEY (shared with api/tools-worker);
       # without it flower crashes on startup with "api_key Field required".
       - API_KEY=${API_KEY}
@@ -282,11 +291,11 @@ services:
     ports:
       - "127.0.0.1:8002:8002"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      # app/config.py refuses to start without it when ENVIRONMENT is
-      # production, which .env.example sets. Nothing passed it, so a freshly
-      # generated .env produced a data service that crash-looped on
-      # "SECRET_KEY must be set in production".
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
+      # app/config.py refuses to start without it in every environment but
+      # development. Nothing passed it, so a freshly generated .env, which
+      # says production, produced a data service that crash-looped on
+      # "SECRET_KEY must be set".
       - SECRET_KEY=${DATA_SECRET_KEY:?DATA_SECRET_KEY is required}
       - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
@@ -323,11 +332,11 @@ services:
       - no-new-privileges:true
     command: python -m app.scheduler.main
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      # app/config.py refuses to start without it when ENVIRONMENT is
-      # production, which .env.example sets. Nothing passed it, so a freshly
-      # generated .env produced a data service that crash-looped on
-      # "SECRET_KEY must be set in production".
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
+      # app/config.py refuses to start without it in every environment but
+      # development. Nothing passed it, so a freshly generated .env, which
+      # says production, produced a data service that crash-looped on
+      # "SECRET_KEY must be set".
       - SECRET_KEY=${DATA_SECRET_KEY:?DATA_SECRET_KEY is required}
       - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
@@ -383,7 +392,7 @@ services:
       # sensor (#628).
       - gateway_cert:/etc/ssl/wildbox-public
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
       - WILDBOX_ENV=${WILDBOX_ENV:-development}
       - GATEWAY_LOG_LEVEL=${GATEWAY_LOG_LEVEL:-info}
@@ -471,7 +480,7 @@ services:
       - ./open-security-dashboard/src:/app/src
       - ./open-security-dashboard/public:/app/public
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       # This stack runs the Next.js dev server (Dockerfile.dev -> next dev),
       # so NODE_ENV must be development; production here breaks dev-mode CSP/HMR.
       - NODE_ENV=${NODE_ENV:-development}
@@ -513,7 +522,7 @@ services:
     container_name: wildbox-postgres
     restart: unless-stopped
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-identity}
@@ -615,7 +624,7 @@ services:
     ports:
       - "127.0.0.1:8013:8013"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       # :? so an unset value fails compose loudly instead of starting the
       # service with SECRET_KEY="", which Django rejects at boot anyway.
       - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
@@ -668,7 +677,7 @@ services:
       retries: 3
 
   # Guardian Celery worker. guardian publishes tasks to Redis db 1 (port
-  # scans on asset creation, threat-intel enrichment, alert-rule checks,
+  # scans on asset creation, assignment notices, alert-rule checks,
   # report generation, compliance notifications), and nothing consumed them
   # until this service existed: every task stayed queued forever (#537).
   # Same image as guardian; the entrypoint's migrate is a no-op once
@@ -699,7 +708,7 @@ services:
     volumes:
       - guardian_media:/app/media
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
@@ -784,7 +793,7 @@ services:
     # heartbeat file for the health check (guardian/beat.py).
     command: celery -A guardian beat --loglevel=info --scheduler guardian.beat:HeartbeatDatabaseScheduler
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
@@ -855,7 +864,7 @@ services:
     ports:
       - "127.0.0.1:8018:8018"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       # No DATABASE_URL: the responder has no SQL state. Its runs and its
       # worker queue are in Redis (REDIS_URL below). The variable that was
       # here named a `responder` database nothing creates, fell back to
@@ -929,7 +938,7 @@ services:
     ports:
       - "127.0.0.1:8019:8019"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       # cspm requires SECRET_KEY (min 32 chars); without it the service crashes
       # on startup with a pydantic "secret_key Field required" error.
       - SECRET_KEY=${CSPM_SECRET_KEY:?CSPM_SECRET_KEY is required}
@@ -1010,7 +1019,7 @@ services:
     # then fails, since its credentials were deleted when it started.
     stop_grace_period: ${CSPM_SCAN_TIMEOUT_SECONDS:-3600}s
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - SECRET_KEY=${CSPM_SECRET_KEY:?CSPM_SECRET_KEY is required}
       - REDIS_URL=${CSPM_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
       - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
@@ -1060,7 +1069,7 @@ services:
     ports:
       - "127.0.0.1:8006:8006"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       # Claude (Anthropic) — analysis is optional; the service starts without a
       # key and analysis tasks fail gracefully until one is set.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -1129,12 +1138,24 @@ services:
         shared: ./open-security-shared
     container_name: open-security-sensor
     restart: unless-stopped
+    # Stopping takes time: the collectors are stopped, the sender spends up
+    # to 10 seconds on what it still holds, and the log positions are
+    # written. Docker's default, 10 seconds, would kill it in the middle.
+    stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
+    # No capability, as the sensor's README says and its standalone compose
+    # file already did (#725). The sensor runs as uid 999, which has no
+    # effective capability to begin with; this empties the bounding set too.
+    # Checked in the built image: osquery's tables, osqueryd, the file
+    # monitor, the log forwarder and the data volume behave the same with
+    # and without it.
+    cap_drop:
+      - ALL
     ports:
       - "127.0.0.1:8004:8004"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
       # Enables the sensor's local API. Unset, _require_auth fails closed and
       # every route but /health answers 503, which left the sensor running and
@@ -1168,7 +1189,12 @@ services:
       # does not exist before the gateway's first start, and the sensor is
       # in the default stack, so the bind would fail a fresh `up`.
       - gateway_cert:/etc/ssl/wildbox:ro
-      # Host monitoring (limited to safe read-only paths)
+      # Host monitoring (limited to safe read-only paths). Nothing of the
+      # host's /etc, /bin, /usr/bin or /opt is mounted: the file monitor's
+      # default paths (/host/etc...) do not exist here and it watches
+      # nothing, which it says when it starts. To watch a host directory,
+      # mount it read-only in an override file: see
+      # open-security-sensor/README.md, "File integrity monitoring".
       - /proc/stat:/host/proc/stat:ro
       - /proc/meminfo:/host/proc/meminfo:ro
       - /proc/loadavg:/host/proc/loadavg:ro
@@ -1211,7 +1237,7 @@ services:
       # name. Matches tools-flower (also 127.0.0.1).
       - "127.0.0.1:5678:5678"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       # No N8N_BASIC_AUTH_*: n8n 1.x has no basic auth and ignores them
       # (#714). The editor is protected by the owner account created on
       # first start.

@@ -197,7 +197,8 @@ DETAIL_ACTIONS = _detail_actions()
 
 
 def test_there_are_detail_actions():
-    assert len(DETAIL_ACTIONS) > 50
+    # A floor, not a count: #724 removed three detail actions that did nothing.
+    assert len(DETAIL_ACTIONS) > 40
 
 
 @pytest.mark.django_db
@@ -309,8 +310,6 @@ def _fk_cases():
     for url, view_cls in VIEWSETS:
         if not hasattr(view_cls, "create"):
             continue
-        if view_cls.__name__ == "ScanScheduleViewSet":
-            continue  # creating one is refused outright (#548)
         for name, target, many, _ in _related_fields(view_cls, "create"):
             cases.append(
                 pytest.param(

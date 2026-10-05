@@ -29,6 +29,7 @@ GUARDIAN_SETTINGS = GUARDIAN / "guardian" / "settings.py"
 GUARDIAN_VULN_SERIALIZERS = GUARDIAN / "apps" / "vulnerabilities" / "serializers.py"
 GUARDIAN_VULN_MODELS = GUARDIAN / "apps" / "vulnerabilities" / "models.py"
 GUARDIAN_VULN_FILTERS = GUARDIAN / "apps" / "vulnerabilities" / "filters.py"
+GUARDIAN_VULN_VIEWS = GUARDIAN / "apps" / "vulnerabilities" / "views.py"
 DATA_MODELS = REPO_ROOT / "open-security-data" / "app" / "models.py"
 
 HTTP_METHODS = ("get", "post", "put", "delete", "patch")
@@ -281,6 +282,28 @@ def filterset_names(path, class_name):
                 and isinstance(item.value.func, ast.Attribute)
                 and getattr(item.value.func.value, "id", None) == "django_filters"
             }
+    raise LookupError(f"{class_name} is not defined in {path}")
+
+
+def search_fields(path, class_name):
+    """The fields ``?search=`` reads on a DRF viewset in ``path``.
+
+    Empty unless the viewset both lists ``SearchFilter`` among its
+    ``filter_backends`` and declares ``search_fields``: without the backend
+    the parameter is ignored.
+    """
+    for node in ast.parse(path.read_text()).body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            declared = {
+                item.targets[0].id: item.value
+                for item in node.body
+                if isinstance(item, ast.Assign)
+                and isinstance(item.targets[0], ast.Name)
+            }
+            backends = ast.unparse(declared.get("filter_backends", ast.List(elts=[])))
+            if "SearchFilter" not in backends or "search_fields" not in declared:
+                return set()
+            return set(ast.literal_eval(declared["search_fields"]))
     raise LookupError(f"{class_name} is not defined in {path}")
 
 

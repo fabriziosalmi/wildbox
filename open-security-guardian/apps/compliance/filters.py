@@ -1,5 +1,9 @@
 import django_filters
 from django.db.models import Q
+from django.utils import timezone
+
+from apps.core.filters import either
+
 from .models import (
     ComplianceFramework, ComplianceControl, ComplianceAssessment,
     ComplianceResult, ComplianceException
@@ -40,13 +44,12 @@ class ComplianceAssessmentFilter(django_filters.FilterSet):
         fields = ['framework', 'status', 'assessment_type', 'start_date', 'due_date']
 
     def filter_overdue(self, queryset, name, value):
-        from django.utils import timezone
-        if value:
-            return queryset.filter(
-                due_date__lt=timezone.now(),
-                status__in=['planned', 'in_progress']
-            )
-        return queryset
+        # ``false`` answers the others; it answered every row (#724).
+        return either(
+            queryset,
+            value,
+            Q(due_date__lt=timezone.now(), status__in=['planned', 'in_progress']),
+        )
 
 
 class ComplianceResultFilter(django_filters.FilterSet):
@@ -73,16 +76,10 @@ class ComplianceExceptionFilter(django_filters.FilterSet):
         fields = ['control', 'status', 'valid_until']
 
     def filter_expired(self, queryset, name, value):
-        from django.utils import timezone
-        if value:
-            return queryset.filter(valid_until__lt=timezone.now())
-        return queryset.filter(valid_until__gte=timezone.now())
+        return either(queryset, value, Q(valid_until__lt=timezone.now()))
 
     def filter_needs_review(self, queryset, name, value):
-        from django.utils import timezone
-        if value:
-            return queryset.filter(
-                review_date__lte=timezone.now(),
-                status='approved'
-            )
-        return queryset
+        # ``false`` answers the others; it answered every row (#724).
+        return either(
+            queryset, value, Q(review_date__lte=timezone.now(), status='approved')
+        )

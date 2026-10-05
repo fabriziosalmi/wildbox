@@ -4,18 +4,15 @@ Core Views - Health checks and system endpoints
 The Guardian: Proactive Vulnerability Management
 """
 
-import json
-import psutil
-from django.http import JsonResponse, HttpResponse
+from django.http import HttpResponse
 from django.views import View
 from django.conf import settings
 from django.db import connection
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from apps.core.models import SystemConfiguration
-import redis
 
 
 class HealthCheckView(APIView):
@@ -77,21 +74,6 @@ class MetricsView(View):
             return HttpResponse("Prometheus client not available", status=503)
 
 
-class SystemInfoView(APIView):
-    """System information endpoint."""
-    
-    def get(self, request):
-        """Return system information."""
-        system_info = {
-            'application': {
-                'name': 'Open Security Guardian',
-                'description': 'Proactive Vulnerability Management Platform'
-            }
-        }
-
-        return Response(system_info)
-
-
 class TaskStatusView(APIView):
     """State of a Celery task this service dispatched (#537).
 
@@ -134,9 +116,3 @@ class TaskStatusView(APIView):
             'queue': result.queue,
         })
 
-
-# Import required modules for system info
-import sys
-import platform
-import django
-from django.utils import timezone

@@ -31,6 +31,7 @@ from typing import Any, Callable, Dict, List, Optional
 from app.target_policy import TargetRefused, enforce_target_policy
 from app.tool_loader import find_schema_classes, load_tool_module
 from fastapi import HTTPException, status
+from open_security_shared.errors import field_errors
 from pydantic import ValidationError
 
 TOOL_NOT_FOUND = "Tool not found"
@@ -76,12 +77,11 @@ def input_field_errors(error: ValidationError) -> List[Dict[str, Any]]:
 
     Pydantic's own error list also carries the rejected input and, for a
     custom validator, the exception object in ``ctx``: the first can be a
-    secret, the second is not JSON.
+    secret, the second is not JSON. The reduction is the one every service
+    shares (open_security_shared.errors.field_errors, #735), so the tools
+    service does not keep a copy of its own.
     """
-    return [
-        {"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]}
-        for item in error.errors(include_url=False)
-    ]
+    return field_errors(error.errors(include_url=False))
 
 
 def check_tool_input(tool_name: str, tool_module: Any, input_data: Any) -> ToolRequest:

@@ -11,8 +11,16 @@ data_lake:
   batch_size: 50
   flush_interval: 30
   timeout: 30
-  retry_attempts: 3
+  # A batch the gateway does not take for a reason that may pass (a network
+  # error, HTTP 429, a 5xx answer) is kept and sent again: after retry_delay
+  # seconds, then twice as long each time, up to retry_max_delay.
   retry_delay: 5
+  retry_max_delay: 300
+  # What may wait for the gateway: this many events and this many bytes of
+  # serialized events. When either is reached the sensor stops collecting
+  # until a batch is accepted; it drops nothing to make room.
+  buffer_max_events: 5000
+  buffer_max_bytes: 16777216  # 16 MiB
 
 # Telemetry Collection
 collection:
@@ -33,15 +41,22 @@ collection:
 #     path: /var/log/nginx/access.log
 #     format: nginx
 
-# File Integrity Monitoring (Docker-optimized paths)
+# Where the sensor keeps what must outlive a restart: the log forwarder's
+# read positions. Not set here: positions are kept in memory only, and after
+# a restart each log source starts as its read_from says. To keep them,
+# create a directory the sensor's user can write and name it:
+#
+# data_dir: /var/lib/security-sensor
+
+# File Integrity Monitoring. The paths are this host's: a path that does not
+# exist is reported when the sensor starts and watched once it appears.
 fim:
   enabled: true
   paths:
-    # Host paths (mounted as /host/*)
-    - "/host/etc"
-    - "/host/bin"
-    - "/host/usr/bin"
-    - "/host/opt"
+    - "/etc"
+    - "/bin"
+    - "/usr/bin"
+    - "/opt"
   exclude_patterns:
     - "*.tmp"
     - "*.log"
