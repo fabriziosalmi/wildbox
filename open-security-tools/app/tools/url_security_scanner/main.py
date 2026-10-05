@@ -12,11 +12,6 @@ import aiohttp
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, Tuple
 import ipaddress
-import sys
-import os
-
-# Add parent directories to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig

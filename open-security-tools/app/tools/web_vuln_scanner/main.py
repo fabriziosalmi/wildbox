@@ -4,14 +4,9 @@ import asyncio
 import aiohttp
 import ssl
 import urllib.parse
-import sys
-import os
 from datetime import datetime
 from typing import Dict, Any, List
 import logging
-
-# Add parent directories to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...safe_http import guarded_session

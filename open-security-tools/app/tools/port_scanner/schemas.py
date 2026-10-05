@@ -3,11 +3,6 @@ from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
 from pydantic import Field
 from typing import Annotated, List, Literal, Optional
-import sys
-import os
-
-# Add app directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 
 from ...standardized_schemas import (
     BaseToolInput, 

@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same reason the service cancelled nothing when it shut down; it now
   cancels the synchronous runs in progress and waits up to 10 seconds
   for them to stop (#646).
+- **Seven tools no longer add the tools service's `app` directory to
+  `sys.path` when they are imported.** The entry was a leftover from
+  before tools were loaded as packages, and it made every module of the
+  service importable a second time under its bare name (#646).
 
 ## [0.11.2] - 2026-10-05
 
