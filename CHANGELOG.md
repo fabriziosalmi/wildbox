@@ -325,6 +325,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no use for them, and they describe how the deployment is laid out.
   The listing is now each connector's `name` and `actions`; the
   `config` field is gone.
+- **tools: the hourly limit of the tools that act for a caller is one
+  count per caller** (#721). "One destructive test per caller per hour"
+  was counted in the memory of the process that checked: the API process
+  and each of the worker's four child processes allowed one, and a
+  restart forgot them all. The count is now in the service's Redis, a
+  sorted set per caller and operation
+  (`wildbox:tools:operation-limit:<user>:<operation>`) that one Lua
+  script checks and records in a single step, so two requests for the
+  last allowance cannot both take it. The rule is unchanged: at most the
+  limit in any hour. When Redis cannot be reached the tool is not run:
+  the API answers 503 `Rate limiting temporarily unavailable`, as the
+  agents service does for its analysis limit, and an asynchronous task
+  fails after its retries. The standalone
+  `open-security-tools/docker-compose.yml` now runs its Redis with
+  `noeviction`, so a full instance cannot delete a count. Tests run
+  against a Redis server: a second interpreter is refused what the first
+  one used, and six processes asking at once for the same callers are
+  granted exactly the limit.
+- **tools: `/health` and `/api` no longer describe the deployment to a
+  caller nobody authenticated** (#721). Both answer anyone who reaches
+  the service port: every container on the development network, and
+  the host on `127.0.0.1:8000`. `/health` named the environment, the
+  concurrency ceiling, the default timeout and every loaded tool, and
+  `/api` listed the tools again. `/health` now answers `status`,
+  `service`, `version`, `timestamp`, `tools_count` and
+  `active_executions`; `/api` answers the service name, the version and
+  the path of the tool list, which asks for the gateway's identity. The
+  health checks read the status and are unaffected. A client that read
+  `environment`, `available_tools`, `max_concurrent_tools`,
+  `default_timeout` or `response_time_ms` from `/health` no longer finds
+  them.
 - **guardian no longer stores the credentials of scanners and external
   systems, which it kept in plain text and never used** (#728). A
   scanner's `api_key` and `password` (the help text of the second said
@@ -401,6 +432,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same thing would have refused nothing. The lines are gone from
   `docker-compose.yml` and both `.env.example` files; in the Compose
   stack, leftover lines in `.env` are ignored (#646).
+- **tools: `WORKERS` and `ENABLE_METRICS` in `docker-compose.prod.yml`,
+  which nothing read** (#721). The production overlay set `WORKERS=4`
+  for the tools API, and the image starts one uvicorn process whatever
+  it says. It is removed, not honored: the API's execution manager (the
+  `MAX_CONCURRENT_TOOLS` ceiling, the runs `/health` counts and shutdown
+  cancels) and its Prometheus registry are one per process, so four
+  processes would have allowed four times the ceiling and answered each
+  scrape with one process's counters. Runs that need more capacity are
+  the asynchronous ones, and `tools-worker` scales. `ENABLE_METRICS=true`
+  on the same service changed nothing either: `/metrics` is always
+  served. `docker-compose.dev.yml` no longer passes the tools API the
+  addresses of four other services, which only the health-aggregate
+  route removed in #646 read. A tools test now fails on any variable a
+  root Compose file sets for the tools containers that neither the
+  settings nor the code reads.
 - **tools: `GET /api/system/metrics`, which answered 500 to every
   request.** It imported a name that `app/middleware.py` never defined.
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
@@ -493,6 +539,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **tools reports one version.** `/health` and `/api` said `1.0.0` while
+  the OpenAPI schema and the `X-API-Version` header of the same
+  responses said `0.1.6`. All four now read the version written once in
+  `app/__init__.py` (#721).
+- **The gateway integration test no longer takes `/api/v1/tools/health`
+  for a health route** (#721). Under `/api/v1/tools/` the next path
+  segment is a tool's name, so that path is "the tool called health",
+  which does not exist: the tools service answers 404. The test listed
+  it, and `/api/v1/agents/health`, among "health endpoints" and passed
+  because it accepted any answer but 502; it also sent no credential,
+  so the gateway answered 401 itself and no backend was reached. It was
+  named "Circuit Breaker with Recovery" and exercised none. The gateway
+  keeps no health location for tools: nothing reads one, and a fixed
+  name there would take a name from the tools, which is why the task
+  routes have a prefix of their own. The test now asks each backend,
+  with a credential, for a route it serves (the tool list, the data
+  health probe, the agents statistics) and expects 200, and expects the
+  tools service's own 404 for the mistaken path.
 - **identity answers 404, 500 and 503 in the body every service
   answers** (#722). It installed the shared error handlers and then
   registered two of its own by status code, which run first. Every 404
@@ -1177,6 +1241,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   do so, which is a request, not a control. Any value but the two names
   stops the service at start. Neither tool worked before this release,
   so the default takes nothing away from an existing deployment.
+- **Asynchronous tool runs are counted, and three alerts read the
+  counts** (#721). A run submitted to `/api/v1/tools/{tool}/async`
+  executes in `tools-worker`, which Prometheus cannot scrape (it serves
+  no HTTP, and in production it is on other networks), so nothing said
+  that those runs failed or that the worker had stopped. The worker now
+  counts in Redis how each task ended, and the tools API, which is
+  scraped, exports `wildbox_tool_async_executions_total{tool, outcome}`,
+  `wildbox_tool_async_queue_length`,
+  `wildbox_tool_async_tasks_consumed_total` and
+  `wildbox_tool_async_metrics_up`. A task is counted once, when Celery
+  settles its state and by the process that settles it: the child that
+  ran it when it returned or raised, the worker's main process when it
+  was killed at the hard time limit or canceled, which the child never
+  sees. A retry is not counted, nor is a task whose process died and
+  that Celery put back on the queue, until it ends. The counters live as
+  long as the Redis data, not as long as a process. The rule file gains
+  `WildboxAsyncToolFailureRate` (over a quarter of the asynchronous runs
+  failed, for 15 minutes; it is separate from the synchronous alert so
+  that a worker failing every task is not hidden by synchronous runs
+  that succeed), `WildboxAsyncToolTasksNotConsumed` (tasks have been
+  queued for 15 minutes and no worker took any; a backlog that a busy
+  worker is working through does not fire it) and
+  `WildboxAsyncToolMetricsUnreadable` (the API cannot read the counts,
+  so the other two cannot fire). A task that ended before its tool
+  started (input that does not validate, a refused target, an unknown
+  tool) is counted as `refused`, not `failed`, as the synchronous path
+  answers those with a 4xx before a run exists; an unknown tool name is
+  the label `unknown`. Tests start the service's Celery app as a worker
+  with a pool of child processes against a Redis server, with a child
+  replaced after every task, and end tasks in each way, a kill at the
+  hard time limit included.
+  `scripts/check_monitoring_config.py` now also refuses `tools-worker`
+  as a scrape target, a rule on a tools metric while the tools API is
+  not scraped, and an alert without a unit test in which it stays
+  silent.
 - **identity tells guardian's worker who may be e-mailed about a team**
   (#705). `POST /internal/team-contacts` answers the active members of
   one team that the caller selects, by user id or by role, with their
