@@ -29,6 +29,7 @@ from ...user_manager import (
 from ...access_revocation import (
     active_api_key_ids, end_account_access_or_503, end_team_access_or_503,
 )
+from ...guardian_memberships import notify_accounts_ended, notify_memberships_ended  # noqa: E402
 from ...config import settings
 
 router = APIRouter()
@@ -408,9 +409,14 @@ async def delete_user(
             await db.delete(api_key)
         
         # Hard delete user - now safe since relationships are cleaned up
+        deleted_user_id = str(user.id)
         await db.delete(user)
         await db.commit()
-        
+
+        # The account is gone from every team: guardian is told, so no team
+        # goes on naming it as an assignee or an owner (#676).
+        await notify_accounts_ended([deleted_user_id])
+
         # Build success message
         message = f"User {user.email} deleted successfully"
         if deleted_teams:
@@ -717,8 +723,13 @@ async def delete_my_account(
     # Soft delete - deactivate and mark email as deleted
     current_user.is_active = False
     current_user.email = f"deleted_{current_user.id}@example.com"
+    deleted_user_id = str(current_user.id)
     await db.commit()
-    
+
+    # A deleted account does not come back, unlike a deactivated one: it is
+    # gone from every team as far as guardian is concerned (#676).
+    await notify_accounts_ended([deleted_user_id])
+
     return {"message": "Account deleted successfully"}
 
 
@@ -1063,7 +1074,14 @@ async def remove_team_member(
     # still belong to.
     await end_team_access_or_503(db, target.user_id, target.team_id, "The removal")
 
+    removed = (str(target.user_id), str(target.team_id))
     await db.delete(target)
     await db.commit()
+
+    # guardian keeps its own list of the users a team can name (assignees,
+    # owners, share targets): it is told now that the member is gone, so it
+    # stops accepting and naming them at once (#676). After the commit, and
+    # without undoing it on failure: see app/guardian_memberships.py.
+    await notify_memberships_ended([removed])
 
     return {"message": "Member removed successfully"}

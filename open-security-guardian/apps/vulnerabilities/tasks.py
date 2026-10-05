@@ -14,6 +14,7 @@ import requests
 from datetime import timedelta
 
 from apps.core.locks import single_instance
+from apps.core.tenancy import is_current_member
 
 from .models import (
     Vulnerability, VulnerabilityStatus, VulnerabilityHistory,
@@ -77,7 +78,17 @@ def notify_vulnerability_assignment(self, vulnerability_id, assigned_by_user_id)
     try:
         vulnerability = Vulnerability.objects.get(id=vulnerability_id)
         assigned_by = User.objects.get(id=assigned_by_user_id)
-        
+
+        if vulnerability.assigned_to and member_assignee(vulnerability) is None:
+            # Assigned to somebody who is not, or no longer, a member of the
+            # vulnerability's team: the API refuses that, so this is a stale
+            # assignment. Nothing about the team's data is e-mailed (#676).
+            logger.warning(
+                f"Assignment notification for vulnerability {vulnerability_id} not sent: "
+                "the assignee is not a member of its team"
+            )
+            return {'notification_sent': False}
+
         if vulnerability.assigned_to:
             recipient_email = vulnerability.assigned_to.email
             recipient_name = vulnerability.assigned_to.get_full_name()
@@ -186,11 +197,56 @@ def scan_vulnerability_remediation(self, vulnerability_id):
         raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
 
 
+#: What every history entry of the SLA check starts with; the check finds its
+#: own entries of the last day by it.
+SLA_HISTORY_MARKER = 'SLA violation notification'
+SLA_NO_RECIPIENT = 'not sent (no assignee to e-mail)'
+
+
+def sla_recipient(vulnerability):
+    """Who is told that a vulnerability is past its due date: its assignee.
+
+    Nobody else. The check also copied every violation to a
+    SECURITY_TEAM_EMAIL setting, one address for the whole platform: defined,
+    it would have received every team's asset names and vulnerability titles
+    (#678). A vulnerability without an assignee, or whose assignee has no
+    e-mail address, notifies nobody, and its history says so.
+
+    The assignee is told only while they are a member of the
+    vulnerability's team (#676). identity tells guardian when a member
+    leaves, and their assignments are cleared then; if that notice never
+    arrived, this is what keeps a team's asset names and vulnerability
+    titles from being e-mailed to somebody who left it.
+    """
+    assignee = member_assignee(vulnerability)
+    return (assignee.email or None) if assignee else None
+
+
+def member_assignee(vulnerability):
+    """The vulnerability's assignee, if they may be told about it, else None.
+
+    A vulnerability of a team: its assignee, while a current member of that
+    team. A vulnerability without a team (written before guardian kept one)
+    has no team boundary to cross: its assignee, as before.
+    """
+    assignee = vulnerability.assigned_to
+    if assignee is None:
+        return None
+    team_id = vulnerability.asset.team_id
+    if team_id is not None and not is_current_member(assignee, team_id):
+        return None
+    return assignee
+
+
 @shared_task
 @single_instance
 def check_sla_violations():
     """
-    Check for SLA violations and send notifications
+    Record SLA violations and notify the assignee of each
+
+    A violation is recorded in the vulnerability's history with whether its
+    notification was sent: once a day while there is an assignee to remind,
+    once when there is nobody to tell.
     """
     try:
         now = timezone.now()
@@ -202,64 +258,78 @@ def check_sla_violations():
         ).select_related('asset', 'assigned_to')
         
         notification_count = 0
+        not_sent_count = 0
         for vuln in overdue_vulns:
-            # Check if we've already sent recent overdue notifications
-            recent_notification = VulnerabilityHistory.objects.filter(
+            recipient = sla_recipient(vuln)
+            last_entry = VulnerabilityHistory.objects.filter(
                 vulnerability=vuln,
-                change_reason__icontains='SLA violation notification',
-                timestamp__gte=now - timedelta(hours=24)
-            ).exists()
-            
-            if not recent_notification:
-                # Send notification to assigned user and/or security team
-                recipients = []
-                if vuln.assigned_to and vuln.assigned_to.email:
-                    recipients.append(vuln.assigned_to.email)
-                
-                # Add security team email
-                security_team_email = getattr(settings, 'SECURITY_TEAM_EMAIL', None)
-                if security_team_email:
-                    recipients.append(security_team_email)
-                
-                if recipients:
-                    overdue_hours = (now - vuln.due_date).total_seconds() / 3600
-                    subject = f"SLA Violation: {vuln.title} - {overdue_hours:.1f}h overdue"
-                    message = f"""
+                change_reason__icontains=SLA_HISTORY_MARKER,
+            ).order_by('-timestamp').first()
+            if last_entry is not None:
+                # At most one notification a day, however often this runs.
+                if last_entry.timestamp >= now - timedelta(hours=24):
+                    continue
+                # Nobody to tell, and the history already says so: once is
+                # enough, not a line a day for every unassigned vulnerability.
+                if not recipient and SLA_NO_RECIPIENT in last_entry.change_reason:
+                    continue
+
+            overdue_hours = (now - vuln.due_date).total_seconds() / 3600
+            sent = False
+            if recipient:
+                subject = f"SLA Violation: {vuln.title} - {overdue_hours:.1f}h overdue"
+                message = f"""
                     SLA Violation Alert
-                    
+
                     Vulnerability: {vuln.title}
                     Asset: {vuln.asset.name}
                     Risk Score: {vuln.risk_score:.1f}
                     Due Date: {vuln.due_date.strftime('%Y-%m-%d %H:%M')}
                     Overdue by: {overdue_hours:.1f} hours
-                    
+
                     Please take immediate action.
-                    
+
                     View: {settings.BASE_URL}/vulnerabilities/{vuln.id}/
                     """
-                    
-                    send_mail(
-                        subject=subject,
-                        message=message,
-                        from_email=settings.DEFAULT_FROM_EMAIL,
-                        recipient_list=recipients,
-                        fail_silently=True
-                    )
-                    
-                    # Record notification in history
-                    VulnerabilityHistory.objects.create(
-                        vulnerability=vuln,
-                        field_name='sla_status',
-                        old_value='on_time',
-                        new_value='violated',
-                        change_reason=f'SLA violation notification sent - {overdue_hours:.1f}h overdue'
-                    )
-                    
-                    notification_count += 1
-        
-        logger.info(f"Sent {notification_count} SLA violation notifications")
-        return {'notifications_sent': notification_count}
-        
+                # send_mail answers how many messages went out: with
+                # fail_silently, 0 is a delivery that failed.
+                sent = bool(send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[recipient],
+                    fail_silently=True
+                ))
+                outcome = 'sent' if sent else 'not sent (delivery failed)'
+            else:
+                outcome = SLA_NO_RECIPIENT
+
+            # The violation is recorded on the vulnerability either way, so
+            # its team sees it, and whether anybody was told (#678).
+            VulnerabilityHistory.objects.create(
+                vulnerability=vuln,
+                field_name='sla_status',
+                old_value='on_time',
+                new_value='violated',
+                change_reason=f'{SLA_HISTORY_MARKER} {outcome} - {overdue_hours:.1f}h overdue'
+            )
+            if sent:
+                notification_count += 1
+            else:
+                not_sent_count += 1
+                logger.warning(
+                    f"SLA violation of vulnerability {vuln.id}: notification {outcome}"
+                )
+
+        logger.info(
+            f"Sent {notification_count} SLA violation notifications; "
+            f"{not_sent_count} not sent"
+        )
+        return {
+            'notifications_sent': notification_count,
+            'notifications_not_sent': not_sent_count,
+        }
+
     except Exception as exc:
         logger.error(f"Error checking SLA violations: {exc}")
         raise

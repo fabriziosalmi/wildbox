@@ -151,3 +151,133 @@ def test_another_teams_asset_cannot_be_referenced(owners, team_a_rows):
 
     assert response.status_code == 400, response.text[:300]
     assert "does not exist" in str(response.json()["asset"]), response.json()
+
+
+# --- a member who left the team (#676) ---------------------------------------------
+
+IDENTITY_API = f"{GATEWAY_URL}/api/v1/identity"
+GROUPS = f"{GUARDIAN_API}/assets/groups/"
+
+
+def _team_of(headers):
+    """The team the gateway resolves for a session."""
+    response = requests.get(ASSETS, headers=headers, timeout=TIMEOUT)
+    assert response.status_code == 200, response.text[:200]
+    return response.headers["X-Wildbox-Team-ID"]
+
+
+def _new_admin_member(owner, team_id):
+    """An account the owner creates in the team, past its first password
+    change: (identity user id, bearer headers)."""
+    email = f"guardian-tenancy-member-{secrets.token_hex(6)}@example.com"
+    initial = f"Guardian-Member-{secrets.token_hex(8)}!"
+    created = requests.post(
+        f"{IDENTITY_API}/admin/teams/{team_id}/members",
+        json={"email": email, "password": initial, "role": "admin"},
+        headers=owner,
+        timeout=TIMEOUT,
+    )
+    assert created.status_code == 201, created.text[:200]
+    login = requests.post(
+        f"{IDENTITY_URL}/api/v1/auth/jwt/login",
+        data={"username": email, "password": initial},
+        timeout=TIMEOUT,
+    )
+    assert login.status_code == 200, login.text[:200]
+    changed = requests.post(
+        f"{IDENTITY_API}/admin/me/change-password",
+        json={
+            "current_password": initial,
+            "new_password": f"Guardian-Member-{secrets.token_hex(8)}!",
+        },
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        timeout=TIMEOUT,
+    )
+    assert changed.status_code == 200, changed.text[:200]
+    return created.json()["user_id"], {
+        "Authorization": f"Bearer {changed.json()['access_token']}"
+    }
+
+
+def _assign(owner, vulnerability_id, guardian_user_id):
+    return requests.post(
+        f"{VULNERABILITIES}{vulnerability_id}/assign/",
+        json={"assigned_to": guardian_user_id},
+        headers=owner,
+        timeout=TIMEOUT,
+    )
+
+
+def _assignee(owner, vulnerability_id):
+    response = requests.get(
+        f"{VULNERABILITIES}{vulnerability_id}/", headers=owner, timeout=TIMEOUT
+    )
+    assert response.status_code == 200, response.text[:300]
+    return response.json()["assigned_to"]
+
+
+def test_a_member_removed_from_the_team_is_no_longer_one_of_its_users(
+    owners, team_a_rows
+):
+    """identity removes a member; guardian, told by identity, refuses them.
+
+    guardian recorded a member the first time they acted in a team and
+    never forgot them: the team could go on assigning vulnerabilities to a
+    member identity had removed, and its data went on naming them.
+    """
+    owner, _ = owners
+    _, vulnerability_id = team_a_rows
+    team_id = _team_of(owner)
+    member_id, member = _new_admin_member(owner, team_id)
+
+    # The member acts in the team: guardian now knows them. What they create
+    # carries their guardian user id, which is what an assignment names.
+    group = requests.post(
+        GROUPS,
+        json={"name": f"it-tenancy-{uuid.uuid4().hex[:12]}"},
+        headers=member,
+        timeout=TIMEOUT,
+    )
+    assert group.status_code == 201, group.text[:300]
+    group = group.json()
+    assert group["created_by_username"] == member_id
+    guardian_user_id = group["created_by"]
+
+    try:
+        # While a member: accepted, and named.
+        assigned = _assign(owner, vulnerability_id, guardian_user_id)
+        assert assigned.status_code == 200, assigned.text[:300]
+        assert _assignee(owner, vulnerability_id) == guardian_user_id
+
+        removed = requests.delete(
+            f"{IDENTITY_API}/admin/teams/{team_id}/members/{member_id}",
+            headers=owner,
+            timeout=TIMEOUT,
+        )
+        assert removed.status_code == 200, removed.text[:200]
+
+        # At once, with no wait: identity told guardian before it answered.
+        # The team's data no longer names them...
+        assert _assignee(owner, vulnerability_id) is None
+        # ...and they are refused as an assignee, as an id nobody has is.
+        refused = _assign(owner, vulnerability_id, guardian_user_id)
+        assert refused.status_code == 400, refused.text[:300]
+        unknown = _assign(owner, vulnerability_id, 2**31 - 1)
+        assert unknown.status_code == 400, unknown.text[:300]
+        assert refused.json() == unknown.json()
+        patched = requests.patch(
+            f"{VULNERABILITIES}{vulnerability_id}/",
+            json={"assigned_to": guardian_user_id},
+            headers=owner,
+            timeout=TIMEOUT,
+        )
+        assert patched.status_code == 400, patched.text[:300]
+        assert "does not exist" in str(patched.json()["assigned_to"]), patched.json()
+        assert _assignee(owner, vulnerability_id) is None
+
+        # What they did stays on record: the group is still theirs by name.
+        kept = requests.get(f"{GROUPS}{group['id']}/", headers=owner, timeout=TIMEOUT)
+        assert kept.status_code == 200, kept.text[:300]
+        assert kept.json()["created_by"] == guardian_user_id
+    finally:
+        requests.delete(f"{GROUPS}{group['id']}/", headers=owner, timeout=TIMEOUT)

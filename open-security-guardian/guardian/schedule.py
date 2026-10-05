@@ -163,6 +163,39 @@ def alert_renotify_interval(environ=None):
     return timedelta(seconds=int(value))
 
 
+# How long guardian goes on treating a user as a member of a team without
+# seeing them act in it (#676). A membership row is what the gateway told
+# guardian when it authenticated a request; every request refreshes it, and
+# a user who left the team can make none. identity also tells guardian when
+# a member is removed, which takes effect at once; this window is what holds
+# when that notice is lost, and for the members who left before guardian was
+# told at all. 30 days: long enough that a colleague back from leave can
+# still be assigned work, short enough that nobody stays a member on a
+# notice that never arrived. There is no 'off': that would be the bug.
+TEAM_MEMBERSHIP_MAX_AGE_VARIABLE = "GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS"
+TEAM_MEMBERSHIP_MAX_AGE_DEFAULT = "30"
+TEAM_MEMBERSHIP_MAX_AGE_LIMIT = 365
+
+
+def team_membership_max_age(environ=None):
+    """The membership window as a timedelta.
+
+    Raises ImproperlyConfigured for anything but a whole number of days from
+    1 to 365, so a typo, or a value that amounts to "forever", stops guardian
+    at start-up instead of quietly trusting stale memberships.
+    """
+    environ = os.environ if environ is None else environ
+    value = (
+        environ.get(TEAM_MEMBERSHIP_MAX_AGE_VARIABLE) or TEAM_MEMBERSHIP_MAX_AGE_DEFAULT
+    ).strip()
+    if not value.isdigit() or not 1 <= int(value) <= TEAM_MEMBERSHIP_MAX_AGE_LIMIT:
+        raise ImproperlyConfigured(
+            f"{TEAM_MEMBERSHIP_MAX_AGE_VARIABLE}={value!r}: expected a number of "
+            f"days from 1 to {TEAM_MEMBERSHIP_MAX_AGE_LIMIT}"
+        )
+    return timedelta(days=int(value))
+
+
 def build_beat_schedule(environ=None):
     """The CELERY_BEAT_SCHEDULE mapping, with overrides from ``environ``.
 

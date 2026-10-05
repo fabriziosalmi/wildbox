@@ -406,24 +406,31 @@ def test_a_notification_is_e_mailed_to_the_rule_recipients(renotify, mailoutbox)
 
 @pytest.mark.django_db
 def test_without_recipients_the_notification_is_recorded_undelivered(
+    renotify, mailoutbox, caplog
+):
+    rule = _rule(operator="eq", threshold_value=0)
+    with caplog.at_level("WARNING", logger="apps.reporting.tasks"):
+        tasks.check_alert_rule(rule.pk)
+    assert mailoutbox == []
+    notification = AlertNotification.objects.get(rule=rule)
+    assert (notification.kind, notification.delivered) == ("firing", False)
+    assert notification.recipients == []
+    assert "notification not sent (no recipients configured)" in caplog.text
+
+
+@pytest.mark.django_db
+def test_a_rule_without_recipients_has_no_platform_wide_fallback(
     renotify, mailoutbox, settings
 ):
-    settings.DEFAULT_NOTIFICATION_RECIPIENTS = []
+    # This asserted the opposite: that DEFAULT_NOTIFICATION_RECIPIENTS, one
+    # list for every team, received the alerts of a rule that names nobody
+    # (#678).
+    settings.DEFAULT_NOTIFICATION_RECIPIENTS = ["secops@example.com"]
     rule = _rule(operator="eq", threshold_value=0)
     tasks.check_alert_rule(rule.pk)
     assert mailoutbox == []
     notification = AlertNotification.objects.get(rule=rule)
-    assert (notification.kind, notification.delivered) == ("firing", False)
-
-
-@pytest.mark.django_db
-def test_default_recipients_are_used_when_the_rule_has_none(
-    renotify, mailoutbox, settings
-):
-    settings.DEFAULT_NOTIFICATION_RECIPIENTS = ["secops@example.com"]
-    rule = _rule(operator="eq", threshold_value=0)
-    tasks.check_alert_rule(rule.pk)
-    assert [m.to for m in mailoutbox] == [["secops@example.com"]]
+    assert (notification.recipients, notification.delivered) == ([], False)
 
 
 # --- the re-notification interval setting ----------------------------------

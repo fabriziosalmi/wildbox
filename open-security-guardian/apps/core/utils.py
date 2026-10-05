@@ -13,30 +13,37 @@ logger = logging.getLogger(__name__)
 
 def send_notification(subject, template, context, notification_type='general', recipients=None):
     """
-    Send notification via configured channels
-    
+    E-mail a notification to the recipients its caller names
+
     Args:
         subject: Email subject
         template: Template path for notification content
         context: Template context data
         notification_type: Type of notification (general, alert, report, etc.)
-        recipients: List of email recipients (optional)
-    
+        recipients: List of email recipients
+
     Returns:
         bool: True if notification sent successfully
+
+    There is no default recipient (#678). This fell back to a
+    DEFAULT_NOTIFICATION_RECIPIENTS setting, one list for the whole
+    platform: defined, it would have received every team's alerts, reports
+    and compliance findings. A notification whose caller names nobody is
+    not sent, and says so in the log.
     """
     try:
         # Render email content
         html_content = render_to_string(template, context)
-        
-        # Get recipients
+
+        recipients = list(recipients or [])
         if not recipients:
-            recipients = getattr(settings, 'DEFAULT_NOTIFICATION_RECIPIENTS', [])
-        
-        if not recipients:
-            logger.warning(f"No recipients configured for notification: {subject}")
+            logger.warning(
+                "Notification not sent, it has no recipients (%s): %s",
+                notification_type,
+                subject,
+            )
             return False
-            
+
         # Send email
         send_mail(
             subject=subject,
