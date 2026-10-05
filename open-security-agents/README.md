@@ -106,7 +106,11 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
 ### Read the result
 
 While the task runs, `GET` returns its status (`pending`, `running`,
-`failed`). Once it completed it returns the result:
+`failed`). A failed task has no report: `error` says why (no model key,
+the model unreachable or refusing, a timeout, a report the model did not
+produce), in the words of `app/failures.py`, and the task counts in
+`failed_today`. Nothing but the model's structured report produces a
+verdict. Once the task completed, `GET` returns the result:
 
 | Field | Content |
 | --- | --- |
@@ -190,7 +194,7 @@ Settings are read from the environment (`app/config.py`):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | none | Claude API key. Without it the service starts, `/health` reports `not_configured` and analyses fail |
+| `ANTHROPIC_API_KEY` | none | Claude API key. Without it the service starts, `/health` reports `not_configured`, submissions are accepted and each task fails at once, saying that AI analysis is not configured |
 | `ANTHROPIC_MODEL` | `claude-opus-4-8` | Model id |
 | `ANTHROPIC_TEMPERATURE` | `0.1` | Sampling temperature |
 | `ANTHROPIC_MAX_TOKENS` | `4096` | Maximum output tokens |

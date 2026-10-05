@@ -35,6 +35,7 @@ from .schemas import (
 from .config import settings
 from .worker import celery_app, run_threat_enrichment_task
 from .auth import get_current_user, GatewayUser
+from .failures import reason_for
 from .rate_limit import limit_analysis, limiter, rate_limited_caller
 from .stats import COMPLETED, FAILED, LEGACY_KEYS, read_today
 from .tools.langchain_tools import enabled_tools
@@ -542,10 +543,13 @@ async def get_analysis_result(
         if celery_task.state == "SUCCESS" and celery_task.result:
             return AnalysisResult(**celery_task.result)
         
-        # If task failed, return generic error (details are in server logs)
+        # A failed task says why, in the words app/failures.py has for the
+        # cause the worker recorded; the details are in the server logs. It
+        # was one sentence for every failure, and most failures never got
+        # here: they were answered above, as reports (#717).
         error_message = None
         if celery_task.state == "FAILURE":
-            error_message = "Analysis failed. Please retry or contact support."
+            error_message = reason_for(redis_client.get(f"task:{task_id}:error"))
         
         # Return status information
         return AnalysisTaskStatus(

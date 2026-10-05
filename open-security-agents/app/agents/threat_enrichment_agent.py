@@ -13,6 +13,7 @@ import os
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Literal
 
+from anthropic import AnthropicError
 from langchain_anthropic import ChatAnthropic
 from langchain_classic.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -20,6 +21,7 @@ from langchain_core.messages import SystemMessage
 from pydantic import BaseModel, Field
 
 from ..config import TEAM_DATA_TOOLS, settings
+from ..failures import MODEL_UNAVAILABLE, REPORT_FAILED, TIMED_OUT, AnalysisFailed
 from ..tools.langchain_tools import enabled_tools
 
 
@@ -209,73 +211,75 @@ Begin your investigation by thinking through your approach, then systematically 
             ioc: Dictionary containing 'type' and 'value' keys
             
         Returns:
-            Dictionary containing analysis results
+            The report the model produced from the investigation: verdict,
+            confidence, evidence and recommended actions, each from the
+            model's structured output and from nothing else.
+
+        Raises:
+            AnalysisFailed: the model could not be reached or refused, the
+                analysis timed out, or its report could not be generated.
+                There is no report in that case, not a placeholder one.
+            Exception: anything else that went wrong, unchanged; the worker
+                records the task as failed for it too.
         """
         start_time = datetime.now(timezone.utc)
-        
-        try:
-            # Sanitize IOC value to prevent prompt injection
-            import re
-            ioc_type = re.sub(r'[^a-zA-Z0-9_-]', '', str(ioc['type']))[:50]
-            ioc_value = re.sub(r'[^\w.:\-/@\[\]%]', '', str(ioc['value']))[:500]
-            logger.info(f"Starting analysis of {ioc_type} IOC: {ioc_value}")
 
-            # Prepare input for the agent
-            input_text = f"Please investigate this {ioc_type} IOC: {ioc_value}"
-            
-            # Execute the agent, protected by the circuit breaker. The
-            # `if LLM_BREAKER is not None` guard that used to wrap this was
-            # always False, so the protection never applied (WILDBO-REL-01).
+        # Sanitize IOC value to prevent prompt injection
+        ioc_type = re.sub(r'[^a-zA-Z0-9_-]', '', str(ioc['type']))[:50]
+        ioc_value = re.sub(r'[^\w.:\-/@\[\]%]', '', str(ioc['value']))[:500]
+        logger.info(f"Starting analysis of {ioc_type} IOC: {ioc_value}")
+
+        # Prepare input for the agent
+        input_text = f"Please investigate this {ioc_type} IOC: {ioc_value}"
+
+        # Execute the agent, protected by the circuit breaker. The
+        # `if LLM_BREAKER is not None` guard that used to wrap this was
+        # always False, so the protection never applied (WILDBO-REL-01).
+        #
+        # A failure here is the analysis's failure (#717). This used to
+        # catch five builtin exceptions and answer a report with the verdict
+        # "Informational" and confidence 0, which the task then returned as
+        # its result: an analysis that never ran, reported as completed.
+        try:
             result = await LLM_BREAKER.call(
                 self.agent_executor.ainvoke, {"input": input_text}
             )
-            
-            # Extract the agent's analysis
-            agent_output = result.get("output", "")
-            intermediate_steps = result.get("intermediate_steps", [])
-            
-            # Calculate analysis duration
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
-            
-            # Extract tools used
-            tools_used = []
-            raw_tool_data = {}
-            
-            for step in intermediate_steps:
-                if len(step) >= 2:
-                    action = step[0]
-                    tool_result = step[1]
-                    
-                    if hasattr(action, 'tool'):
-                        tool_name = action.tool
-                        tools_used.append(tool_name)
-                        raw_tool_data[tool_name] = tool_result
-            
-            # Generate structured report using a second LLM call
-            structured_result = await self._generate_structured_report(
-                ioc, agent_output, raw_tool_data, tools_used, duration
-            )
-            
-            logger.info(f"Completed analysis of {ioc['value']} in {duration:.1f}s")
-            return structured_result
-            
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error analyzing IOC {ioc['value']}: {e}")
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
-            
-            return {
-                "task_id": None,  # Will be set by caller
-                "ioc": ioc,
-                "verdict": "Informational",
-                "confidence": 0.0,
-                "executive_summary": "Analysis could not be completed. Please retry or contact support.",
-                "evidence": [],
-                "recommended_actions": ["Retry analysis"],
-                "full_report": "# Analysis Error\n\nThe analysis could not be completed. Please retry or contact support.",
-                "analysis_duration": duration,
-                "tools_used": []
-            }
-    
+        except (AnthropicError, CircuitBreakerError) as e:
+            # The model's API refused, could not be reached, or has failed
+            # often enough that the breaker is open.
+            raise AnalysisFailed(MODEL_UNAVAILABLE) from e
+        except TimeoutError as e:
+            raise AnalysisFailed(TIMED_OUT) from e
+
+        # Extract the agent's analysis
+        agent_output = result.get("output", "")
+        intermediate_steps = result.get("intermediate_steps", [])
+
+        # Calculate analysis duration
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+
+        # Extract tools used
+        tools_used = []
+        raw_tool_data = {}
+
+        for step in intermediate_steps:
+            if len(step) >= 2:
+                action = step[0]
+                tool_result = step[1]
+
+                if hasattr(action, 'tool'):
+                    tool_name = action.tool
+                    tools_used.append(tool_name)
+                    raw_tool_data[tool_name] = tool_result
+
+        # Generate structured report using a second LLM call
+        structured_result = await self._generate_structured_report(
+            ioc, agent_output, raw_tool_data, tools_used, duration
+        )
+
+        logger.info(f"Completed analysis of {ioc['value']} in {duration:.1f}s")
+        return structured_result
+
     async def _generate_structured_report(
         self, 
         ioc: Dict[str, Any], 
@@ -335,34 +339,13 @@ Begin your investigation by thinking through your approach, then systematically 
             }
 
         except Exception as e:
-            # Structured output is best-effort; on failure fall back to a verdict
-            # parsed from the agent's own narrative rather than a fixed value.
-            logger.error(f"Structured report generation failed, using fallback: {e}")
-            verdict = self._verdict_from_text(raw_analysis)
-            return {
-                "task_id": None,
-                "ioc": ioc,
-                "verdict": verdict,
-                "confidence": 0.3,  # low — structured analysis did not complete
-                "executive_summary": (
-                    f"Investigation ran {len(tools_used)} tool(s); structured report "
-                    f"generation failed, verdict inferred from the analyst narrative."
-                ),
-                "evidence": [
-                    {"source": t, "finding": "Tool was executed during the investigation.",
-                     "severity": "low"}
-                    for t in tools_used
-                ],
-                "recommended_actions": ["Re-run the analysis", "Review the raw investigation notes"],
-                "full_report": (
-                    f"# Threat Analysis Report\n\n## Executive Summary\n"
-                    f"Analysis ran with {len(tools_used)} tool(s) (structured report failed).\n\n"
-                    f"## Raw Analysis\n{raw_analysis}"
-                ),
-                "raw_data": tool_data,
-                "analysis_duration": duration,
-                "tools_used": tools_used,
-            }
+            # No report without the model's own (#717). The fallback here
+            # took the verdict from the first of the four verdict words in
+            # the narrative ("not malicious" read as Malicious), set the
+            # confidence to 0.3, and listed one evidence item per tool,
+            # "Tool was executed during the investigation.", that no tool
+            # had reported. The investigation's notes are not a report.
+            raise AnalysisFailed(REPORT_FAILED) from e
 
     @staticmethod
     def _summarize_tool_outputs(tool_data: Dict[str, Any], per_tool_limit: int = 1500) -> str:
@@ -374,12 +357,6 @@ Begin your investigation by thinking through your approach, then systematically 
             text = tool_result if isinstance(tool_result, str) else json.dumps(tool_result, default=str)
             parts.append(f"### {tool_name}\n{text[:per_tool_limit]}")
         return "\n\n".join(parts)
-
-    @staticmethod
-    def _verdict_from_text(text: str) -> str:
-        """Best-effort verdict extraction from free text (fallback only)."""
-        m = re.search(r'\b(Malicious|Suspicious|Benign|Informational)\b', text or "", re.IGNORECASE)
-        return m.group(1).capitalize() if m else "Informational"
 
     @staticmethod
     def _render_markdown(ioc, verdict, confidence, summary, evidence, actions, tools_used, raw_analysis) -> str:

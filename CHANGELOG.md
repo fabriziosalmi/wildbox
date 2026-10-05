@@ -496,6 +496,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like the tools service's and the responder's `status_url`, so no
   request header can change it. A unit test follows it through the
   rewrite in the gateway's configuration to the task.
+- **An AI analysis that fails is a failed task, not a completed one with
+  a made-up report** (#717). When the agent raised, it answered a report
+  with the verdict `Informational` and confidence 0; the worker did the
+  same when the task body raised; and a report the model did not
+  produce was replaced by a verdict taken from the first verdict word in
+  the narrative ("not malicious" read as `Malicious`), a confidence of
+  0.3 and one evidence item per tool that no tool had reported. Each
+  came back from `GET /api/v1/agents/analyze/{task_id}` as a completed
+  analysis and was counted in `completed_today`: with no
+  `ANTHROPIC_API_KEY`, every submission "completed". Now a failure
+  leaves the task `failed`, counted in `failed_today`, with no report,
+  and `error` says why: no model key (the task fails before anything
+  runs), the model unreachable or refusing, a timeout, a report that
+  could not be generated, or an internal error. Only the model's
+  structured report produces a verdict, a confidence or evidence.
 
 ### Added
 
