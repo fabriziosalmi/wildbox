@@ -9,8 +9,8 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 from limits import parse_many
-from pydantic import Field, ValidationInfo, field_validator
-from pydantic_settings import BaseSettings
+from pydantic import ValidationInfo, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The tools that return data Wildbox holds for the caller's team, as opposed
 # to what a lookup of the IOC finds outside: the team's threat indicators in
@@ -20,10 +20,28 @@ from pydantic_settings import BaseSettings
 # the settings are validated before anything else is imported.
 TEAM_DATA_TOOLS = ("threat_intel_query_tool", "vulnerability_search_tool")
 
+# How long before TASK_TIMEOUT, the hard limit at which Celery kills the
+# process an analysis runs in, the analysis is told to stop (Celery's soft
+# time limit). It is the time a task has to record why it failed, which a
+# killed one cannot do (app/worker.py).
+SOFT_LIMIT_MARGIN_SECONDS = 30
+# The shortest TASK_TIMEOUT accepted: one that leaves an analysis as long to
+# run as it then has to stop.
+MIN_TASK_TIMEOUT_SECONDS = 2 * SOFT_LIMIT_MARGIN_SECONDS
+
 
 class Settings(BaseSettings):
-    """Application settings"""
-    
+    """Application settings.
+
+    Each field is read from the environment variable of its own name, in any
+    case (``redis_url`` from ``REDIS_URL``). Some fields used to say so with
+    ``Field(env="REDIS_URL")``, the pydantic v1 form, which v2 ignores: it
+    worked because the names were the same, and would have stopped working,
+    silently, for a field renamed without its variable (#727).
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
     # Application
     debug: bool = False
     log_level: str = "INFO"
@@ -36,11 +54,11 @@ class Settings(BaseSettings):
     anthropic_max_tokens: int = 4096
     
     # Redis Configuration
-    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
+    redis_url: str = "redis://localhost:6379/0"
     
     # Celery Configuration
-    celery_broker_url: str = Field(default="redis://localhost:6379/0", env="CELERY_BROKER_URL")
-    celery_result_backend: str = Field(default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND")
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/0"
     
     # Wildbox services. The agent's tools call them directly, on the internal
     # network, as the user who submitted the analysis
@@ -52,15 +70,15 @@ class Settings(BaseSettings):
     wildbox_api_url: str = "http://api:8000"
     wildbox_data_url: str = "http://open-security-data:8002"
     wildbox_guardian_url: str = "http://open-security-guardian:8013"
-    # No tool calls the responder. Kept so that an env file which sets it
-    # still loads: the settings refuse unknown keys from a .env file.
-    wildbox_responder_url: str = "http://open-security-responder:8018"
+    # There is no WILDBOX_RESPONDER_URL: no tool calls the responder. The
+    # setting existed for a health check of the client that nothing called
+    # (#727). The settings refuse unknown keys from a .env file, so one
+    # that still sets it must drop the line.
 
     @field_validator(
         "wildbox_api_url",
         "wildbox_data_url",
         "wildbox_guardian_url",
-        "wildbox_responder_url",
     )
     @classmethod
     def _service_url(cls, value: str, info: ValidationInfo) -> str:
@@ -82,11 +100,11 @@ class Settings(BaseSettings):
     # No longer read (#567): the client sent it as X-API-Key when it had no
     # caller identity, and the tools service stopped accepting that in #566.
     # Kept only so that a .env file which still sets INTERNAL_API_KEY loads.
-    internal_api_key: str = Field(default="", env="INTERNAL_API_KEY")
+    internal_api_key: str = ""
     # REQUIRED. Proof-of-origin secret sent with the caller's gateway identity
     # (X-Wildbox-* headers) on every internal call (#175); without it internal
     # tool calls fail.
-    gateway_internal_secret: str = Field(default="", env="GATEWAY_INTERNAL_SECRET")
+    gateway_internal_secret: str = ""
     
     # The team-data tools the model is given: a comma-separated list of names
     # from TEAM_DATA_TOOLS above. Empty, the default, gives it neither: an
@@ -135,7 +153,22 @@ class Settings(BaseSettings):
     
     # Task Settings
     task_result_expires: int = 3600  # 1 hour
+    # The hard time limit of an analysis, in seconds. The analysis is told
+    # to stop SOFT_LIMIT_MARGIN_SECONDS before it.
     task_timeout: int = 600  # 10 minutes
+
+    @field_validator("task_timeout")
+    @classmethod
+    def _task_timeout_leaves_a_margin(cls, value: int) -> int:
+        # The soft limit is this minus the margin. A value at or under the
+        # margin made it zero or negative: no analysis could have run.
+        if value < MIN_TASK_TIMEOUT_SECONDS:
+            raise ValueError(
+                f"TASK_TIMEOUT must be at least {MIN_TASK_TIMEOUT_SECONDS} seconds: "
+                f"an analysis is told to stop {SOFT_LIMIT_MARGIN_SECONDS} seconds "
+                "before it"
+            )
+        return value
 
     # Rate limits on POST /v1/analyze (#651), in the `limits` notation
     # ("5/minute", "5/minute;50/day"). ANALYZE_RATE_LIMIT applies to each
@@ -186,10 +219,6 @@ class Settings(BaseSettings):
         if not items or any(item.amount < 1 for item in items):
             raise ValueError(f"invalid rate limit {value!r}: amounts must be 1 or more")
         return value
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 # Global settings instance

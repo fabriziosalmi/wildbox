@@ -73,6 +73,12 @@ class FakeRedis:
     def setex(self, key, ttl, value):
         self.store[key] = value
 
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.store:
+            return None
+        self.store[key] = value
+        return True
+
     def incr(self, key):
         self.store[key] = int(self.store.get(key, 0)) + 1
 
@@ -404,6 +410,7 @@ def test_an_unknown_code_is_an_internal_failure_not_a_key_error():
 class CeleryResult:
     state = "PENDING"
     result = None
+    date_done = None
 
     def __init__(self, task_id, app=None):
         self.id = task_id
@@ -453,13 +460,15 @@ def test_a_failed_task_says_why(api, redis, code):
     assert not REPORT_FIELDS & set(body)
 
 
-@pytest.mark.parametrize(
-    "stored", [None, "", "no such code", "ValueError: /srv/app.py line 3"]
-)
+@pytest.mark.parametrize("stored", ["", "no such code", "ValueError: /srv/app.py line 3"])
 def test_a_failure_without_a_known_code_gets_the_generic_reason(api, redis, stored):
-    """Never the raw value: it could be anything a future worker wrote."""
-    if stored is not None:
-        redis.setex(f"task:{TASK_ID}:error", 3600, stored)
+    """Never the raw value: it could be anything a future worker wrote.
+
+    A failure with no code recorded at all was the fourth case here, and
+    got the generic reason too. It is now given the code of the exception
+    Celery holds for it (#727): tests/unit/test_time_limits.py.
+    """
+    redis.setex(f"task:{TASK_ID}:error", 3600, stored)
 
     body = read(api).json()
 

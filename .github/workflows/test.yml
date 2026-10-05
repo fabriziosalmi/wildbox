@@ -71,6 +71,12 @@ jobs:
           pip install pytest pytest-cov pytest-asyncio
       
       - name: Run unit tests
+        # The agents suite starts a throwaway Redis with the runner's Docker
+        # and a real Celery worker, to hit the task time limits (#727). It
+        # skips where Docker is missing; here it must run. No other suite
+        # reads the variable.
+        env:
+          WILDBOX_REQUIRE_DOCKER_TESTS: "1"
         run: |
           cd open-security-${{ matrix.service }}
           # Truthful gating: a service WITH unit tests must pass them (no
@@ -184,13 +190,16 @@ jobs:
           # Frontend-only smoke: these specs are backend-free by design (they
           # assert the dashboard builds, the login UI renders, form validation,
           # and the client-side auth-guard redirects), plus tool-schema.spec.ts,
-          # the toolbox's schema-to-form mapping, which needs no page (#585).
+          # the toolbox's schema-to-form mapping, which needs no page (#585),
+          # and ai-analysis-ui.spec.ts, the AI analysis page with the agents
+          # service's answers supplied by the spec (#727).
           # The backend-dependent specs are tagged @backend and run against
           # the full compose stack in e2e-fullstack.yml (#103).
           npx playwright test --project=chromium \
             tests/e2e/admin-ui-only.spec.ts \
             tests/e2e/quick-login-test.spec.ts \
-            tests/e2e/tool-schema.spec.ts
+            tests/e2e/tool-schema.spec.ts \
+            tests/e2e/ai-analysis-ui.spec.ts
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7

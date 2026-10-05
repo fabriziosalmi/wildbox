@@ -334,6 +334,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
+  client that was its only reader.** `WildboxAPIClient.health_check()`
+  had no caller, and no tool of the agent calls the responder. The
+  method and the setting are gone, with the lines in the service's own
+  `docker-compose.yml` and `.env.example`; the root `docker-compose.yml`
+  never set the variable. In the environment it is ignored. In a `.env`
+  file in the service's directory, which only a run outside the Compose
+  stack reads, it now stops the service at start, as every key the
+  settings do not know does: remove the line (#727).
 - **gateway: `/api/v1/automations/`, the route to n8n** (#714). It
   answers 404. n8n's editor is on `http://127.0.0.1:5678` of the host
   with the `automations` profile started; from another machine, through
@@ -738,6 +747,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CURRENT INVESTIGATION TARGET: {input}` and was passed as a message,
   not a template, so the placeholder was never filled. The line is
   gone; the target is in the user turn, where it always was.
+- **An AI analysis killed at its time limit, or with its process, is
+  recorded and counted** (#727). At the hard time limit Celery kills the
+  process a task runs in, and a process can die under a task (out of
+  memory), so nothing in the task could record either: the task read
+  `failed` with `Analysis failed. Please retry or contact support.`, no
+  cause was recorded and `failed_today` did not count it. The worker's
+  main process now records both, on Celery's `task_failure` signal:
+  `The analysis did not finish within its time limit.` for the hard
+  limit, and a new reason, `The analysis was interrupted before it
+  finished. No verdict was produced.`, for a lost process. A failed task
+  nobody recorded is recorded by `GET /api/v1/agents/analyze/{task_id}`
+  from the exception Celery holds for it. The record is written once
+  (`SET NX`), and whoever writes it counts the task, so the task, the
+  worker and the API together count a failure once. A task still
+  `running` more than a minute past the hard limit has lost its whole
+  worker and reads `failed`, interrupted; it read `running` until it
+  expired. The soft limit, 30 seconds before `TASK_TIMEOUT`, stays the
+  task's chance to record its own timeout: reached while the report is
+  generated, it is no longer recorded as a report that could not be
+  generated, and the service refuses to start with a `TASK_TIMEOUT`
+  under 60 seconds, which left no time to run. A unit test starts a real
+  Celery worker and a Redis container and hits both limits.
+- **A canceled AI analysis reads `revoked`, and a task's times are its
+  own** (#727). `GET /api/v1/agents/analyze/{task_id}` answered
+  `pending` forever for a task canceled with `DELETE`, and `started_at`
+  and `completed_at` were the time of the request. `started_at` is now
+  when the worker started the task, and `completed_at` when Celery
+  recorded its end.
+- **The agents service's OpenAPI schema has its examples** (#727). The
+  four models declared them with `class Config: schema_extra`, the
+  pydantic v1 key, which pydantic v2 ignores: no example reached the
+  schema, and the analysis result was not in it at all, since the read
+  declared no response model. They are now `json_schema_extra` in
+  `model_config`, the read declares both of its answers, and a unit test
+  validates each example against its own model: the task example had an
+  ID the route refuses and tool names no tool has. The other v1 forms in
+  the service are gone too (`@validator`, `Field(env=...)` in the
+  settings, `.dict()`, `Path(regex=...)`); they worked, with deprecation
+  warnings, so nothing else changes for a client or an operator.
 
 ### Changed
 
@@ -911,6 +959,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The dashboard has an AI analysis page** (#727). `/ai-analysis`, in
+  the sidebar, submits an indicator to the agents service and follows
+  the task: queued, running with the worker's progress, failed with the
+  service's reason and no report, canceled, or completed with the
+  verdict, the confidence, the evidence, the recommended actions and
+  the full report. The dashboard had a client for the agents service
+  that no page used. The service lists no tasks and keeps each for a
+  limited time, so the page shows the tasks submitted from this
+  browser by the signed-in account, kept in the browser under the
+  account's own key, and says when one has expired. `GET
+  /api/v1/agents/stats` gains `model_configured`, and the page says
+  before a submission that an analysis cannot run when no model API key
+  is set. The route is behind the sign-in guard, which listed a path,
+  `/ai-analyst`, that no page had.
 - **`scripts/restore_redis.sh` restores the Redis snapshot a backup
   takes.** Redis runs with the append-only file enabled and then ignores
   `dump.rdb` at start, so copying the snapshot into the data volume gave
