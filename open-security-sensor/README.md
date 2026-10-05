@@ -16,8 +16,9 @@ components (`sensor/core/agent.py`):
   paths and reports created, modified and deleted files, with a SHA-256 hash for
   files under 10 MB.
 - **Log forwarder** (`sensor/collectors/log_forwarder.py`): off by default
-  (`collection.log_forwarding: false`). Reads a fixed, per-platform set of log
-  sources.
+  (`collection.log_forwarding: false`). Follows the log files and system logs
+  listed under `log_sources`, or a per-platform default set when the
+  configuration has no such section. See [Log forwarding](#log-forwarding).
 - **Data processor and forwarder** (`sensor/pipeline/`): normalize and enrich
   events, then batch them and send them over HTTPS to the gateway's
   `/api/v1/data/ingest` (`data_lake.endpoint`).
@@ -150,7 +151,8 @@ collection:
   file_monitoring: true
   user_events: true
   system_inventory: true
-  
+  log_forwarding: false   # what it reads: see "Log forwarding"
+
 # File Integrity Monitoring
 fim:
   enabled: true
@@ -204,6 +206,183 @@ These override the configuration file (`sensor/core/config.py`):
 | `SENSOR_API_KEY` | `network.api_key` |
 
 `ENVIRONMENT=production` disables the HTML route list served at `/` and `/docs`.
+
+No environment variable sets `collection.log_forwarding` or `log_sources`:
+what the sensor reads from the host is the configuration file's to say.
+
+## Log forwarding
+
+With `collection.log_forwarding: true`, the sensor follows the sources listed
+under `log_sources` and sends each line as an event. It is off by default.
+
+```yaml
+collection:
+  log_forwarding: true
+
+log_sources:
+  - name: nginx_access
+    type: file
+    path: /var/log/nginx/access.log
+    format: nginx
+  - name: app
+    path: /srv/app/logs/*.log        # a pattern; type file, format raw
+    enabled: false
+  - name: journal
+    type: journald
+```
+
+| Key | Default | Meaning |
+| :--- | :--- | :--- |
+| `name` | Required | Unique; letters, digits, `_`, `.`, `-`, at most 64. The events' type is `log.<name>`, which is also their first tag |
+| `type` | `file` | `file`, `journald` (Linux, runs `journalctl -f`), `windows_event` (Windows) or `unified_log` (macOS, runs `log stream`) |
+| `path` | Required for `file` | Absolute path of a file, or a pattern with `*`, `?` and `[...]`. `**` is not supported, and a pattern must name the directory it reads (`/*.log` is refused) |
+| `format` | `raw` | For `file`: `syslog`, `nginx`, `apache` or `raw`. A line the format does not match is forwarded as `raw_message` only |
+| `enabled` | `true` | `false` keeps the entry and does not read it |
+| `read_from` | `end` | For `file`, where to start in a file that exists when the sensor starts: `end` forwards only what is written afterwards, `beginning` also what it already holds |
+| `log_name` | Required for `windows_event` | The event log's name, such as `Security` |
+
+An entry takes no other key.
+
+### Default sources
+
+Without a `log_sources` key the forwarder reads the platform's defaults, which
+is all it read before `log_sources` was honored:
+
+| Platform | Sources |
+| :--- | :--- |
+| Linux | `/var/log/syslog` and `/var/log/auth.log` (format `syslog`), and the systemd journal |
+| macOS | `/var/log/system.log` (format `syslog`) and the unified log |
+| Windows | The `Security`, `System` and `Application` event logs |
+
+With the key, it reads exactly the sources listed and none of the defaults;
+`log_sources: []` forwards no log. In the Docker image the Linux defaults
+read nothing: the image has no `/var/log/syslog`, no `/var/log/auth.log` and
+no `journalctl`, and the forwarder says so in three log lines.
+
+### What stops the sensor, and what is a warning
+
+A `log_sources` section the sensor cannot understand stops it at start-up,
+like an unusable `data_lake`, with a message that names every entry at fault
+(`log_sources[1] ('app'): unknown type 'tcp'; ...`): an unknown key, type or
+format, a missing or repeated name, a relative path, `**`, a value of
+`enabled` that is not `true` or `false`, more than 64 entries, or the key
+with no value under it (write `log_sources: []`, or remove the key). An unknown key is refused
+because `enable: false`, ignored, would leave the source forwarding its file.
+`python main.py --config <file> --validate-config` reports the same errors.
+
+What a path names can change while the sensor runs, so it never stops the
+sensor. Each of these is a warning that names the source and the file,
+logged once, and the source keeps being checked every second:
+
+- the file does not exist yet, or no file matches the pattern;
+- the sensor's user is not allowed to read it;
+- it is not a regular file (a directory, a device, a pipe);
+- it is a link that leads out of the source's directory (see below);
+- it is the sensor's own log file (`logging.file`).
+
+A source of a type this platform cannot read (`journald` on macOS) is skipped
+with a warning. This matches the other collectors: the file monitor warns
+about a path that does not exist and skips it, and the sensor stops for a
+configuration it cannot use.
+
+The sources, the files each one is reading and its current problems are in
+`GET /api/v1/components` under `log_forwarder`; the configured list is in
+`GET /api/v1/config`.
+
+### How a file is followed
+
+- A file that exists when the sensor starts is read from its end (or its
+  beginning, with `read_from: beginning`). A file that appears later, alone
+  or as a new match of a pattern, is read from its beginning. Patterns are
+  expanded every 5 seconds, files are checked every second.
+- **Rotation.** When the path names another file (`logrotate` renamed the old
+  one), the old file is read to its end, including a last line without a
+  newline, and then the new one from its beginning. If the pattern also
+  matches the rotated name (`access.log*`), the file is followed under its
+  new name and not sent again. A file truncated in place (`copytruncate`) is
+  read again from its beginning; the sensor notices by its size or, when it
+  has already grown past the old position, by its first 256 bytes.
+- **Lines.** A line is forwarded when its newline is written, never in two
+  parts. A line longer than 16 KiB is forwarded once, cut to 16 KiB, with
+  `metadata.truncated: true`. Bytes that are not UTF-8, and NUL bytes, become
+  U+FFFD. Empty lines are skipped.
+- **Compressed rotations** a pattern matches (`.gz`, `.bz2`, `.xz`, `.zst`,
+  `.zip`, `.lz4`, `.Z`) are not read. A source reads at most 64 files at a
+  time and warns when its pattern matches more.
+- **When Wildbox is unreachable.** The forwarder reads 64 KiB at a time and
+  waits for the event queue (`performance.max_queue_size`) to take each line.
+  When batches cannot be sent the queues fill, the forwarder stops reading,
+  and the file is the buffer: it continues from the same place. Memory stays
+  bounded by the queues. The sender retries with the oldest 100 events and
+  gives up on what it takes from the queue beyond them, one event per failed
+  batch with the default `batch_size`; `events_failed` under
+  `data_forwarder` in `GET /api/v1/components` counts the events of every
+  batch that failed.
+- **Restarts.** Positions are kept in memory only. After a restart a
+  `read_from: end` source continues from the file's end, so lines written
+  while the sensor was down are not sent, and a `read_from: beginning` source
+  sends the whole file again. `beginning` is for tests and one-off imports.
+
+Each event carries the parsed line in `data` and, in `metadata`, the source's
+name (`log_source`), the file the line came from (`log_file`: for a pattern,
+the file that matched) and the `format`.
+
+### What a source can read
+
+Every line of every file a source matches is sent to Wildbox, where every
+member of the sensor's team can read it. `log_sources` is therefore the list
+of files the sensor may send, and the configuration file is the only place
+that sets it: no environment variable does, and the local API cannot change
+the configuration (`PUT /api/v1/config` answers 501).
+
+A source is confined to the directory its path names, up to the first
+wildcard: `/var/log/nginx` for `/var/log/nginx/*.log`, `/var/www` for
+`/var/www/*/logs/access.log`. The forwarder resolves each file and reads it
+only if it is a regular file inside that directory, then opens it without
+following links, so a link placed in a log directory (`evil.log ->
+/etc/shadow`, or a linked subdirectory) is reported and never read, whoever
+the sensor runs as. A link to a file in the same directory (`current.log ->
+app-1.log`) is read, once. Logs that are links to another directory, such as
+Kubernetes' `/var/log/containers/*.log`, are not read: name the directory
+they point to.
+
+**In the container** a path is the container's, and the compose files mount
+no host log. The sensor process, uid 999 with no capabilities, can read:
+
+- the image's own files, which hold no host log;
+- its configuration, `/etc/security-sensor/config.yaml`, read-only;
+- the `sensor_logs` volume (`/var/log/security-sensor`, its own log) and the
+  `sensor_data` volume (`/var/lib/security-sensor`);
+- `/host/proc/stat`, `/host/proc/meminfo`, the host's load average file under
+  `/host/proc` and `/host/sys/class/net`, read-only;
+- in the root `docker-compose.yml`, the gateway's certificate in
+  `/etc/ssl/wildbox`, read-only.
+
+To forward a host log, mount its directory read-only and name the mounted
+path, in a `docker-compose.override.yml` next to the compose file:
+
+```yaml
+services:
+  sensor:
+    volumes:
+      - /var/log/nginx:/host/var/log/nginx:ro
+    # only if the files are not world-readable: the group that may read them
+    # on the host (stat -c %g /var/log/nginx/access.log; adm is 4 on Debian)
+    group_add:
+      - "4"
+```
+
+```yaml
+log_sources:
+  - name: nginx_access
+    path: /host/var/log/nginx/access.log
+    format: nginx
+```
+
+Mount the narrowest directory that holds the logs: a source can only match
+what is mounted, so the mount is the outer limit of what a mistaken pattern
+can send. Do not mount `/var/log` whole unless everything in it may leave
+the host, and never `/`.
 
 ## Sending telemetry to Wildbox
 
@@ -367,7 +546,11 @@ curl -X POST http://127.0.0.1:8004/api/v1/query \
 - The container runs as the non-root `sensor` user with
   `no-new-privileges` and all capabilities dropped (`cap_drop: ALL`).
 - Host access is limited to read-only mounts of `/proc/stat`, `/proc/meminfo`,
-  the `/proc` load average file and `/sys/class/net`.
+  the `/proc` load average file and `/sys/class/net`. No host log is mounted:
+  the log forwarder reads a host log only after its directory is mounted on
+  purpose (see [What a source can read](#what-a-source-can-read)).
+- The log forwarder reads the files `log_sources` lists and nothing else,
+  regular files only, and follows no link out of a source's directory.
 - The local API is published on `127.0.0.1` only, because it can read host
   telemetry and run osquery queries.
 - Telemetry goes to the gateway over HTTPS only, verified against the system

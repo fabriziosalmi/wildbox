@@ -113,7 +113,62 @@ stack itself the root `docker-compose.yml` already wires all of this.
 | `sensor_data:/var/lib/security-sensor` | Sensor state |
 | `/proc/stat`, `/proc/meminfo`, the `/proc` load average file, `/sys/class/net` (read-only, under `/host`) | Host metrics |
 
-The compose files do not mount the host's `/proc`, `/etc` or the Docker socket.
+The root `docker-compose.yml` also mounts the gateway's certificate,
+`gateway_cert:/etc/ssl/wildbox`, read-only. The compose files do not mount
+the host's `/proc`, `/etc`, `/var/log` or the Docker socket: this table is
+everything of the host the container can read.
+
+## Forwarding host logs
+
+The log forwarder (`collection.log_forwarding: true`) reads the files listed
+under `log_sources` in the configuration. In the container those are the
+container's paths, and no host log is mounted, so with the shipped
+configuration it forwards nothing: the default sources, `/var/log/syslog`,
+`/var/log/auth.log` and the systemd journal, do not exist in the image.
+
+To forward a host log, mount its directory read-only and name the mounted
+path. In a `docker-compose.override.yml` next to the compose file you start:
+
+```yaml
+services:
+  sensor:
+    volumes:
+      - /var/log/nginx:/host/var/log/nginx:ro
+```
+
+and in `config.yaml.example`, the file mounted as the configuration:
+
+```yaml
+collection:
+  log_forwarding: true
+
+log_sources:
+  - name: nginx_access
+    type: file
+    path: /host/var/log/nginx/access.log
+    format: nginx
+```
+
+Then `docker compose up -d sensor` and check what it reads:
+
+```bash
+docker compose logs sensor | grep "Log source"
+```
+
+- Every line of every file a source matches is sent to Wildbox and can be
+  read by the sensor's team. Mount the narrowest directory that holds the
+  logs you want: the mount is the limit of what a pattern can match. Do not
+  mount `/var/log` whole unless all of it may leave the host.
+- The container runs as uid 999 with no capabilities, so it reads only files
+  that user may read. For logs that are not world-readable (`640 root:adm` on
+  Debian and Ubuntu), add the owning group's ID to the service with
+  `group_add` (`stat -c %g /var/log/nginx/access.log` prints it). A file it
+  may not read is a warning in the sensor's log, not an error.
+- A source follows no link out of the directory its path names, and reads
+  regular files only.
+
+The keys of `log_sources`, rotation, and what is a start-up error or a
+warning are in [README.md](README.md#log-forwarding).
 
 ## Management
 
@@ -141,3 +196,9 @@ docker compose down
   configuration.
 - `network security-suite declared as external, but could not be found`: run
   `docker network create security-suite`.
+- `Security Sensor not started: ... log_sources[0] ('name'): ...`: the
+  `log_sources` section has an entry the sensor cannot understand; the
+  message says which and why. See [README.md](README.md#log-forwarding).
+- `Log source 'name': <path> is not read: ...`: the file is not mounted, does
+  not exist yet, or uid 999 may not read it. See
+  [Forwarding host logs](#forwarding-host-logs).

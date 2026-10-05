@@ -163,6 +163,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same team, updates and the database constraint; six mutations of the
   fix each fail a test.
 
+- **The sensor's log forwarder reads the sources listed under
+  `log_sources`** (#638). The section was ignored: the configuration had
+  no such field, and the forwarder read a fixed list per platform (on
+  Linux `/var/log/syslog`, `/var/log/auth.log` and the systemd journal)
+  whatever the file said, so the web-attack-detection use case, which
+  points `log_sources` at an nginx access log, forwarded none of it. A
+  source is now a `name`, a `type` (`file`, `journald`, `windows_event`,
+  `unified_log`), for a file an absolute `path` or pattern and a `format`
+  (`syslog`, `nginx`, `apache`, `raw`), an `enabled` flag and `read_from`
+  (`end` or `beginning`). With the section, the forwarder reads exactly
+  what it lists; without it, the same per-platform defaults as before. A
+  section the sensor cannot understand (an unknown key, type or format, a
+  relative path, a repeated name, the key with no value) stops it at
+  start-up with a message naming each entry, as an unusable `data_lake`
+  does; a file that does not exist yet or cannot be read is a warning
+  naming the source, logged once, and the file is read when it can be.
+  The sources and their problems are in `GET /api/v1/components`, the
+  configured list in `GET /api/v1/config`. A source is confined to the
+  directory its path names: the forwarder reads regular files only and
+  follows no link out of that directory, so a link placed in a log
+  directory is reported and not sent. In the container no host log is
+  mounted; the sensor README and `DOCKER.md` list what the container can
+  read and how to mount a log directory. The use case's configuration
+  and quick start no longer set `logging.format: json`, which made the
+  sensor print the word `json` for every log record, or a `filters` key
+  that never existed.
+- **The sensor's log forwarder follows a file through rotation and does
+  not split, repeat or hold lines** (#638). It reopened the path every
+  second and read from a remembered size, so the lines written to a file
+  just before `logrotate` renamed it were lost, a new file longer than
+  the old position was read from the middle, a line whose end was not
+  written yet was sent as two events, and a file that had grown by a
+  gigabyte was read into memory at once. It now keeps the file open and
+  reads it to its end before opening the one that replaced it, notices a
+  file truncated in place by its size or its first bytes, reads a file
+  that appears later from its beginning, sends a line when its newline
+  is written, sends a line longer than 16 KiB once, cut and marked
+  `truncated`, turns bytes that are not UTF-8 into U+FFFD, and reads
+  64 KiB at a time, waiting for the event queue to take each line: when
+  Wildbox is unreachable it stops reading and the file is the buffer.
+  Stopping the sensor now ends a forwarder that is waiting on a full
+  queue. Positions are still kept in memory only: after a restart the
+  forwarder continues from each file's end.
+- **A batch the gateway refuses no longer blocks the sensor's later
+  batches.** The sender put a refused batch (401, 403, or a 413 or 422
+  for one it found too large or malformed) back in its buffer, so it
+  was sent again with every flush and refused again, and the events
+  collected meanwhile went out with it and were lost: one batch the
+  gateway would not take stopped all forwarding until a restart. A
+  refused batch is now dropped and counted in `events_failed`; a batch
+  that failed for a reason that may pass (a network error, 429, 5xx) is
+  still kept and retried.
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on
