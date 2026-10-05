@@ -473,6 +473,10 @@ class SensorConfig:
     log_sources: Optional[List[LogSourceConfig]] = None
     # What parse_log_sources found wrong with the section.
     log_source_errors: List[str] = field(default_factory=list, repr=False)
+    # Where the sensor keeps what must outlive the process: the log
+    # forwarder's read positions. None: nowhere, positions are in memory
+    # only and read_from applies again at every start.
+    data_dir: Optional[str] = None
 
     def validate(self) -> List[str]:
         """Validate configuration and return list of errors"""
@@ -485,6 +489,18 @@ class SensorConfig:
         # destination that cannot work does: reading something other than
         # what the operator wrote is not a safe fallback.
         errors.extend(self.log_source_errors)
+
+        # A data directory the operator names and the sensor cannot write
+        # would mean positions silently not kept.
+        if self.data_dir is not None:
+            from sensor.collectors.position_store import data_dir_problem
+
+            if not isinstance(self.data_dir, str):
+                errors.append(f"data_dir must be a path, got {self.data_dir!r}")
+            else:
+                problem = data_dir_problem(self.data_dir)
+                if problem:
+                    errors.append(problem)
 
         # Validate performance limits
         if self.performance.max_memory_mb < 32:
@@ -573,6 +589,7 @@ def _apply_env_overrides(config_data: Dict[str, Any]) -> Dict[str, Any]:
         'SENSOR_DATA_LAKE_SENSOR_ID': ['data_lake', 'sensor_id'],
         'SENSOR_LOGGING_LEVEL': ['logging', 'level'],
         'SENSOR_LOGGING_FILE': ['logging', 'file'],
+        'SENSOR_DATA_DIR': ['data_dir'],
         'SENSOR_PERFORMANCE_MAX_MEMORY': ['performance', 'max_memory_mb'],
         'SENSOR_PERFORMANCE_MAX_CPU': ['performance', 'max_cpu_percent'],
         # The local API's own key. Without it _require_auth fails closed and
@@ -700,4 +717,6 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
         network=network,
         log_sources=log_sources,
         log_source_errors=log_source_errors,
+        # An empty value (an unset variable) means "not set".
+        data_dir=config_data.get('data_dir') or None,
     )

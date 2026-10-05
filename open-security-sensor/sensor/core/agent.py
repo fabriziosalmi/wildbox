@@ -172,40 +172,43 @@ class SecuritySensorAgent:
         await asyncio.gather(*components_to_start)
     
     async def _stop_components(self):
-        """Stop all components gracefully"""
-        stop_tasks = []
-        
-        if self.local_api:
-            stop_tasks.append(self.local_api.stop())
-        
-        if self.log_forwarder:
-            stop_tasks.append(self.log_forwarder.stop())
-        
-        if self.file_monitor:
-            stop_tasks.append(self.file_monitor.stop())
-        
-        if self.osquery_manager:
-            stop_tasks.append(self.osquery_manager.stop())
-        
-        if self.resource_monitor:
-            stop_tasks.append(self.resource_monitor.stop())
-        
-        if self.data_forwarder:
-            stop_tasks.append(self.data_forwarder.stop())
-        
-        if self.data_processor:
-            stop_tasks.append(self.data_processor.stop())
-        
-        # Stop all components concurrently with timeout
-        if stop_tasks:
+        """Stop all components gracefully.
+
+        In this order: what produces events, then what carries them, so that
+        the forwarder's last batches are not followed by new events; then
+        the log positions once more, for what those last batches delivered.
+        """
+        collectors = [
+            component.stop()
+            for component in (
+                self.local_api,
+                self.log_forwarder,
+                self.file_monitor,
+                self.osquery_manager,
+                self.resource_monitor,
+            )
+            if component
+        ]
+        pipeline = [
+            component.stop()
+            for component in (self.data_processor, self.data_forwarder)
+            if component
+        ]
+
+        for stop_tasks in (collectors, pipeline):
+            if not stop_tasks:
+                continue
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*stop_tasks, return_exceptions=True),
-                    timeout=30
+                    timeout=15
                 )
             except asyncio.TimeoutError:
                 logger.warning("Some components did not stop within timeout")
-    
+
+        if self.log_forwarder:
+            self.log_forwarder.save_positions()
+
     async def _update_statistics(self):
         """Update agent statistics periodically"""
         while self.running:

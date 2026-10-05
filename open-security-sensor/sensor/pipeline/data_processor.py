@@ -18,6 +18,7 @@ import hashlib
 import platform
 
 from sensor.core.config import SensorConfig
+from sensor.pipeline.delivery import attach_delivery, settle, take_delivery
 from sensor.utils.platform import get_platform_info
 
 logger = logging.getLogger(__name__)
@@ -79,14 +80,20 @@ class DataProcessor:
                 event = await asyncio.wait_for(self.input_queue.get(), timeout=1.0)
                 
                 # Process the event
+                # What the collector wants to be told about this event; it
+                # is not part of the event (sensor.pipeline.delivery).
+                delivery = take_delivery(event)
                 processed_event = await self._process_single_event(event)
                 
                 if processed_event:
                     # Forward to output queue
+                    attach_delivery(processed_event, delivery)
                     await self.output_queue.put(processed_event)
                     self.stats['events_processed'] += 1
                 else:
+                    # It goes no further: the sensor has finished with it.
                     self.stats['events_filtered'] += 1
+                    settle(delivery)
                 
             except asyncio.TimeoutError:
                 # No events available, continue

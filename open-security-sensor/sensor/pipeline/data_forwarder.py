@@ -37,6 +37,11 @@ them:
   same answer), an event that cannot be serialized or is larger than a
   batch may be, every event while no API key is configured, and what is
   still here when the sensor stops.
+* An event may carry a ``Delivery`` (``sensor.pipeline.delivery``), which is
+  settled when the gateway accepts the event's batch or the event is
+  dropped. What is still here when the sensor stops is not settled; an
+  event whose collector will read it again after the restart is then
+  counted under ``events_returned_to_source`` and not as dropped.
 """
 
 import asyncio
@@ -50,10 +55,11 @@ import uuid
 from collections import deque
 from datetime import datetime, timezone
 from itertools import islice
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import aiohttp
 from sensor.core.config import MAX_BATCH_BYTES, SensorConfig
+from sensor.pipeline.delivery import Delivery, settle, take_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -203,8 +209,9 @@ class DataForwarder:
         self.session: Optional[aiohttp.ClientSession] = None
 
         # The events waiting for the gateway, oldest first, as they will be
-        # sent; see the module's description for the bounds.
-        self.buffer: Deque[bytes] = deque()
+        # sent, each with what its collector wants to be told; see the
+        # module's description for the bounds.
+        self.buffer: Deque[Tuple[bytes, Optional[Delivery]]] = deque()
         self.buffer_bytes = 0
         self.max_events = config.data_lake.buffer_max_events
         self.max_bytes = config.data_lake.buffer_max_bytes
@@ -212,7 +219,7 @@ class DataForwarder:
         self.max_event_bytes = min(MAX_BATCH_BYTES, self.max_bytes)
         self._oldest_since = time.monotonic()
         self._full_since: Optional[float] = None
-        self._in_hand: Optional[bytes] = None
+        self._in_hand: Optional[Tuple[bytes, Optional[Delivery]]] = None
         self._room = asyncio.Event()
         self._wake = asyncio.Event()
         self._stopping = asyncio.Event()
@@ -221,11 +228,13 @@ class DataForwarder:
         self.sensor_id = config.data_lake.sensor_id or socket.gethostname()
 
         # Statistics. events_received is every event taken from the pipeline:
-        # it equals events_forwarded + events_dropped + what the buffer holds.
+        # it equals events_forwarded + events_dropped +
+        # events_returned_to_source + what the buffer holds.
         self.stats: Dict[str, Any] = {
             "events_received": 0,
             "events_forwarded": 0,
             "events_dropped": 0,
+            "events_returned_to_source": 0,
             "batches_sent": 0,
             "batches_refused": 0,
             "send_failures": 0,
@@ -322,7 +331,7 @@ class DataForwarder:
             await asyncio.gather(*tasks, return_exceptions=True)
         if self._in_hand is not None:
             # Taken from the queue and still waiting for room.
-            self._hold(self._in_hand)
+            self._hold(*self._in_hand)
             self._in_hand = None
 
         # The last batches.
@@ -339,13 +348,19 @@ class DataForwarder:
                     break
 
         if self.buffer:
-            left = len(self.buffer)
-            self._release(left)
-            self._count_dropped("shutdown", left)
+            # Not settled: the collector of an event that can be read again
+            # keeps its position before it.
+            left = self._release(len(self.buffer))
+            returned = sum(1 for delivery in left if delivery and delivery.replayable)
+            self.stats["events_returned_to_source"] += returned
+            self._count_dropped("shutdown", len(left) - returned)
             logger.warning(
-                "Stopped with %d events the gateway had not accepted: they "
-                "are dropped",
-                left,
+                "Stopped with %d events the gateway had not accepted: %d are "
+                "dropped, %d will be read again from their log source after "
+                "the restart",
+                len(left),
+                len(left) - returned,
+                returned,
             )
         self._report_drops(force=True)
 
@@ -412,15 +427,29 @@ class DataForwarder:
         It does not wait for room: the running forwarder takes events with
         ``_collect_events``, which does.
         """
-        body = self._prepare(event)
-        if body is None:
+        held = self._prepare(event)
+        if held is None:
             return False
-        self._hold(body)
+        self._hold(*held)
         return True
 
-    def _prepare(self, event: Dict[str, Any]) -> Optional[bytes]:
-        """The event as it will be sent, or None when it is dropped."""
+    def _prepare(
+        self, event: Dict[str, Any]
+    ) -> Optional[Tuple[bytes, Optional[Delivery]]]:
+        """The event as it will be sent and its Delivery, or None when the
+        event is dropped."""
         self.stats["events_received"] += 1
+        # Taken out first: it is not part of what is sent.
+        delivery = take_delivery(event)
+        body = self._encode(event)
+        if body is None:
+            # Dropped for good: the sensor has finished with it.
+            settle(delivery)
+            return None
+        return body, delivery
+
+    def _encode(self, event: Dict[str, Any]) -> Optional[bytes]:
+        """The event as it will be sent; None, and counted, when dropped."""
         if not self.enabled:
             # Nowhere to send it; keeping it would only fill the buffer.
             self._count_dropped("unconfigured")
@@ -448,10 +477,10 @@ class DataForwarder:
             return None
         return body
 
-    def _hold(self, body: bytes):
+    def _hold(self, body: bytes, delivery: Optional[Delivery] = None):
         if not self.buffer:
             self._oldest_since = time.monotonic()
-        self.buffer.append(body)
+        self.buffer.append((body, delivery))
         self.buffer_bytes += len(body)
         if len(self.buffer) in (1, self.config.data_lake.batch_size):
             # The sender has a deadline to compute, or a batch to send.
@@ -462,10 +491,14 @@ class DataForwarder:
             return True
         return bool(self.buffer) and self.buffer_bytes + size > self.max_bytes
 
-    def _release(self, count: int):
-        """Take the ``count`` oldest events out of the buffer."""
+    def _release(self, count: int) -> List[Optional[Delivery]]:
+        """Take the ``count`` oldest events out of the buffer; what their
+        collectors want to be told."""
+        deliveries = []
         for _ in range(count):
-            self.buffer_bytes -= len(self.buffer.popleft())
+            body, delivery = self.buffer.popleft()
+            self.buffer_bytes -= len(body)
+            deliveries.append(delivery)
         self._oldest_since = time.monotonic()
         self._room.set()
         if self._full_since is not None and not self._lacks_room(0):
@@ -475,6 +508,7 @@ class DataForwarder:
                 time.monotonic() - self._full_since,
             )
             self._full_since = None
+        return deliveries
 
     def _count_dropped(self, reason: str, count: int = 1):
         self.stats[f"events_dropped_{reason}"] += count
@@ -508,11 +542,11 @@ class DataForwarder:
         while self.running:
             try:
                 event = await self.input_queue.get()
-                body = self._prepare(event)
-                if body is None:
+                held = self._prepare(event)
+                if held is None:
                     continue
-                self._in_hand = body
-                while self._lacks_room(len(body)):
+                self._in_hand = held
+                while self._lacks_room(len(held[0])):
                     if self._full_since is None:
                         self._full_since = time.monotonic()
                         self.stats["times_buffer_full"] += 1
@@ -528,7 +562,7 @@ class DataForwarder:
                     self._room.clear()
                     await self._room.wait()
                 self._in_hand = None
-                self._hold(body)
+                self._hold(*held)
 
             except asyncio.CancelledError:
                 break
@@ -609,7 +643,7 @@ class DataForwarder:
     def _next_batch(self) -> int:
         """How many of the oldest events the next batch takes."""
         count = size = 0
-        for body in islice(self.buffer, self.config.data_lake.batch_size):
+        for body, _ in islice(self.buffer, self.config.data_lake.batch_size):
             if count and size + len(body) > MAX_BATCH_BYTES:
                 break
             count += 1
@@ -629,7 +663,8 @@ class DataForwarder:
 
         logger.debug(f"Flushing batch of {count} events")
         self._retry_after = 0.0
-        outcome = await self._send(encode_batch(list(islice(self.buffer, count))))
+        bodies = [body for body, _ in islice(self.buffer, count)]
+        outcome = await self._send(encode_batch(bodies))
 
         if outcome == RETRY:
             self.failures += 1
@@ -637,7 +672,7 @@ class DataForwarder:
             return RETRY
 
         self.failures = 0
-        self._release(count)
+        deliveries = self._release(count)
         if outcome == SENT:
             self.stats["batches_sent"] += 1
             self.stats["events_forwarded"] += count
@@ -653,6 +688,10 @@ class DataForwarder:
                 count,
                 self.stats["last_error"],
             )
+        # Accepted, or dropped for good: either way the sensor has finished
+        # with these events, and their collectors may move past them.
+        for delivery in deliveries:
+            settle(delivery)
         return outcome
 
     async def _send(self, body: bytes) -> str:

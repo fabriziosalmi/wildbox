@@ -110,7 +110,7 @@ stack itself the root `docker-compose.yml` already wires all of this.
 | :--- | :--- |
 | `./config.yaml.example:/etc/security-sensor/config.yaml:ro` | Configuration |
 | `sensor_logs:/var/log/security-sensor` | Sensor log file |
-| `sensor_data:/var/lib/security-sensor` | Sensor state |
+| `sensor_data:/var/lib/security-sensor` | Sensor state: the log forwarder's read positions (`data_dir`), so that a recreated container goes on where the last one stopped |
 | `/proc/stat`, `/proc/meminfo`, the `/proc` load average file, `/sys/class/net` (read-only, under `/host`) | Host metrics |
 
 The root `docker-compose.yml` also mounts the gateway's certificate,
@@ -167,8 +167,15 @@ docker compose logs sensor | grep "Log source"
 - A source follows no link out of the directory its path names, and reads
   regular files only.
 
-The keys of `log_sources`, rotation, and what is a start-up error or a
-warning are in [README.md](README.md#log-forwarding).
+- The position reached in each file is kept in the `sensor_data` volume:
+  after `docker compose up -d` recreates the container, or a restart, the
+  sensor goes on after the last line Wildbox accepted. `docker compose down
+  -v` removes the volume, and with it the positions: each source then starts
+  as its `read_from` says. Do not share the volume between sensors;
+  `docker-compose.scale.yml` does, so do not enable log forwarding with it.
+
+The keys of `log_sources`, rotation, restarts, and what is a start-up error
+or a warning are in [README.md](README.md#log-forwarding).
 
 ## Management
 

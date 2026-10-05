@@ -31,6 +31,13 @@ collection:
   system_inventory: true
   log_forwarding: false
 
+# Where the sensor keeps what must outlive a restart: the log forwarder's
+# read positions (log-positions.json). In the container this is the
+# sensor_data volume. Overridden by SENSOR_DATA_DIR. The directory must exist
+# and be writable by the sensor's user; one sensor per directory. Without it
+# positions are kept in memory only and read_from applies at every start.
+data_dir: /var/lib/security-sensor
+
 # Log sources: what the log forwarder reads when log_forwarding is true.
 # These are the container's paths, and the compose files mount no host log:
 # mount the directory read-only first. See config.yaml.example and README.md,

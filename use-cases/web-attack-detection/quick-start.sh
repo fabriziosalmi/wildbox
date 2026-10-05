@@ -117,8 +117,9 @@ collection:
   log_forwarding: true
 
 # The sensor reads exactly this file. read_from: beginning also forwards the
-# sample logs already in it when the sensor starts (and again at every
-# restart: it is for a test, not for a production log).
+# sample logs already in it when the sensor starts, and again at every
+# restart, because this configuration sets no data_dir to keep positions in:
+# it is for a test, not for a production log.
 log_sources:
   - name: nginx_access
     type: file

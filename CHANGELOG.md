@@ -444,6 +444,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that position with what it read there. A rewrite that keeps both, and
   is at least as long as before, still cannot be told from an append;
   the sensor README says so.
+- **A restarted sensor goes on reading each log where the data service
+  stopped** (#725). Read positions lived in memory: after a restart a
+  `read_from: end` source skipped what was written while the sensor was
+  down, and a `read_from: beginning` source sent every file again. With
+  the new `data_dir` setting (`SENSOR_DATA_DIR`; the container
+  configurations set it to the `sensor_data` volume) the forwarder keeps,
+  per source and per file, the offset after the last line whose batch
+  the gateway answered for, in `log-positions.json`. The offset moves
+  when a line is accepted, or dropped for good and counted, not when it
+  is read: lines still in the sensor when it stops or is killed are read
+  again, so an outage that outlasts the sensor loses nothing. The file
+  is written at most once a second and at stop, to a temporary file that
+  is flushed and renamed; a killed sensor sends again what was accepted
+  since the last write. A position is used only for the file it was
+  taken from (device and inode, length, and digests of its first bytes
+  and of the bytes before the offset); a log rotated, truncated or
+  rewritten meanwhile is read from its beginning. The saved file is
+  validated value by value and ignored whole, with a warning, if it is a
+  link, another user's, too large or holds anything the sensor would not
+  write. `read_from` now applies only the first time a source is seen.
+  Without `data_dir` the sensor says at start-up that positions are in
+  memory only. The sender reports the events a log source will read
+  again as `events_returned_to_source`, not as dropped, and the agent
+  stops its collectors before its sender so that the last batches are
+  the last events. `log_forwarder` in `GET /api/v1/components` shows,
+  per file, how far it was read and accepted. An integration test
+  restarts the pipeline inside the sensor container and checks through
+  the gateway that a line written in between is stored, and none twice.
 
 ### Changed
 

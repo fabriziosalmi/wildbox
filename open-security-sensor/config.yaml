@@ -41,6 +41,13 @@ collection:
 #     path: /var/log/nginx/access.log
 #     format: nginx
 
+# Where the sensor keeps what must outlive a restart: the log forwarder's
+# read positions. Not set here: positions are kept in memory only, and after
+# a restart each log source starts as its read_from says. To keep them,
+# create a directory the sensor's user can write and name it:
+#
+# data_dir: /var/lib/security-sensor
+
 # File Integrity Monitoring (Docker-optimized paths)
 fim:
   enabled: true

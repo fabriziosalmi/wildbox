@@ -14,9 +14,19 @@ A file source is tailed with these rules:
 * It reads regular files only, and no file that resolves outside the
   directory the source names (``LogSourceConfig.root``): a link in a log
   directory that points at ``/etc/shadow`` is reported and not followed.
-* A file that exists when the sensor starts is read from its end (or from its
-  beginning with ``read_from: beginning``). A file that appears later is read
-  from its beginning. Positions are kept in memory only.
+* The first time the sensor sees a source, a file that exists is read from
+  its end (or from its beginning with ``read_from: beginning``). A file that
+  appears later is read from its beginning.
+* A source the sensor has seen before goes on where it stopped (#725): each
+  file from the offset after the last line the data service accepted, kept
+  in the data directory (``sensor.collectors.position_store``). The offset
+  moves when an event is settled (``sensor.pipeline.delivery``), not when
+  its line is read, so a sensor that stops or is killed with events still in
+  it reads those lines again; ``read_from`` no longer applies to such a
+  source. A saved position is used only for the file it was taken from: the
+  same device and inode, still at least that long, with the same first
+  bytes and the same bytes before the offset. Without ``data_dir`` positions
+  are in memory only, and every start is a first time.
 * A rotated file (renamed or removed, another one in its place) is read to its
   end before the new one is opened; a file truncated in place is read again
   from its beginning. Truncation shows by the file's size, by its first
@@ -41,6 +51,7 @@ unknown type, a relative path) stops the sensor at start-up instead; see
 import asyncio
 import errno
 import glob
+import hashlib
 import json
 import logging
 import os
@@ -48,10 +59,13 @@ import re
 import stat
 import subprocess
 import time
+from collections import deque
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
+from sensor.collectors.position_store import MAX_FILES, PositionStore, file_entries
 from sensor.core.config import LogSourceConfig, SensorConfig, has_wildcard
+from sensor.pipeline.delivery import DELIVERY_KEY, Delivery
 from sensor.utils.platform import is_windows, is_linux, is_macos
 
 logger = logging.getLogger(__name__)
@@ -79,6 +93,10 @@ CHECK_BYTES = 64
 MAX_FILES_PER_SOURCE = 64
 # Rotated-and-compressed logs a pattern such as "access.log*" also matches.
 COMPRESSED_SUFFIXES = (".gz", ".bz2", ".xz", ".zst", ".zip", ".lz4", ".Z")
+# Seconds between two writes of the positions, when they have moved. What a
+# killed sensor sends again is what the data service accepted since the last
+# write.
+POSITION_SAVE_INTERVAL = 1.0
 
 _O_BINARY = getattr(os, "O_BINARY", 0)
 _O_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
@@ -127,6 +145,65 @@ class _Refused(Exception):
     """Why a path is not read."""
 
 
+def _digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+class _Record:
+    """What is kept about one file of a source, to go on with it later.
+
+    ``offset`` is where to: just after the last line whose event was settled
+    with every line before it. ``check`` and ``head`` are digests of the
+    bytes before that offset and of the file's first ``head_len`` bytes, by
+    which the file is recognized.
+    """
+
+    __slots__ = ("key", "path", "offset", "check", "head_len", "head", "seen")
+
+    def __init__(self, key: Tuple[int, int], path: str):
+        self.key = key
+        self.path = path
+        self.offset = 0
+        self.check = _digest(b"")
+        self.head_len = 0
+        self.head = _digest(b"")
+        self.seen = time.time()
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "device": self.key[0],
+            "inode": self.key[1],
+            "offset": self.offset,
+            "check": self.check,
+            "head_bytes": self.head_len,
+            "head": self.head,
+            "path": self.path,
+            "seen": self.seen,
+        }
+
+    @classmethod
+    def from_dict(cls, entry: Dict[str, Any]) -> "_Record":
+        record = cls((entry["device"], entry["inode"]), entry["path"])
+        record.offset = entry["offset"]
+        record.check = entry["check"]
+        record.head_len = entry["head_bytes"]
+        record.head = entry["head"]
+        record.seen = entry["seen"]
+        return record
+
+
+class _Pending:
+    """A line whose event is in the sensor: where it ends in its file, and
+    the bytes before that point."""
+
+    __slots__ = ("end", "window", "settled")
+
+    def __init__(self, end: int, window: bytes):
+        self.end = end
+        self.window = window
+        self.settled = False
+
+
 class _Tail:
     """One open log file and how far it has been read."""
 
@@ -140,6 +217,8 @@ class _Tail:
         "partial",
         "discarding",
         "rotated",
+        "record",
+        "pending",
     )
 
     def __init__(self, path: str, fd: int, key: Tuple[int, int], position: int):
@@ -147,6 +226,10 @@ class _Tail:
         self.fd = fd
         self.key = key  # (device, inode): the file, whatever its name becomes
         self.position = position
+        # What is saved for this file, and the lines read from it whose
+        # events are not settled yet, in the order they were read.
+        self.record = _Record(key, path)
+        self.pending: Deque[_Pending] = deque()
         # The first bytes that were read. If the file no longer begins with
         # them it was rewritten, even when it is not shorter than before.
         self.head = b""
@@ -175,6 +258,12 @@ class _FileSource:
         self.next_glob = 0.0
         # path -> the problem last reported for it, so each is logged once.
         self.problems: Dict[str, str] = {}
+        # Was this source, with this path, read by an earlier run? Then its
+        # files go on from their records and read_from does not apply.
+        self.known = False
+        # (device, inode) -> what is kept about a file: those being read,
+        # and those read before that may come back.
+        self.records: Dict[Tuple[int, int], _Record] = {}
 
 
 class LogForwarder:
@@ -192,6 +281,12 @@ class LogForwarder:
 
         self._file_sources: Dict[str, _FileSource] = {}
         self._tasks: List[asyncio.Task] = []
+
+        # Read positions (#725). What an earlier run saved is read once,
+        # here; a file that cannot be used is reported and ignored.
+        self.positions = PositionStore(config.data_dir)
+        self._saved = self.positions.load()
+        self._positions_dirty = False
         # The sensor's own log file is never a source: forwarding it would
         # make every forwarded line produce another.
         own_log = getattr(config.logging, "file", None)
@@ -253,16 +348,26 @@ class LogForwarder:
                         unsupported,
                     )
                 elif source.type == "file":
-                    state = _FileSource(source)
+                    state = self._file_source(source)
                     self._file_sources[source.name] = state
-                    logger.info(
-                        "Log source %r: %s (format %s, from the %s of a file "
-                        "that already exists)",
-                        source.name,
-                        source.path,
-                        source.format,
-                        source.read_from,
-                    )
+                    if state.known:
+                        logger.info(
+                            "Log source %r: %s (format %s), going on from "
+                            "the saved positions of %d files",
+                            source.name,
+                            source.path,
+                            source.format,
+                            len(state.records),
+                        )
+                    else:
+                        logger.info(
+                            "Log source %r: %s (format %s, from the %s of a "
+                            "file that already exists)",
+                            source.name,
+                            source.path,
+                            source.format,
+                            source.read_from,
+                        )
                     # A first look now, so that what is wrong with a path is
                     # in the log before the forwarder says it has started.
                     self._scan(state)
@@ -278,6 +383,16 @@ class LogForwarder:
                     self._tasks.append(asyncio.create_task(monitor))
 
             logger.info(f"Log forwarder started with {len(self._tasks)} sources")
+
+            if self.positions.persistent:
+                self._tasks.append(asyncio.create_task(self._save_periodically()))
+            elif self._file_sources:
+                logger.warning(
+                    "data_dir is not set: read positions are kept in memory "
+                    "only. After a restart each file source starts as its "
+                    "read_from says: from the end, it skips what was written "
+                    "meanwhile; from the beginning, it sends everything again"
+                )
 
         except Exception as e:
             logger.error(f"Failed to start log forwarder: {e}")
@@ -297,6 +412,94 @@ class LogForwarder:
             await asyncio.gather(*tasks, return_exceptions=True)
         for state in self._file_sources.values():
             self._close_all(state)
+        self.save_positions()
+
+    # -- read positions ---------------------------------------------------
+
+    def _file_source(self, source: LogSourceConfig) -> _FileSource:
+        """The state of a file source, with what an earlier run saved for
+        it: for this name and this path, or it is a first time."""
+        state = _FileSource(source)
+        entries = file_entries(self._saved, source.name, source.path)
+        if entries is not None:
+            state.known = True
+            for entry in entries:
+                record = _Record.from_dict(entry)
+                state.records[record.key] = record
+        return state
+
+    def _settled(self, tail: _Tail, entry: _Pending):
+        """The sensor has finished with a line's event: move the file's
+        saved offset past every line settled with all those before it."""
+        entry.settled = True
+        last = None
+        while tail.pending and tail.pending[0].settled:
+            last = tail.pending.popleft()
+        if last is not None:
+            tail.record.offset = last.end
+            tail.record.check = _digest(last.window)
+            self._positions_dirty = True
+
+    def _snapshot(self) -> Dict[str, Dict[str, Any]]:
+        """What to save: every configured source's positions."""
+        configured = {source.name for source in self.config.log_sources or []}
+        configured.update(source.name for source in self.log_sources)
+        # A source that is listed and not read now (disabled, or of a type
+        # this platform cannot read) keeps what was saved for it.
+        sources = {
+            name: entry
+            for name, entry in self._saved.items()
+            if name in configured and name not in self._file_sources
+        }
+        now = time.time()
+        for name, state in self._file_sources.items():
+            if not state.scanned:
+                continue
+            reading = {tail.key for tail in state.tails.values()}
+            for key in reading:
+                state.records[key].seen = now
+            others = sorted(
+                (record for key, record in state.records.items() if key not in reading),
+                key=lambda record: record.seen,
+                reverse=True,
+            )
+            for record in others[max(0, MAX_FILES - len(reading)) :]:
+                del state.records[record.key]
+            sources[name] = {
+                "type": "file",
+                "path": state.source.path,
+                "files": [record.to_dict() for record in state.records.values()],
+            }
+        return sources
+
+    def save_positions(self) -> bool:
+        """Write the positions now, if they have moved since the last write."""
+        if not self.positions.persistent or not self._positions_dirty:
+            return False
+        self._positions_dirty = False
+        serial = self.positions.next_serial()
+        if self.positions.save(self._snapshot(), serial):
+            return True
+        self._positions_dirty = True  # tried again at the next interval
+        return False
+
+    async def _save_periodically(self):
+        """Write the positions while they move, off the event loop."""
+        loop = asyncio.get_running_loop()
+        while self.running:
+            await asyncio.sleep(POSITION_SAVE_INTERVAL)
+            if not self._positions_dirty:
+                continue
+            self._positions_dirty = False
+            # Numbered here, on the loop: a write that reaches the disk
+            # after the one made at stop must not replace it.
+            serial = self.positions.next_serial()
+            snapshot = self._snapshot()
+            saved = await loop.run_in_executor(
+                None, self.positions.save, snapshot, serial
+            )
+            if not saved:
+                self._positions_dirty = True
 
     # -- file sources -----------------------------------------------------
 
@@ -395,8 +598,11 @@ class LogForwarder:
                 current[path] = tail.key if tail else None
                 continue
             current[path] = (found.st_dev, found.st_ino)
-            if first and state.source.read_from == "end":
+            if first and not state.known and state.source.read_from == "end":
                 state.preexisting[path] = (current[path], found.st_size)
+        if first:
+            # Saved even if nothing is read: the source is known from now on.
+            self._positions_dirty = True
 
         for path, tail in list(state.tails.items()):
             if current.get(path) == tail.key:
@@ -424,6 +630,8 @@ class LogForwarder:
             )
             del state.tails[path]
             tail.path = renamed
+            tail.record.path = renamed
+            self._positions_dirty = True
             state.tails[renamed] = tail
 
         for path in candidates:
@@ -449,14 +657,20 @@ class LogForwarder:
                 raise _Refused("it is the same file as another one being read")
 
             position = 0
-            discarding = False
             was_key, was_size = state.preexisting.pop(path, (None, 0))
-            if was_key == key and 0 < was_size <= found.st_size:
-                # It was there when the sensor started: only what has been
-                # written since. If it ended in the middle of a line, the
-                # rest of that line is not a line.
+            record = state.records.get(key)
+            if record is not None and self._is_the_file(fd, found.st_size, record):
+                # Read before, by this run or an earlier one: go on after
+                # the last line the data service accepted.
+                position = record.offset
+            elif was_key == key and 0 < was_size <= found.st_size:
+                # It was there when the sensor first saw the source: only
+                # what has been written since.
                 position = was_size
-                discarding = self._read_at(fd, 1, position - 1) != b"\n"
+            # If it starts in the middle of a line (the file ended there, or
+            # a long line was sent cut at this point), the rest of that line
+            # is not a line.
+            discarding = position > 0 and self._read_at(fd, 1, position - 1) != b"\n"
         except _Refused as refusal:
             os.close(fd)
             self._report(state, path, str(refusal))
@@ -472,6 +686,12 @@ class LogForwarder:
             tail.head = self._read_at(fd, min(HEAD_BYTES, position), 0)
             kept = min(CHECK_BYTES, position)
             tail.carry = self._read_at(fd, kept, position - kept)
+        tail.record.offset = position
+        tail.record.check = _digest(tail.carry)
+        tail.record.head_len = len(tail.head)
+        tail.record.head = _digest(tail.head)
+        state.records[key] = tail.record
+        self._positions_dirty = True
         state.tails[path] = tail
         self._resolved(state, path)
         logger.info(
@@ -532,6 +752,20 @@ class LogForwarder:
                 ) from None
             raise _Refused(f"it cannot be opened: {e.strerror or e}") from None
 
+    def _is_the_file(self, fd: int, size: int, record: _Record) -> bool:
+        """Is this open file the one the record was taken from, with what
+        was read of it still in place?
+
+        The record names it by device and inode, which another file can
+        come to have: a position is used only where the bytes agree.
+        """
+        if record.offset > size or record.head_len > size:
+            return False  # shorter than what was read: another file, or truncated
+        if _digest(self._read_at(fd, record.head_len, 0)) != record.head:
+            return False
+        kept = min(CHECK_BYTES, record.offset)
+        return _digest(self._read_at(fd, kept, record.offset - kept)) == record.check
+
     @staticmethod
     def _read_at(fd: int, length: int, position: int) -> bytes:
         if hasattr(os, "pread"):
@@ -566,6 +800,13 @@ class LogForwarder:
                 tail.carry = b""
                 tail.partial = b""
                 tail.discarding = False
+                # The lines read before are gone with their offsets: an
+                # event of theirs settled later must not move the position.
+                tail.pending.clear()
+                tail.record.offset = 0
+                tail.record.check = tail.record.head = _digest(b"")
+                tail.record.head_len = 0
+                self._positions_dirty = True
             if size == tail.position:
                 at_end = True
                 break
@@ -576,23 +817,29 @@ class LogForwarder:
                 break
             if tail.position < HEAD_BYTES:
                 tail.head = (tail.head[: tail.position] + chunk)[:HEAD_BYTES]
+                tail.record.head_len = len(tail.head)
+                tail.record.head = _digest(tail.head)
+            before = tail.carry
             if len(chunk) >= CHECK_BYTES:
                 tail.carry = chunk[-CHECK_BYTES:]
             else:
                 tail.carry = (tail.carry + chunk)[-CHECK_BYTES:]
+            base = tail.position
             tail.position += len(chunk)
             budget -= len(chunk)
             progressed = True
             # Waits for the queue: with nobody taking events, nothing more is
             # read and no more than this chunk is held.
-            await self._consume(source, tail, chunk)
+            await self._consume(source, tail, chunk, base, before)
             await asyncio.sleep(0)
 
         if tail.rotated and at_end:
             # Nothing more will be written to it. What it ends with is a
             # line even without its newline.
             if tail.partial and not tail.discarding:
-                await self._forward_line(source, tail, tail.partial)
+                await self._forward_line(
+                    source, tail, tail.partial, tail.position, tail.carry
+                )
             logger.info(
                 "Log source %r: %s was rotated or removed", source.name, tail.path
             )
@@ -611,28 +858,62 @@ class LogForwarder:
         start = tail.position - len(tail.carry)
         return self._read_at(tail.fd, len(tail.carry), start) != tail.carry
 
-    async def _consume(self, source: LogSourceConfig, tail: _Tail, chunk: bytes):
-        """Forward the lines a chunk completes; keep the unfinished one."""
+    async def _consume(
+        self,
+        source: LogSourceConfig,
+        tail: _Tail,
+        chunk: bytes,
+        base: int,
+        before: bytes,
+    ):
+        """Forward the lines a chunk completes; keep the unfinished one.
+
+        ``base`` is the chunk's offset in the file and ``before`` the bytes
+        just before it: each line is forwarded with the offset it ends at
+        and the bytes before that offset, which is what is saved once its
+        event is settled.
+        """
+
+        def window(end: int) -> bytes:
+            cut = end - base
+            if cut >= CHECK_BYTES:
+                return chunk[cut - CHECK_BYTES : cut]
+            return (before + chunk[:cut])[-CHECK_BYTES:]
+
         lines = (tail.partial + chunk).split(b"\n")
+        end = base - len(tail.partial)
         tail.partial = lines.pop()
 
         for line in lines:
+            end += len(line) + 1
             if tail.discarding:
                 # The end of a line whose beginning was not forwarded as one.
                 tail.discarding = False
                 continue
-            await self._forward_line(source, tail, line)
+            await self._forward_line(source, tail, line, end, window(end))
 
         if len(tail.partial) > MAX_LINE_BYTES:
             # Still no newline: forward what fits, once, and drop the rest of
             # the line as it arrives instead of holding it.
             if not tail.discarding:
-                await self._forward_line(source, tail, tail.partial)
+                end = base + len(chunk)
+                await self._forward_line(source, tail, tail.partial, end, window(end))
                 tail.discarding = True
             tail.partial = b""
 
-    async def _forward_line(self, source: LogSourceConfig, tail: _Tail, raw: bytes):
-        """Decode one line and queue it."""
+    async def _forward_line(
+        self,
+        source: LogSourceConfig,
+        tail: _Tail,
+        raw: bytes,
+        end: int,
+        window: bytes,
+    ):
+        """Decode one line and queue it.
+
+        ``end`` is the offset the line ends at (for a line sent cut, where
+        the reading had got to) and ``window`` the bytes before it.
+        """
         truncated = len(raw) > MAX_LINE_BYTES
         if truncated:
             raw = raw[:MAX_LINE_BYTES]
@@ -641,11 +922,31 @@ class LogForwarder:
         line = raw.decode("utf-8", errors="replace").replace("\x00", REPLACEMENT)
         line = line.strip()
         if not line:
+            # No event: a later line's offset covers it.
             return
-        await self._process_log_line(line, source, path=tail.path, truncated=truncated)
+        entry = _Pending(end, window)
+        tail.pending.append(entry)
+        delivery = Delivery(
+            lambda: self._settled(tail, entry),
+            replayable=self.positions.persistent,
+        )
+        queued = await self._process_log_line(
+            line, source, path=tail.path, truncated=truncated, delivery=delivery
+        )
+        if not queued:
+            delivery.settle()
 
     def _close(self, state: _FileSource, tail: _Tail):
         state.tails.pop(tail.path, None)
+        try:
+            if tail.rotated and os.fstat(tail.fd).st_nlink == 0:
+                # Removed, not renamed: it cannot come back, and another
+                # file may get its inode. Nothing is kept about it.
+                if state.records.get(tail.key) is tail.record:
+                    del state.records[tail.key]
+                    self._positions_dirty = True
+        except OSError:
+            pass
         try:
             os.close(tail.fd)
         except OSError:
@@ -824,16 +1125,17 @@ class LogForwarder:
         source: LogSourceConfig,
         path: Optional[str] = None,
         truncated: bool = False,
-    ):
-        """Process a single log line"""
+        delivery: Optional[Delivery] = None,
+    ) -> bool:
+        """Process a single log line; False when it yields no event"""
         try:
             parsed_log = self._parse_log_line(line, source.format)
         except Exception as e:
             logger.debug(f"Error processing log line: {e}")
-            return
+            return False
 
         if not parsed_log:
-            return
+            return False
 
         metadata = {
             'log_source': source.name,
@@ -852,9 +1154,14 @@ class LogForwarder:
             'data': parsed_log,
             'metadata': metadata
         }
+        if delivery is not None:
+            # Not part of the event: the pipeline takes it out and settles
+            # it when the sensor has finished with the event.
+            event[DELIVERY_KEY] = delivery
 
         await self.event_queue.put(event)
         self.stats["lines_forwarded"] += 1
+        return True
 
     async def _process_journal_entry(self, entry: str, source: LogSourceConfig):
         """Process a journald entry"""
@@ -990,6 +1297,13 @@ class LogForwarder:
                 entry['format'] = source.format
                 entry['files'] = sorted(state.tails) if state else []
                 entry['problems'] = dict(state.problems) if state else {}
+                # How far each file was read, and up to where the data
+                # service has accepted its lines (what a restart goes on
+                # from): the difference is in the sensor, or on its way.
+                entry['positions'] = {
+                    path: {'read': tail.position, 'accepted': tail.record.offset}
+                    for path, tail in sorted(state.tails.items())
+                } if state else {}
                 monitored += len(entry['files'])
             sources.append(entry)
         return {
@@ -997,6 +1311,7 @@ class LogForwarder:
             'default_sources': self.using_default_sources,
             'log_sources': sources,
             'monitored_files': monitored,
+            'positions': self.positions.get_status(),
             'stats': self.stats.copy()
         }
 

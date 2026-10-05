@@ -44,6 +44,7 @@ from sensor.core.config import (  # noqa: E402
 )
 from sensor.pipeline.data_forwarder import build_batch  # noqa: E402
 from sensor.pipeline.data_processor import DataProcessor  # noqa: E402
+from sensor.pipeline.delivery import take_delivery  # noqa: E402
 
 NGINX_LINE = (
     '203.0.113.9 - - [05/Oct/2026:10:00:00 +0000] "GET /?id=1%27%20OR%201=1 '
@@ -82,9 +83,13 @@ async def _look(forwarder, state):
 
 
 def _taken(forwarder):
+    """The queued events, as the pipeline sees them: without the handle by
+    which the forwarder learns what became of each (test_log_positions.py)."""
     events = []
     while not forwarder.event_queue.empty():
-        events.append(forwarder.event_queue.get_nowait())
+        event = forwarder.event_queue.get_nowait()
+        take_delivery(event)
+        events.append(event)
     return events
 
 
@@ -963,7 +968,9 @@ async def test_one_busy_file_does_not_starve_the_sources_other_files(
 
 
 async def _next_event(forwarder, timeout=5):
-    return await asyncio.wait_for(forwarder.event_queue.get(), timeout=timeout)
+    event = await asyncio.wait_for(forwarder.event_queue.get(), timeout=timeout)
+    take_delivery(event)
+    return event
 
 
 @pytest.mark.asyncio
@@ -983,6 +990,7 @@ async def test_the_running_forwarder_follows_its_sources_and_stops_cleanly(
         _append(log, NGINX_LINE.replace("203.0.113.9", "198.51.100.7") + "\n")
         rotated = await _next_event(forwarder)
 
+        size = log.stat().st_size
         status = forwarder.get_status()
     finally:
         await forwarder.stop()
@@ -1001,8 +1009,17 @@ async def test_the_running_forwarder_follows_its_sources_and_stops_cleanly(
             "format": "nginx",
             "files": [str(log)],
             "problems": {},
+            # Read to its end; nothing accepted, as nothing took the events
+            # further than the queue.
+            "positions": {str(log): {"read": size, "accepted": 0}},
         }
     ]
+    assert status["positions"] == {
+        "persisted": False,
+        "file": None,
+        "last_saved": None,
+        "problem": "data_dir is not set: positions are kept in memory only",
+    }
     # Stopped: no task left, no file left open.
     assert forwarder._tasks == []
     assert forwarder._file_sources["nginx_access"].tails == {}
@@ -1077,7 +1094,7 @@ async def test_a_source_this_platform_cannot_read_is_skipped_with_a_warning(
         await forwarder.stop()
 
     assert tasks == 1
-    assert _warnings(caplog) == [
+    assert _warnings(caplog)[:3] == [
         "Log source 'journal' (journald) is skipped: the systemd journal is "
         "read on Linux only",
         "Log source 'security' (windows_event) is skipped: the Windows Event "
@@ -1085,6 +1102,9 @@ async def test_a_source_this_platform_cannot_read_is_skipped_with_a_warning(
         "Log source 'unified' (unified_log) is skipped: the unified log is "
         "read on macOS only",
     ]
+    # And, with no data_dir, that positions will not outlive the sensor.
+    (memory_only,) = _warnings(caplog)[3:]
+    assert memory_only.startswith("data_dir is not set: read positions are kept")
 
 
 @pytest.mark.asyncio

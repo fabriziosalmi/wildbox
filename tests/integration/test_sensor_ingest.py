@@ -19,10 +19,14 @@ list). What they assert happens through the gateway, as for any client:
   * once the key is revoked, the next batch is refused with 401 (#593/#608);
   * a line written to a file that ``log_sources`` names is read by the log
     forwarder and stored for the key's team, and a file it does not name is
-    not read (#638).
+    not read (#638);
+  * a sensor that restarts goes on where the data service's last accepted
+    line was: a line written while it was down is stored, and none twice
+    (#725).
 
 Deterministic: one batch per step, no retries, and no waiting except for the
-log forwarder to look at its file.
+log forwarder to look at its file and, in the restart test, for the gateway
+to answer each line's batch; every wait has a bound.
 """
 
 import json
@@ -98,6 +102,7 @@ from sensor.collectors.log_forwarder import LogForwarder
 from sensor.core.config import load_config
 from sensor.pipeline.data_forwarder import DataForwarder
 from sensor.pipeline.data_processor import DataProcessor
+from sensor.pipeline.delivery import take_delivery
 
 
 async def main():
@@ -110,6 +115,9 @@ async def main():
     with open("/etc/security-sensor/config.yaml") as handle:
         settings = yaml.safe_load(handle)
     settings.setdefault("collection", {})["log_forwarding"] = True
+    # Positions in memory: the container's data directory is the running
+    # sensor's, and one directory keeps one sensor's positions.
+    settings.pop("data_dir", None)
     settings["log_sources"] = [
         {
             "name": request["source"],
@@ -149,6 +157,9 @@ async def main():
     await sender._init_session()
     try:
         for event in events:
+            # As the processor's loop does: the handle by which the log
+            # forwarder learns what became of the line is not the event's.
+            take_delivery(event)
             sender.accept(await processor._process_single_event(event))
         await sender._flush_batch()
     finally:
@@ -158,6 +169,107 @@ async def main():
         "configured": configured,
         "collected": len(events),
         "stats": sender.stats,
+    }))
+
+
+asyncio.run(main())
+"""
+
+
+# Runs in the sensor container (#725). The log forwarder, the processor and
+# the sender, connected as the agent connects them, are run twice on one log
+# file and one data directory: a first run, a line written while "the sensor
+# is down", a second run. Each line is its own batch, and each run waits for
+# the gateway to have accepted what it must before it stops.
+FORWARD_LOG_RESTART = r"""
+import asyncio, json, os, shutil, sys, tempfile
+
+request = json.load(sys.stdin)
+os.environ["SENSOR_DATA_LAKE_API_KEY"] = request["key"]
+
+import yaml
+
+from sensor.collectors.log_forwarder import LogForwarder
+from sensor.core.config import load_config
+from sensor.pipeline.data_forwarder import DataForwarder
+from sensor.pipeline.data_processor import DataProcessor
+
+
+async def until(condition, what):
+    deadline = asyncio.get_running_loop().time() + 30
+    while not condition():
+        if asyncio.get_running_loop().time() > deadline:
+            raise SystemExit("timed out waiting for " + what)
+        await asyncio.sleep(0.05)
+
+
+async def run(config_path, log, lines, expected):
+    # One run of the sensor's log pipeline: write ``lines``, one at a time,
+    # and stop when the gateway has accepted ``expected`` events.
+    config = load_config(config_path)
+    config.data_lake.sensor_id = request["sensor_id"]
+    config.data_lake.batch_size = 1
+    collected, processed = asyncio.Queue(100), asyncio.Queue(100)
+    forwarder = LogForwarder(config, collected)
+    forwarder.poll_interval = 0.05
+    processor = DataProcessor(config, collected, processed)
+    sender = DataForwarder(config, processed)
+    sender.min_request_interval = 0
+    await processor.start()
+    await sender.start()
+    await forwarder.start()
+    try:
+        for line in lines:
+            with open(log, "a") as handle:
+                handle.write(line + "\n")
+        await until(
+            lambda: sender.stats["events_forwarded"] >= expected,
+            "the gateway to accept %d events" % expected,
+        )
+    finally:
+        # As the agent stops: what collects, what carries, the positions.
+        await forwarder.stop()
+        await processor.stop()
+        await sender.stop()
+        forwarder.save_positions()
+    return dict(sender.stats)
+
+
+async def main():
+    directory = tempfile.mkdtemp(prefix="log-restart-")
+    data_dir = os.path.join(directory, "data")
+    os.mkdir(data_dir)
+    log = os.path.join(directory, "access.log")
+    with open(log, "w") as handle:
+        handle.write(request["lines"]["before"] + "\n")
+
+    with open("/etc/security-sensor/config.yaml") as handle:
+        settings = yaml.safe_load(handle)
+    settings.setdefault("collection", {})["log_forwarding"] = True
+    settings["data_dir"] = data_dir
+    settings["log_sources"] = [
+        {"name": request["source"], "path": log, "format": "raw"}
+    ]
+    config_path = os.path.join(directory, "config.yaml")
+    with open(config_path, "w") as handle:
+        yaml.safe_dump(settings, handle)
+
+    try:
+        first = await run(config_path, log, [request["lines"]["first_run"]], 1)
+        with open(log, "a") as handle:
+            handle.write(request["lines"]["while_down"] + "\n")
+        second = await run(config_path, log, [request["lines"]["second_run"]], 2)
+        with open(os.path.join(data_dir, "log-positions.json")) as handle:
+            state = json.load(handle)
+        size = os.path.getsize(log)
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+    print(json.dumps({
+        "first": first,
+        "second": second,
+        "state": state,
+        "size": size,
+        "uid": os.geteuid(),
     }))
 
 
@@ -366,6 +478,52 @@ def test_a_line_written_to_a_configured_log_source_reaches_the_keys_team(teams):
     assert collected["metadata"]["log_file"] == result["configured"]
     assert unlisted_marker not in json.dumps(listed)
 
+    assert _listed(teams["b"], sensor_id) == []
+
+
+def test_a_restarted_sensor_goes_on_where_the_data_service_stopped(teams):
+    """The read position outlives the sensor, and is the last line accepted (#725).
+
+    Positions were kept in memory: with the default ``read_from: end`` a
+    line written while the sensor was down was never sent. The file starts
+    with a line written before the sensor ever ran, which ``read_from: end``
+    leaves out; then one line per phase.
+    """
+    sensor_id = f"restart-{uuid.uuid4().hex[:8]}"
+    source = f"app_{uuid.uuid4().hex[:6]}"
+    lines = {
+        phase: f"{phase} {uuid.uuid4().hex}"
+        for phase in ("before", "first_run", "while_down", "second_run")
+    }
+
+    result = _in_sensor(
+        FORWARD_LOG_RESTART,
+        teams["key"]["key"],
+        sensor_id=sensor_id,
+        source=source,
+        lines=lines,
+    )
+
+    # Run as the sensor's user, which owns its data directory.
+    assert result["uid"] != 0, result
+    assert result["first"]["events_forwarded"] == 1, result["first"]
+    assert result["second"]["events_forwarded"] == 2, result["second"]
+    for run in ("first", "second"):
+        assert result[run]["events_dropped"] == 0, result[run]
+        assert result[run]["events_returned_to_source"] == 0, result[run]
+    # The saved offset is the end of the file: every line accepted.
+    (saved,) = result["state"]["sources"][source]["files"]
+    assert saved["offset"] == result["size"], result["state"]
+
+    stored = [
+        event["event_data"]["data"]["raw_message"]
+        for event in _listed(teams["a"], sensor_id)
+    ]
+    # The line written while the sensor was down is there, and nothing is
+    # there twice: the second run did not start over, nor from the end.
+    assert sorted(stored) == sorted(
+        [lines["first_run"], lines["while_down"], lines["second_run"]]
+    ), stored
     assert _listed(teams["b"], sensor_id) == []
 
 

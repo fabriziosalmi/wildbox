@@ -61,8 +61,11 @@ log_sources:
     path: /var/log/nginx/access.log
     format: nginx
     enabled: true
-    # end: only the lines written after the sensor starts (the default).
-    # beginning: also what the file already holds, at every start.
+    # Where to start the first time the sensor sees this source. end: only
+    # the lines written after that (the default). beginning: also what the
+    # file already holds. With data_dir set, later starts go on from where
+    # the data service's last accepted line was; without it (as here) this
+    # applies at every start.
     read_from: end
 
   # Nginx Error Logs (optional)

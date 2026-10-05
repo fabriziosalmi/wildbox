@@ -55,6 +55,7 @@ from sensor.pipeline.data_forwarder import (  # noqa: E402
     ingest_event_type,
     retry_delay,
 )
+from sensor.pipeline.delivery import DELIVERY_KEY, Delivery  # noqa: E402
 
 # Shaped like an identity key; not one.
 API_KEY = "wsk_t3st.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -218,17 +219,20 @@ def _ids(count, start=0):
 
 def _held_ids(forwarder):
     """The ids of the events the buffer holds, oldest first."""
-    return [json.loads(body)["event_data"]["id"] for body in forwarder.buffer]
+    return [json.loads(body)["event_data"]["id"] for body, _ in forwarder.buffer]
 
 
 def _accounted(forwarder):
-    """Every event received is forwarded, dropped or still held."""
+    """Every event received is forwarded, dropped, returned or still held."""
     stats = forwarder.stats
     assert stats["events_dropped"] == sum(
         stats[f"events_dropped_{reason}"] for reason in DROP_REASONS
     )
     return stats["events_received"] == (
-        stats["events_forwarded"] + stats["events_dropped"] + len(forwarder.buffer)
+        stats["events_forwarded"]
+        + stats["events_dropped"]
+        + stats["events_returned_to_source"]
+        + len(forwarder.buffer)
     )
 
 
@@ -473,8 +477,8 @@ async def test_the_buffer_holds_no_more_events_than_its_bound_and_drops_none(gat
     largest = []
     hold = forwarder._hold
 
-    def watched(body):
-        hold(body)
+    def watched(*held):
+        hold(*held)
         largest.append(len(forwarder.buffer))
 
     forwarder._hold = watched
@@ -536,8 +540,8 @@ async def test_the_buffer_holds_no_more_bytes_than_its_bound(gateway):
     heaviest = []
     hold = forwarder._hold
 
-    def watched(body):
-        hold(body)
+    def watched(*held):
+        hold(*held)
         heaviest.append(forwarder.buffer_bytes)
 
     forwarder._hold = watched
@@ -643,7 +647,10 @@ async def test_what_is_left_when_the_sensor_stops_is_counted_and_said(gateway, c
 
     assert forwarder.stats["events_dropped_shutdown"] == 12
     assert not forwarder.buffer and forwarder.buffer_bytes == 0
-    assert "Stopped with 12 events the gateway had not accepted" in caplog.text
+    assert (
+        "Stopped with 12 events the gateway had not accepted: 12 are dropped"
+        in caplog.text
+    )
     assert "shutdown: 12" in caplog.text
     assert _accounted(forwarder)
 
@@ -761,6 +768,101 @@ async def test_drops_are_summed_up_in_the_log(gateway, caplog):
         "sensor started"
     ]
     assert "The gateway refused a batch of 2 events (HTTP 422)" in caplog.text
+
+
+# -- what a collector is told about its events (#725) ----------------------
+
+
+def _tracked(settled, name, **fields):
+    """An event whose collector wants to know when the sensor is done with
+    it; ``settled`` receives its name then."""
+    event = dict(EVENTS[0], id=name, **fields)
+    event[DELIVERY_KEY] = Delivery(lambda: settled.append(name))
+    return event
+
+
+@pytest.mark.asyncio
+async def test_an_event_is_settled_when_the_gateway_accepts_it_and_not_before(
+    gateway,
+):
+    gateway.status = 503
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    settled = []
+    await forwarder._init_session()
+    try:
+        forwarder.accept(_tracked(settled, "a"))
+        forwarder.accept(dict(EVENTS[0], id="untracked"))
+        forwarder.accept(_tracked(settled, "b"))
+        assert await forwarder._flush_batch() == RETRY
+        assert settled == []  # kept: its collector must not move past it
+
+        gateway.status = 200
+        assert await forwarder._flush_batch() == SENT
+    finally:
+        await forwarder.session.close()
+
+    assert settled == ["a", "b"]
+    # The handle travels with the event and is no part of what is sent.
+    sent = json.dumps(gateway.requests[-1]["json"])
+    assert gateway.accepted_ids() == ["a", "untracked", "b"]
+    assert DELIVERY_KEY not in sent and "Delivery" not in sent
+
+
+@pytest.mark.asyncio
+async def test_an_event_dropped_for_good_is_settled(gateway):
+    # Its collector reading it again would get it dropped again.
+    forwarder = _forwarder(
+        gateway.url, ca_bundle=gateway.ca, buffer_max_bytes=MIN_BUFFER_BYTES
+    )
+    settled = []
+    await forwarder._init_session()
+    try:
+        forwarder.accept(_tracked(settled, "nan", data={"value": float("nan")}))
+        forwarder.accept(
+            _tracked(settled, "huge", data={"pad": "x" * MIN_BUFFER_BYTES})
+        )
+        assert settled == ["nan", "huge"]
+
+        gateway.status = 422
+        forwarder.accept(_tracked(settled, "refused"))
+        assert await forwarder._flush_batch() == REFUSED
+    finally:
+        await forwarder.session.close()
+    unconfigured = _forwarder(gateway.url, ca_bundle=gateway.ca, api_key="")
+    unconfigured.accept(_tracked(settled, "no key"))
+
+    assert settled == ["nan", "huge", "refused", "no key"]
+    assert forwarder.stats["events_dropped"] == 3
+    assert unconfigured.stats["events_dropped_unconfigured"] == 1
+
+
+@pytest.mark.asyncio
+async def test_what_is_left_at_stop_is_not_settled_and_counted_by_what_becomes_of_it(
+    gateway, caplog
+):
+    gateway.status = 503
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    settled = []
+    replayable = _tracked(settled, "in a log file, with a saved position")
+    memory_only = _tracked(settled, "in a log file, positions in memory")
+    memory_only[DELIVERY_KEY].replayable = False
+    await forwarder._init_session()
+    for event in (replayable, memory_only, dict(EVENTS[0], id="from osquery")):
+        forwarder.accept(event)
+
+    with caplog.at_level(logging.WARNING, logger=data_forwarder.__name__):
+        await forwarder.stop()
+
+    # Settled, the log forwarder would save a position past lines the data
+    # service never got.
+    assert settled == []
+    assert forwarder.stats["events_returned_to_source"] == 1
+    assert forwarder.stats["events_dropped_shutdown"] == 2
+    assert (
+        "Stopped with 3 events the gateway had not accepted: 2 are dropped, 1 "
+        "will be read again from their log source after the restart"
+    ) in caplog.text
+    assert _accounted(forwarder)
 
 
 def test_the_encoded_batch_is_the_batch_the_data_service_expects():

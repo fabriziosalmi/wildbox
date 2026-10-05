@@ -44,6 +44,13 @@ collection:
   # Forward logs. What is forwarded is the log_sources section below.
   log_forwarding: false
 
+# Where the sensor keeps what must outlive a restart: the log forwarder's
+# read positions (log-positions.json). In the container this is the
+# sensor_data volume. Overridden by SENSOR_DATA_DIR. The directory must exist
+# and be writable by the sensor's user; one sensor per directory. Without it
+# positions are kept in memory only and read_from applies at every start.
+data_dir: /var/lib/security-sensor
+
 # Log sources: what the log forwarder reads when collection.log_forwarding is
 # true. See README.md, "Log forwarding".
 #
@@ -64,7 +71,9 @@ collection:
 #     path: /host/var/log/nginx/access.log    # absolute; a file or a pattern (*, ?, [])
 #     format: nginx                           # syslog, nginx, apache or raw (default)
 #     enabled: true                           # default true
-#     read_from: end                          # end (default) or beginning
+#     read_from: end                          # end (default) or beginning: where
+#                                             # to start the first time; later
+#                                             # starts go on from data_dir
 #   - name: app
 #     path: /host/var/log/app/*.log
 #   - name: journal

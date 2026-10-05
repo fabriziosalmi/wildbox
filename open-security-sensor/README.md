@@ -205,6 +205,7 @@ These override the configuration file (`sensor/core/config.py`):
 | `SENSOR_DATA_LAKE_SENSOR_ID` | `data_lake.sensor_id` |
 | `SENSOR_LOGGING_LEVEL` | `logging.level` |
 | `SENSOR_LOGGING_FILE` | `logging.file` |
+| `SENSOR_DATA_DIR` | `data_dir` |
 | `SENSOR_PERFORMANCE_MAX_MEMORY` | `performance.max_memory_mb` |
 | `SENSOR_PERFORMANCE_MAX_CPU` | `performance.max_cpu_percent` |
 | `SENSOR_API_KEY` | `network.api_key` |
@@ -242,7 +243,7 @@ log_sources:
 | `path` | Required for `file` | Absolute path of a file, or a pattern with `*`, `?` and `[...]`. `**` is not supported, and a pattern must name the directory it reads (`/*.log` is refused) |
 | `format` | `raw` | For `file`: `syslog`, `nginx`, `apache` or `raw`. A line the format does not match is forwarded as `raw_message` only |
 | `enabled` | `true` | `false` keeps the entry and does not read it |
-| `read_from` | `end` | For `file`, where to start in a file that exists when the sensor starts: `end` forwards only what is written afterwards, `beginning` also what it already holds |
+| `read_from` | `end` | For `file`, where to start in a file that exists the first time the sensor sees the source: `end` forwards only what is written afterwards, `beginning` also what it already holds. Later starts go on from the saved position (see [Read positions and restarts](#read-positions-and-restarts)) |
 | `log_name` | Required for `windows_event` | The event log's name, such as `Security` |
 
 An entry takes no other key.
@@ -290,16 +291,19 @@ with a warning. This matches the other collectors: the file monitor warns
 about a path that does not exist and skips it, and the sensor stops for a
 configuration it cannot use.
 
-The sources, the files each one is reading and its current problems are in
+The sources, the files each one is reading, how far each file has been read
+and accepted, and each source's current problems are in
 `GET /api/v1/components` under `log_forwarder`; the configured list is in
 `GET /api/v1/config`.
 
 ### How a file is followed
 
-- A file that exists when the sensor starts is read from its end (or its
-  beginning, with `read_from: beginning`). A file that appears later, alone
-  or as a new match of a pattern, is read from its beginning. Patterns are
-  expanded every 5 seconds, files are checked every second.
+- The first time the sensor sees a source, a file that exists is read from
+  its end (or its beginning, with `read_from: beginning`). A file that
+  appears later, alone or as a new match of a pattern, is read from its
+  beginning. Patterns are expanded every 5 seconds, files are checked every
+  second. A source the sensor has seen before goes on where it stopped: see
+  [Read positions and restarts](#read-positions-and-restarts).
 - **Rotation.** When the path names another file (`logrotate` renamed the old
   one), the old file is read to its end, including a last line without a
   newline, and then the new one from its beginning. If the pattern also
@@ -324,14 +328,69 @@ The sources, the files each one is reading and its current problems are in
   the forwarder stops reading, and the file is the buffer: it continues from
   the same place, and no line is given up. See
   [When the gateway takes nothing](#when-the-gateway-takes-nothing).
-- **Restarts.** Positions are kept in memory only. After a restart a
-  `read_from: end` source continues from the file's end, so lines written
-  while the sensor was down are not sent, and a `read_from: beginning` source
-  sends the whole file again. `beginning` is for tests and one-off imports.
 
 Each event carries the parsed line in `data` and, in `metadata`, the source's
 name (`log_source`), the file the line came from (`log_file`: for a pattern,
 the file that matched) and the `format`.
+
+### Read positions and restarts
+
+With `data_dir` set, the sensor keeps, for every file of every file source,
+the offset after the last line **the data service accepted**, and goes on
+from there when it starts again:
+
+```yaml
+data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
+```
+
+- A line written while the sensor was down is sent when it starts; a line
+  already accepted is not sent again. `read_from` applies only the first
+  time the sensor sees a source: a name it has no saved position for, or a
+  name whose `path` has changed.
+- The offset moves when the gateway has answered for a line's batch, not
+  when the line is read. Lines still in the sensor when it stops, or is
+  killed, are read again at the next start: a gateway outage that outlasts
+  the sensor loses nothing. A line the sensor dropped for good (its batch
+  was refused with a 4xx, or no API key was set) counts as done.
+- The position is written to `<data_dir>/log-positions.json` at most once a
+  second while it moves, and when the sensor stops. A sensor that is killed
+  therefore sends again the lines accepted since the last write: delivery is
+  at least once, and after an orderly stop exactly once.
+- The file holds, for each log file, its device and inode, the offset, and
+  SHA-256 digests of its first 256 bytes and of the 64 bytes before the
+  offset; no log content. It is written to a temporary file, flushed, and
+  renamed over the old one. At most 128 files are remembered per source:
+  those being read and the most recently read others.
+- A saved position is used only for the file it was taken from: same device
+  and inode, at least as long as the offset, same digests. Otherwise the
+  file is read from its beginning, as a file that appeared: a log rotated,
+  truncated or rewritten while the sensor was down is read whole. A file
+  removed while the sensor runs leaves no position behind.
+- The saved file itself is not trusted. It must be a regular file of the
+  sensor's user, not a link, at most 4 MiB, and hold only values of the
+  types and ranges the sensor writes; anything else and the whole file is
+  ignored, with a warning that says why, and every source starts as its
+  `read_from` says.
+
+What a saved position cannot do:
+
+- When a log is rotated while the sensor is down and the source does not
+  match the rotated name, what was appended to the old file after the last
+  accepted line is not read. A pattern that also matches it (`access.log*`)
+  reads the rest of the old file and the new one.
+- A file removed and created again while the sensor is down, under the same
+  inode, at least as long as the saved offset and with the same bytes at
+  both places compared, is taken for the old one.
+
+`data_dir` must exist and be writable by the sensor's user, or the sensor
+stops at start-up with a message that says so. One sensor per directory.
+Without `data_dir` positions are kept in memory only, the sensor says so
+when it starts, and after a restart every source starts as its `read_from`
+says: `end` skips what was written meanwhile, `beginning` sends everything
+again. The shipped container configurations set it to the `sensor_data`
+volume; `config.yaml`, for a host, leaves it unset. If a write fails (a full
+disk), the sensor logs it once, reports it under `log_forwarder.positions`
+in `GET /api/v1/components`, and tries again every second.
 
 ### What a source can read
 
@@ -358,7 +417,8 @@ no host log. The sensor process, uid 999 and not root, can read:
 - the image's own files, which hold no host log;
 - its configuration, `/etc/security-sensor/config.yaml`, read-only;
 - the `sensor_logs` volume (`/var/log/security-sensor`, its own log) and the
-  `sensor_data` volume (`/var/lib/security-sensor`);
+  `sensor_data` volume (`/var/lib/security-sensor`, where it keeps its read
+  positions);
 - `/host/proc/stat`, `/host/proc/meminfo`, the host's load average file under
   `/host/proc` and `/host/sys/class/net`, read-only;
 - in the root `docker-compose.yml`, the gateway's certificate in
