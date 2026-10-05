@@ -267,7 +267,7 @@ are in the service logs.
 | `error` | When |
 | --- | --- |
 | `AI analysis is not configured on this server: no model API key is set.` | `ANTHROPIC_API_KEY` is empty; the task fails before anything runs |
-| `The AI model could not be reached, or refused the request. Nothing was analyzed.` | The model's API answered an error or was unreachable, or failed often enough that calls to it are suspended for a minute |
+| `The AI model could not be reached, or refused the request. Nothing was analyzed.` | The model's API answered an error or was unreachable, or failed three times in a row, after which calls to it are suspended for two minutes |
 | `The analysis did not finish within its time limit.` | The analysis timed out |
 | `The investigation ran, but its report could not be generated. No verdict was produced.` | The tools ran, and the model did not return the structured report |
 | `The analysis had no user identity to act for and was not run.` | The task reached the worker without a complete caller (#594) |
