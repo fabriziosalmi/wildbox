@@ -255,7 +255,7 @@ schedule is defined in `open-security-guardian/guardian/schedule.py`; when
 | --- | --- | --- | --- |
 | SLA violation check | every 15 minutes | The shortest SLA is 4 hours (P1), so a breach is reported within 15 minutes of it. The assignee is e-mailed at most once every 24 hours per vulnerability, however often the check runs; the team's owners and admins, when there is no assignee to tell, once (see Notification recipients) | `GUARDIAN_SCHEDULE_SLA_CHECK` |
 | Alert rules | every 15 minutes | A condition is noticed within 15 minutes of becoming true. A rule notifies when it starts firing and when it recovers, not on every evaluation (below), so a shorter interval detects sooner without sending more mail | `GUARDIAN_SCHEDULE_ALERT_RULES` |
-| Risk score recalculation | daily, 02:00 | A full pass over open vulnerabilities, so off-peak. Edits and threat-intel enrichment already recalculate one vulnerability at a time; the pass catches what does not, such as a change to an asset's criticality | `GUARDIAN_SCHEDULE_RISK_SCORES` |
+| Risk score recalculation | daily, 02:00 | A full pass over open vulnerabilities, so off-peak. Edits already recalculate one vulnerability at a time; the pass catches what does not, such as a change to an asset's criticality | `GUARDIAN_SCHEDULE_RISK_SCORES` |
 | Expired report cleanup | daily, 03:00 | Reports expire 30 days after generation; a day's precision is enough | `GUARDIAN_SCHEDULE_REPORT_CLEANUP` |
 | Vulnerability history cleanup | daily, 03:30 | One year of history is kept; running daily keeps each deletion to one day of rows | `GUARDIAN_SCHEDULE_HISTORY_CLEANUP` |
 | Asset inventory | daily, 04:30 | Marks assets not seen for 30 days inactive | `GUARDIAN_SCHEDULE_ASSET_INVENTORY` |

@@ -668,7 +668,7 @@ services:
       retries: 3
 
   # Guardian Celery worker. guardian publishes tasks to Redis db 1 (port
-  # scans on asset creation, threat-intel enrichment, alert-rule checks,
+  # scans on asset creation, assignment notices, alert-rule checks,
   # report generation, compliance notifications), and nothing consumed them
   # until this service existed: every task stayed queued forever (#537).
   # Same image as guardian; the entrypoint's migrate is a no-op once

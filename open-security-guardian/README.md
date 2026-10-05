@@ -36,11 +36,12 @@ Every task is routed by name in `guardian/celery.py` (`TASK_QUEUES`), and
 | `scanning` | Asset discovery, discovery rules, asset port scans |
 | `reporting` | Report generation and metrics, alert-rule checks, expired-report cleanup, compliance reports |
 | `analytics` | Vulnerability risk-score recomputation, compliance metrics |
-| `default` | Notifications, SLA checks, threat-intel enrichment, history cleanup, asset inventory, compliance reminders, the user-schedule dispatcher |
+| `default` | Notifications, SLA checks, history cleanup, asset inventory, compliance reminders, the user-schedule dispatcher |
 
-The threat-intel enrichment task reads `THREAT_INTEL_URLS`, which
-`guardian/settings.py` does not define, so it currently changes nothing.
-Guardian does not query the data service.
+Guardian does not query the data service: a vulnerability's `threat_level`
+and `exploitability_score` are what the team records. The task that was to
+fill them from threat-intelligence feeds read a `THREAT_INTEL_URLS` setting
+that never existed, changed nothing, and was removed (#724).
 
 `tests/unit/test_celery_routing.py` fails when a registered task has no queue
 or when the worker's `-Q` list differs from `TASK_QUEUES`.

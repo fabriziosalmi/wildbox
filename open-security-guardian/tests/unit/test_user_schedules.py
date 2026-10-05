@@ -675,9 +675,7 @@ def _vulnerability(title="exposed service"):
     from apps.assets.models import Asset
     from apps.vulnerabilities.models import Vulnerability
 
-    with mock.patch("apps.assets.signals.scan_asset_ports"), mock.patch(
-        "apps.vulnerabilities.signals.enrich_vulnerability_with_threat_intel"
-    ):
+    with mock.patch("apps.assets.signals.scan_asset_ports"):
         asset = Asset.objects.create(name="host", status="active", team_id=TEAM_ID)
         return Vulnerability.objects.create(
             title=title, description="d", asset=asset, severity="critical"

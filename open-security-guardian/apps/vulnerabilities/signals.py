@@ -22,7 +22,6 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from .models import Vulnerability, VulnerabilityHistory, VulnerabilityStatus
-from .tasks import enrich_vulnerability_with_threat_intel
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +111,6 @@ def handle_vulnerability_save(sender, instance, created, **kwargs):
     """Write the history of a save."""
     if created:
         logger.info("New vulnerability created: %s", instance.pk)
-
-        # Enrich with threat intelligence if CVE is available
-        if instance.cve_id:
-            enrich_vulnerability_with_threat_intel.delay(instance.id)
 
         VulnerabilityHistory.objects.create(
             vulnerability=instance,

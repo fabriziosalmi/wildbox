@@ -370,6 +370,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an SSH tunnel. The `N8N_BASIC_AUTH_*` variables are removed with it:
   leftover lines in `.env` are ignored, and `validate_secrets.py` no
   longer asks for `N8N_BASIC_AUTH_PASSWORD`.
+- **guardian: the threat-intelligence enrichment task** (#724).
+  `enrich_vulnerability_with_threat_intel` was queued for every new
+  vulnerability that had a CVE, read a `THREAT_INTEL_URLS` setting that
+  was never defined, and so answered "No threat intelligence sources
+  available" every time and changed nothing. The task, its queue entry
+  and its dispatch are removed. A vulnerability's `threat_level` and
+  `exploitability_score` are what the team records, as they always were.
 - **guardian: the scan-schedule routes that could only refuse** (#724).
   Since #548, `POST scanners/scan-schedules/`, `PUT` and `PATCH` on a
   schedule, and `POST .../{id}/trigger/` and `.../{id}/enable/` answered

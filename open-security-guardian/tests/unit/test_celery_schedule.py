@@ -295,9 +295,7 @@ def _overdue_vulnerability(owner=None, team_id=None):
     from django.utils import timezone
 
     owner = owner or User.objects.create(username="owner")
-    with mock.patch("apps.assets.signals.scan_asset_ports"), mock.patch(
-        "apps.vulnerabilities.signals.enrich_vulnerability_with_threat_intel"
-    ):
+    with mock.patch("apps.assets.signals.scan_asset_ports"):
         asset = Asset.objects.create(name="host", team_id=team_id)
         return Vulnerability.objects.create(
             title="overdue",

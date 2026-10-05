@@ -164,7 +164,7 @@ def _clear_roles(user, team_id=None):
             count = len(pks)
             if count:
                 _record_unassignment(model, field, pks)
-                # update(), not save(): no post_save work (enrichment, the
+                # update(), not save(): no post_save work (the history, the
                 # assignment e-mail) for what is not an edit by anyone.
                 model._default_manager.filter(pk__in=pks).update(**{field.name: None})
         if count:
