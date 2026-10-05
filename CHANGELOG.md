@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Prometheus 3.13.4 and osquery 5.23.1 replace releases that no longer
+  get fixes** (#726). The monitoring profile ran Prometheus v2.55.1, the
+  last release of the 2.x line (November 2024): CVE-2026-44903, a stored
+  XSS in the heatmap of its web UI, and CVE-2026-42154, a denial of
+  service through the remote-read endpoint, are fixed in 3.x only. It
+  now runs v3.13.4, of the long-term support line. The sensor image
+  installed osquery 5.10.2 (October 2023); 5.23.1 has the memory-safety
+  fixes of 5.23.0 and 5.23.1 (bounds checks in the container tables, a
+  format string in the shell, a use-after-free in the Linux file events)
+  and links OpenSSL 3.6.1 and expat 2.7.4 (CVE-2026-25210) in place of
+  OpenSSL 3.1. Both were checked before the move: every Linux query the
+  sensor ships returns the same columns on both osquery versions, on
+  amd64 and arm64; with Prometheus 3.13.4 the rule tests pass, all eight
+  targets are scraped, an alert reaches a webhook through Alertmanager,
+  and a data volume written by 2.55.1 is read as it is.
+- **Compose images are pinned by digest, and the secret scanner is
+  verified before it runs** (#726). The 21 references to PostgreSQL,
+  Redis, n8n, Prometheus, Alertmanager, nginx, curl and alpine in the
+  tracked Compose files named a version tag and nothing else, and a tag
+  is published again with every rebuild upstream: the same file ran
+  different code on two hosts. Each now carries the digest of its image
+  index (`redis:7-alpine@sha256:...`), and
+  `scripts/check_container_hygiene.py` refuses a Compose image without
+  both the tag and the digest. `secret-scan.yml` unpacked and ran the
+  gitleaks archive as downloaded; it checks the SHA-256 of the release
+  first.
 - **gateway: n8n is no longer reachable through the gateway** (#714).
   `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
   REST API and its webhooks, for whoever the gateway authenticated:
@@ -334,6 +360,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Three Compose files that could not start, and the sensor's scale
+  and monitoring extras** (#726).
+  `open-security-gateway/docker-compose.dev.yml` mounted a mock identity
+  configuration that was never in the repository;
+  `open-security-data/docker-compose.yml` mounted an nginx, a Prometheus
+  and a Grafana configuration that were not there either, and ran the
+  API in production mode without its `SECRET_KEY`;
+  `open-security-sensor/docker-compose.dev.yml` built a `development`
+  stage the Dockerfile does not have. `docker compose up` failed on each.
+  They are removed, with `open-security-sensor/docker-compose.scale.yml`
+  (its load balancer's `nginx.conf` is not a valid main configuration)
+  and the `monitoring` profile of the sensor's own file, which scraped a
+  `/metrics` endpoint the sensor does not have: `open-security-sensor/nginx/`
+  and `open-security-sensor/monitoring/` go with them. The data service
+  runs from the root `docker-compose.yml`; the gateway's mock identity is
+  `test/mock_identity.py`. The two Grafana services that read
+  `GRAFANA_ADMIN_PASSWORD` without requiring it were in those files, so
+  nothing takes an empty admin password any more.
 - **gateway: `/api/v1/automations/`, the route to n8n** (#714). It
   answers 404. n8n's editor is on `http://127.0.0.1:5678` of the host
   with the `automations` profile started; from another machine, through
@@ -442,6 +486,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **tools: an arm64 image ships a Trivy it can run** (#726). The
+  Dockerfile downloaded `trivy_*_Linux-64bit.tar.gz` whatever the
+  platform, so an image built on or for arm64 (an Apple Silicon laptop,
+  a Graviton host) had an x86-64 `/usr/local/bin/trivy`: the container
+  security scanner answered "exec format error", or ran under emulation
+  where the host had it. The asset is now chosen from `TARGETARCH`, with
+  the SHA-256 of each architecture, and any other architecture fails the
+  build. `scripts/check_container_hygiene.py` refuses a download that
+  names one architecture in a `RUN` that never asks for the platform.
+- **The production overlay rotates the log of every service** (#726).
+  Ten services had no `logging` block, so Docker kept their whole output
+  in one file that never rotates: Prometheus and Alertmanager, the tools
+  worker and Flower, the data API and its scheduler, CSPM, the sensor,
+  n8n and the backup loop. They get the block the other eleven have (10
+  MB files, three or five kept), and a test fails for a service of
+  `docker-compose.yml` that the overlay leaves unbounded.
+- **sensor: the standalone Compose file starts with one command**
+  (#726). `open-security-sensor/docker-compose.yml` attached the sensor
+  to an external `security-suite` network that had to be created by hand
+  and that nothing else joins, and started a Redis the sensor never
+  connects to. It now defines the sensor alone, on the project's default
+  network.
 - **identity answers 404, 500 and 503 in the body every service
   answers** (#722). It installed the shared error handlers and then
   registered two of its own by status code, which run first. Every 404
@@ -741,6 +807,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Images install only the OS packages they name** (#726). agents,
+  data, identity, sensor and the tools development image ran
+  `apt-get install -y` and took every recommended package with it:
+  manual pages, bash-completion, Kerberos locales, SASL modules, and in
+  the tools development image an SSH client, D-Bus and X libraries. They
+  now pass `--no-install-recommends`, as the other images did. agents
+  and identity name `libc6-dev` next to `gcc`, which recommended it:
+  without the C library headers the compiler builds nothing. The sensor
+  no longer falls back to `apt-get install -f` after `dpkg -i`, which
+  could not have worked with the package lists already removed.
+- **Dependabot reads the Compose files** (#726). The `docker-compose`
+  ecosystem in `.github/dependabot.yml` proposes, weekly, the new digest
+  of an image whose tag was published again and newer minor and patch
+  tags, for the root, `.github` and the service directories. Majors are
+  ignored there and decided by hand, as are minors of Prometheus (it
+  stays on the long-term support line) and of nginx. The base images of
+  the Dockerfiles were already covered: Dependabot proposed the
+  openresty digest on 2026-10-02, and pip 24.0 is the pip the
+  `python:3.11-slim` image ships in every digest, not a stale layer.
 - **cspm, data and guardian run prometheus-client 0.26.0** (#722), the
   version the other services already locked, up from 0.19.0. The six
   services that call `install_observability` name
@@ -956,6 +1041,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The workflows install their tools at pinned versions** (#726).
+  `test.yml`, `pr-validation.yml`, `integration-tests.yml` and
+  `production-stack.yml` installed pytest, pytest-cov, pytest-asyncio,
+  httpx, black, flake8, isort and mypy with no version, and
+  `documentation-quality.yml` its four npm tools: a release of a linter
+  could turn `main` red with no change in the tree.
+  `tests/ci-tools/requirements.in` names them at exact versions and
+  `requirements.txt` next to it is the hash-pinned lock, compiled by
+  `scripts/compile_requirements.sh ci-tools`, checked by Dependency
+  Integrity and included in the weekly advisory upgrades. Jobs on a
+  clean interpreter install it with `--require-hashes`; Unit Tests and
+  Python Code Quality, which install on top of a service's lock, name
+  the same versions. `scripts/check_workflow_pins.py`, a new step of
+  Code Quality, fails on a `pip install` or `npm install -g` without an
+  exact version, on a version that differs from the tools lock, on a
+  download that is unverified or piped to a shell, and on an action
+  that is not at a version tag or a commit.
+- **Validate Docker Compose renders every Compose file** (#726). It
+  rendered `docker-compose.yml` and nothing else.
+  `scripts/check_compose_files.py` renders every tracked Compose file,
+  alone or with the files it overlays, every profile included, and
+  checks in the result what `docker compose config` does not: that each
+  build context, Dockerfile, stage and named build context exists, and
+  that each bind-mount source inside the repository is there or is
+  created at run time.
+- **Code Quality checks how images install OS packages** (#726).
+  `scripts/check_container_hygiene.py` fails on an `apt-get install`
+  without `--no-install-recommends`, on an `apt-get update` whose
+  package lists are not removed in the same `RUN`, and on an `apk add`
+  without `--no-cache`. A test holds the Docker Build Validation matrix
+  to the service directories that have a Dockerfile.
 - **An image whose environment does not satisfy the shared package does
   not build, and Dependency Integrity says so first** (#722). The
   offline install of the shared package with extras and the `pip check`

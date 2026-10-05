@@ -65,6 +65,19 @@ extra and compile with `--upgrade`.
 image without a digest and on a download that nothing verifies; a `curl` or
 `wget` in a `RUN` needs a `sha256sum -c` in the same instruction.
 
+The same check reads how an image installs OS packages and binaries:
+
+- `apt-get install` needs `--no-install-recommends`, and the `RUN` that runs
+  `apt-get update` ends with `rm -rf /var/lib/apt/lists/*`; `apk add` needs
+  `--no-cache`. Name every package the image needs: a recommended one is no
+  longer installed with it. `gcc` is the case to remember, since the C library
+  headers (`libc6-dev`) are only a recommendation of it.
+- A downloaded binary is chosen by the platform the image is built for. A URL
+  that names one architecture (`Linux-64bit`, `amd64`, `arm64`) must be in a
+  `RUN` that reads `TARGETARCH` or `dpkg --print-architecture`, with a checksum
+  for each architecture and a failure for any other. The tools image does this
+  for Trivy and the sensor image for osquery.
+
 The dashboard uses `package-lock.json` and `npm ci`.
 
 ## Compiling the Locks
@@ -87,10 +100,30 @@ widening a range on purpose, compile with `--upgrade`, or the old pin stays.
 
 Commit `requirements.in` and `requirements.txt` together.
 
+## The CI Tools
+
+`tests/ci-tools/requirements.in` names the tools the workflows install: the
+test runner (pytest, pytest-asyncio, pytest-cov), the clients the integration
+suites use (httpx, requests, python-dotenv, psycopg2-binary, pyyaml,
+packaging) and the linters (black, flake8, isort, mypy), each at an exact
+version. `requirements.txt` next to it is the hash-pinned lock:
+
+```bash
+./scripts/compile_requirements.sh ci-tools
+```
+
+A job that starts from a clean interpreter installs the lock with
+`pip install --require-hashes -r tests/ci-tools/requirements.txt`. Unit Tests
+and Python Code Quality install a tool on top of a service's own lock, which
+this lock would move, so they name the tool with the version the file gives it
+(`pip install pytest==...`). To move a tool, change the version in
+`requirements.in`, compile, and change the same version in those two workflows:
+`scripts/check_workflow_pins.py` fails while they differ.
+
 ## Security Upgrades
 
 `make lock-security` runs `scripts/upgrade_vulnerable_requirements.sh`. It
-audits each lock with `pip-audit` (OSV database) and moves only the packages
+audits each lock, the CI tools lock included, with `pip-audit` (OSV database) and moves only the packages
 with a known advisory to the newest version `requirements.in` allows, using the
 same `uv` invocation as `compile_requirements.sh`. An advisory whose fix lies
 outside the allowed range is listed in the summary, not forced: widening a
@@ -130,6 +163,15 @@ its pull requests could never pass the Dependency Integrity check (#420).
   pull request that touches one. The build runs the offline install and
   `pip check` described above, so it fails when an image's environment does
   not satisfy what is installed in it.
+- **Code Quality** (`.github/workflows/test.yml`) runs
+  `scripts/check_workflow_pins.py`: it fails on a workflow that installs a pip
+  or global npm package without an exact version, at a version other than the
+  CI tools lock's, on a download that is unverified or piped to a shell, and
+  on an action that is not at a version tag or a commit.
+- **Validate Docker Compose** (`.github/workflows/pr-validation.yml`) runs
+  `scripts/check_compose_files.py`: every tracked Compose file renders, alone
+  or with the files it overlays, and each build context, Dockerfile stage and
+  bind-mount source it names exists.
 - **Security Scanning** (`.github/workflows/test.yml`) fails a pull request
   that introduces a critical advisory with a released fix
   (`scripts/critical_advisories.sh new`). Advisories already on `main` are
