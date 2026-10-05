@@ -21,7 +21,6 @@ The form now:
 import importlib.util
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -154,12 +153,10 @@ def compose_config(tmp_path, environment_line: str, *overlays: str, quiet=True):
     """``docker compose config`` on the base file, and overlays if any.
 
     The env file gives every variable the file requires a placeholder, so that
-    ENVIRONMENT is the only one that can be missing.
+    ENVIRONMENT is the only one that can be missing. A test that calls this
+    asks for the ``docker`` fixture of conftest.py, which decides what a
+    machine without Docker means.
     """
-    if shutil.which("docker") is None:
-        if os.environ.get("WILDBOX_REQUIRE_DOCKER_TESTS") == "1":
-            pytest.fail("docker is required for this test and is not available")
-        pytest.skip("docker is not available")
     files = (BASE, *overlays)
     text = "".join((REPO_ROOT / name).read_text(encoding="utf-8") for name in files)
     names = sorted(set(re.findall(r"\$\{([A-Z][A-Z0-9_]*):\?", text)) - {"ENVIRONMENT"})
@@ -188,14 +185,14 @@ def compose_config(tmp_path, environment_line: str, *overlays: str, quiet=True):
     )
 
 
-def test_compose_refuses_an_env_file_without_the_variable(tmp_path):
+def test_compose_refuses_an_env_file_without_the_variable(docker, tmp_path):
     result = compose_config(tmp_path, "")
     assert result.returncode != 0
     assert "ENVIRONMENT" in result.stderr
     assert "set it in .env to production" in result.stderr
 
 
-def test_compose_refuses_an_empty_variable(tmp_path):
+def test_compose_refuses_an_empty_variable(docker, tmp_path):
     # ${VAR:?} is for unset and for empty alike: ENVIRONMENT= is not a choice.
     result = compose_config(tmp_path, "ENVIRONMENT=")
     assert result.returncode != 0
@@ -203,12 +200,13 @@ def test_compose_refuses_an_empty_variable(tmp_path):
 
 
 @pytest.mark.parametrize("value", ["production", "development"])
-def test_compose_accepts_a_declared_environment(tmp_path, value):
+def test_compose_accepts_a_declared_environment(docker, tmp_path, value):
     result = compose_config(tmp_path, f"ENVIRONMENT={value}")
     assert result.returncode == 0, result.stderr
 
 
 def test_the_rendered_production_stack_is_production_whatever_the_env_file_says(
+    docker,
     tmp_path,
 ):
     import json
