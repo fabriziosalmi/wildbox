@@ -498,6 +498,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against `journalctl` 257 on journal files written for the purpose, and
   against `log stream` on macOS 26; not against a live
   `systemd-journald`.
+- **The sensor's Windows event reader forwards each event once and no
+  longer stops the event loop** (#725). Every 30 seconds it asked
+  PowerShell for the ten newest events of a log and forwarded all ten,
+  so the same events were sent over and over, and anything beyond ten
+  in 30 seconds never was; the call blocked the event loop, and with it
+  every other collector and the sender, for as long as PowerShell ran.
+  It now asks for the events after the last record id read, oldest
+  first, 50 at a time and again at once while a query returns 50, from a
+  worker thread with a 30-second limit. The log is followed from its
+  newest event on the first time; with `data_dir` the record id of the
+  last accepted event is saved. A log whose newest record id went back
+  was cleared and is read from its beginning, with a warning. A query
+  that fails, or prints anything but what it is written to print,
+  forwards nothing and is reported once (`state: failing`,
+  `last_error`). The events' type is `log.<name>`, not
+  `log.windows.<log>`, and their `log_source` is the source's name.
+  **Not run on Windows**: the logic is tested with the query replaced
+  by a stand-in, and the PowerShell text was run in PowerShell 7 on
+  Linux with a stand-in for `Get-WinEvent`; the sensor README lists what
+  that leaves unchecked.
 
 ### Changed
 

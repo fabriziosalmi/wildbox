@@ -239,7 +239,7 @@ log_sources:
 | Key | Default | Meaning |
 | :--- | :--- | :--- |
 | `name` | Required | Unique; letters, digits, `_`, `.`, `-`, at most 64. The events' type is `log.<name>`, which is also their first tag |
-| `type` | `file` | `file`, `journald` (Linux, runs `journalctl --follow`), `windows_event` (Windows) or `unified_log` (macOS, runs `log stream`); see [The journal and the unified log](#the-journal-and-the-unified-log) |
+| `type` | `file` | `file`, `journald` (Linux, runs `journalctl --follow`), `windows_event` (Windows; see [Windows event logs](#windows-event-logs)) or `unified_log` (macOS, runs `log stream`); see [The journal and the unified log](#the-journal-and-the-unified-log) |
 | `path` | Required for `file` | Absolute path of a file, or a pattern with `*`, `?` and `[...]`. `**` is not supported, and a pattern must name the directory it reads (`/*.log` is refused) |
 | `format` | `raw` | For `file`: `syslog`, `nginx`, `apache` or `raw`. A line the format does not match is forwarded as `raw_message` only |
 | `enabled` | `true` | `false` keeps the entry and does not read it |
@@ -428,11 +428,13 @@ entry's fields in `data`.
   command is being started again, are not read, and an entry still in the
   sensor when it stops is counted under `events_dropped_shutdown`.
 
-Each such source reports, under `log_forwarder` in `GET /api/v1/components`,
-its `state` (`starting`, `running`, `restarting`, `unavailable`, `skipped` on
-a platform that has no such log, `stopped`), `restarts`, `last_exit`,
+Each source that is not a file reports, under `log_forwarder` in
+`GET /api/v1/components`, its `state` (`starting`, `running`, `restarting`,
+`failing` for an event log whose last query failed, `unavailable`, `skipped`
+on a platform that has no such log, `stopped`), `restarts`, `last_exit`,
 `last_error` and the counters `entries_forwarded`, `entries_truncated` and
-`entries_unparsed`; a `journald` source also its `accepted_cursor`.
+`entries_unparsed`; a `journald` source also its `accepted_cursor`, a
+`windows_event` source its `read_record_id` and `accepted_record_id`.
 
 The `journald` reader was checked against the real `journalctl` (systemd
 257) in a container, on journal files written with `systemd-journal-remote`:
@@ -441,6 +443,36 @@ malformed cursor. It was not run against a live `systemd-journald`. The
 `unified_log` reader was run against `log stream` on macOS 26. Neither runs
 in CI, where a script plays the command, and the Docker image contains
 neither command.
+
+### Windows event logs
+
+A `windows_event` source asks its log (`log_name`), every 30 seconds, for the
+events after the last record id it read, oldest first, at most 50 at a time;
+when a query returns 50 it asks again at once. Each event is forwarded once,
+as an event of type `log.<name>` with `RecordId`, `Id`, `Level`,
+`ProviderName`, `MachineName`, `TimeCreated` and `Message` in `data`; a
+message longer than 16 KiB is cut and marked `metadata.truncated`.
+
+- The first time, the log is followed from its newest event on. With
+  `data_dir` set, the record id of the last event the data service accepted
+  is saved with the other positions, and a restarted sensor goes on from it.
+- The query is a PowerShell command (`Get-WinEvent`) run in a worker thread,
+  with a 30-second limit: the rest of the sensor does not wait for it.
+- A log whose newest record id is lower than the last one read was cleared:
+  the sensor says so and reads it from its beginning.
+- A query that fails, or prints anything but what the command is written to
+  print, forwards nothing; the source's `state` is `failing`, its
+  `last_error` says why, the failure is logged once, and the log is asked
+  again every 30 seconds from the same record id.
+
+**Not run on Windows.** The reader's logic (the record id kept, the order,
+the cleared log, failures, the saved position) is tested with the query
+replaced by a stand-in. The PowerShell text was run in PowerShell 7 on Linux
+with a stand-in for `Get-WinEvent`, which checks its syntax, its handling of
+an empty answer and the JSON it prints, and nothing more: what the real
+`Get-WinEvent` returns, Windows PowerShell 5.1, the rights the sensor's
+account needs to read the `Security` log, and how record ids behave when a
+log is cleared were not checked on a Windows host.
 
 ### What a source can read
 

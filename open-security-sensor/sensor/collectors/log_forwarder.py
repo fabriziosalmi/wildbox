@@ -60,6 +60,16 @@ follows them (``journalctl --follow``, ``log stream``):
   restart of the sensor goes on from it. The unified log has no such
   position: ``log stream`` shows what is logged while it runs.
 
+A Windows event log is asked, every ``WINDOWS_POLL_INTERVAL`` seconds, for
+the events after the last record id read, oldest first, at most
+``WINDOWS_MAX_EVENTS`` at a time; the query is a PowerShell command and runs
+in a worker thread, not in the event loop. The first time, the log is
+followed from its newest event on; the record id of the last event the data
+service accepted is saved with the other positions. (The reader used to ask
+for the ten newest events every 30 seconds and forward all ten each time,
+from a blocking call in the event loop.) The PowerShell text has not been
+run on Windows: see the README.
+
 A path that does not exist, cannot be read or is refused is a warning that
 names the source, logged once, and the source keeps being checked: logs appear
 and rotate while the sensor runs. A source the configuration gets wrong (an
@@ -135,6 +145,36 @@ STDERR_KEPT = 512
 # Starts in a row that a saved journal cursor may fail before it is given up.
 CURSOR_ATTEMPTS = 3
 _JOURNAL_CURSOR = re.compile(rb'"__CURSOR"\s*:\s*"([^"\\]{1,512})"')
+# A Windows event log: seconds between two queries, events asked for at a
+# time, and seconds a query may take.
+WINDOWS_POLL_INTERVAL = 30.0
+WINDOWS_MAX_EVENTS = 50
+WINDOWS_QUERY_TIMEOUT = 30
+_WINDOWS_LOG_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 _-]{0,63}$")
+# What PowerShell is given. {log} is a name that matches _WINDOWS_LOG_NAME,
+# so it cannot end the quoted string it is put in; {after} and {most} are
+# whole numbers. It prints one JSON object: the log's newest record id (0
+# for an empty log) and the events after {after}, oldest first.
+_WINDOWS_QUERY = """\
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$log = '{log}'
+$newest = 0
+try {{ $newest = (Get-WinEvent -LogName $log -MaxEvents 1).RecordId }}
+catch {{ if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*') {{ throw }} }}
+$found = @()
+if ({after} -ge 0) {{
+  try {{ $found = @(Get-WinEvent -LogName $log -FilterXPath '*[System[EventRecordID > {after}]]' -MaxEvents {most} -Oldest) }}
+  catch {{ if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*') {{ throw }} }}
+}}
+$events = @($found | ForEach-Object {{ [ordered]@{{
+  RecordId = [int64]$_.RecordId; Id = $_.Id; Level = $_.LevelDisplayName
+  ProviderName = $_.ProviderName; MachineName = $_.MachineName
+  TimeCreated = $_.TimeCreated.ToUniversalTime().ToString('o'); Message = $_.Message
+}} }})
+[ordered]@{{ newest = [int64]$newest; events = $events }} | ConvertTo-Json -Depth 3 -Compress
+"""
 # Seconds between two writes of the positions, when they have moved. What a
 # killed sensor sends again is what the data service accepted since the last
 # write.
@@ -279,12 +319,22 @@ class _SystemSource:
         # is what is saved.
         self.read_cursor: Optional[str] = None
         self.accepted_cursor: Optional[str] = None
+        # windows_event: the same two, as record ids. None: the log has not
+        # been asked yet, and is followed from its newest event on.
+        self.read_record: Optional[int] = None
+        self.accepted_record: Optional[int] = None
         self.pending: Deque[_Pending] = deque()
 
     def saved(self) -> Optional[Dict[str, Any]]:
         """What to keep for this source in the position file."""
         if self.source.type == "journald" and self.accepted_cursor:
             return {"type": "journald", "cursor": self.accepted_cursor}
+        if self.source.type == "windows_event" and self.accepted_record is not None:
+            return {
+                "type": "windows_event",
+                "log_name": self.source.log_name,
+                "record_id": self.accepted_record,
+            }
         return None
 
     def status(self) -> Dict[str, Any]:
@@ -299,6 +349,10 @@ class _SystemSource:
         }
         if self.source.type == "journald":
             status["accepted_cursor"] = self.accepted_cursor
+        if self.source.type == "windows_event":
+            status["log_name"] = self.source.log_name
+            status["read_record_id"] = self.read_record
+            status["accepted_record_id"] = self.accepted_record
         return status
 
 
@@ -479,7 +533,7 @@ class LogForwarder:
                 elif source.type == "journald":
                     monitor = self._monitor_journald(runtime)
                 elif source.type == "windows_event":
-                    monitor = self._monitor_windows_events(source)
+                    monitor = self._monitor_windows_events(runtime)
                 elif source.type == "unified_log":
                     monitor = self._monitor_unified_log(runtime)
 
@@ -548,6 +602,13 @@ class LogForwarder:
         saved = self._saved.get(source.name) or {}
         if source.type == "journald" and saved.get("type") == "journald":
             runtime.accepted_cursor = runtime.read_cursor = saved["cursor"]
+        if (
+            source.type == "windows_event"
+            and saved.get("type") == "windows_event"
+            # A source pointed at another log starts as a new one.
+            and saved.get("log_name") == source.log_name
+        ):
+            runtime.accepted_record = runtime.read_record = saved["record_id"]
         return runtime
 
     def _settled(self, tail: _Tail, entry: _Pending):
@@ -1373,55 +1434,203 @@ class LogForwarder:
             runtime.accepted_cursor = last.end
             self._positions_dirty = True
 
-    async def _monitor_windows_events(self, source: LogSourceConfig):
-        """Monitor Windows Event Log"""
-        if not is_windows():
-            return
+    # the Windows event log
 
+    @staticmethod
+    def _windows_events_command(log_name: str, after: Optional[int]) -> List[str]:
+        """PowerShell, asked for the log's newest record id and, unless
+        ``after`` is None, the events after that record id.
+
+        Nothing but a checked log name and whole numbers goes into the
+        command's text.
+        """
+        if not isinstance(log_name, str) or not _WINDOWS_LOG_NAME.match(log_name):
+            raise ValueError(f"not a Windows event log name: {log_name!r}")
+        if after is None:
+            after = -1  # only the newest record id is wanted
+        if isinstance(after, bool) or not isinstance(after, int) or after < -1:
+            raise ValueError(f"not a record id: {after!r}")
+        script = _WINDOWS_QUERY.format(
+            log=log_name, after=after, most=int(WINDOWS_MAX_EVENTS)
+        )
+        return ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
+
+    @staticmethod
+    def _run_windows_query(argv: List[str]) -> str:
+        """Run the query and return what it printed. Blocking: it is called
+        in a worker thread."""
+        result = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=WINDOWS_QUERY_TIMEOUT,
+        )
+        if result.returncode != 0:
+            said = " ".join((result.stderr or "").split())[-STDERR_KEPT:]
+            raise RuntimeError(
+                f"PowerShell ended with exit status {result.returncode}: {said}"
+            )
+        return result.stdout
+
+    @staticmethod
+    def _parse_windows_events(output: str, after: Optional[int]):
+        """The newest record id and the events of a query's output, oldest
+        first, without any at or before ``after``.
+
+        Raises ValueError for anything that is not what the query prints:
+        nothing is forwarded from an answer that cannot be trusted whole.
+        """
+        answer = json.loads(output)
+        if not isinstance(answer, dict):
+            raise ValueError("the answer is not an object")
+        newest = answer.get("newest")
+        if isinstance(newest, bool) or not isinstance(newest, int) or newest < 0:
+            raise ValueError("the answer has no newest record id")
+        events = answer.get("events")
+        if events is None:
+            events = []
+        if isinstance(events, dict):
+            events = [events]  # ConvertTo-Json writes a list of one as the one
+        if not isinstance(events, list):
+            raise ValueError("the answer's events are not a list")
+        for event in events:
+            record = event.get("RecordId") if isinstance(event, dict) else None
+            if isinstance(record, bool) or not isinstance(record, int) or record < 0:
+                raise ValueError("an event has no record id")
+        events = sorted(events, key=lambda event: event["RecordId"])
+        if after is not None:
+            # Whatever the query returned: nothing is forwarded twice.
+            events = [event for event in events if event["RecordId"] > after]
+        return newest, events
+
+    async def _windows_pause(self, seconds: float):
+        await asyncio.sleep(seconds)
+
+    async def _monitor_windows_events(self, runtime: _SystemSource):
+        """Follow a Windows event log"""
+        source = runtime.source
         log_name = source.log_name
+        logger.info(
+            "Log source %r: following the Windows event log %s %s",
+            source.name,
+            log_name,
+            (
+                "from its newest event on"
+                if runtime.read_record is None
+                else f"after record {runtime.read_record}"
+            ),
+        )
 
-        # SECURITY: Validate log_name to prevent command injection
-        if not re.match(r'^[A-Za-z][A-Za-z0-9 _-]{0,63}$', log_name or ''):
-            logger.error(f"Invalid Windows Event Log name rejected: {log_name!r}")
-            return
-
-        logger.info(f"Starting Windows Event Log monitoring: {log_name}")
-
-        # This would require Windows-specific implementation
-        # For now, we'll use a placeholder
         while self.running:
+            more = False
             try:
-                # PowerShell command to get latest events
-                # log_name is validated above — pass as a single argument to prevent injection
-                ps_command = f'Get-EventLog -LogName "{log_name}" -Newest 10 | ConvertTo-Json'
-                cmd = [
-                    'powershell',
-                    '-NoProfile',
-                    '-NonInteractive',
-                    '-Command', ps_command
-                ]
-
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-                if result.returncode == 0 and result.stdout:
-                    try:
-                        events = json.loads(result.stdout)
-                        if not isinstance(events, list):
-                            events = [events]
-
-                        for event in events:
-                            await self._process_windows_event(event, source)
-
-                    except json.JSONDecodeError:
-                        pass
-
-                await asyncio.sleep(30)  # Check every 30 seconds
-
+                argv = self._windows_events_command(log_name, runtime.read_record)
+                # Off the event loop: PowerShell takes seconds to start, and
+                # everything else the sensor does would wait for it.
+                output = await asyncio.to_thread(self._run_windows_query, argv)
+                newest, events = self._parse_windows_events(
+                    output, runtime.read_record
+                )
             except asyncio.CancelledError:
                 raise
+            except FileNotFoundError:
+                runtime.state = "unavailable"
+                runtime.last_error = "powershell is not installed"
+                logger.warning(
+                    "Log source %r (windows_event) is not read: powershell is "
+                    "not installed here",
+                    source.name,
+                )
+                return
             except Exception as e:
-                logger.error(f"Error monitoring Windows events: {e}")
-                await asyncio.sleep(30)
+                problem = f"{type(e).__name__}: {e}"[:STDERR_KEPT]
+                if runtime.state != "failing" or runtime.last_error != problem:
+                    logger.warning(
+                        "Log source %r: the event log %s cannot be read: %s. It "
+                        "is asked again every %.0f seconds",
+                        source.name,
+                        log_name,
+                        problem,
+                        WINDOWS_POLL_INTERVAL,
+                    )
+                runtime.state = "failing"
+                runtime.last_error = problem
+            else:
+                if runtime.state == "failing":
+                    logger.info(
+                        "Log source %r: the event log %s is read again",
+                        source.name,
+                        log_name,
+                    )
+                runtime.state = "running"
+                runtime.last_error = None
+                if runtime.read_record is None:
+                    # The first look: from here on, like a file read from
+                    # its end. Saved, so that a restart goes on from here.
+                    runtime.read_record = runtime.accepted_record = newest
+                    self._positions_dirty = True
+                elif newest < runtime.read_record:
+                    logger.warning(
+                        "Log source %r: the event log %s was cleared (its "
+                        "newest record is %d, the last one read was %d); it "
+                        "is read from its beginning",
+                        source.name,
+                        log_name,
+                        newest,
+                        runtime.read_record,
+                    )
+                    runtime.pending.clear()
+                    runtime.read_record = runtime.accepted_record = 0
+                    self._positions_dirty = True
+                    more = True  # asked again at once, from record 0
+                else:
+                    for event in events:
+                        await self._windows_event(runtime, event)
+                    more = len(events) >= WINDOWS_MAX_EVENTS
+            await self._windows_pause(0 if more else WINDOWS_POLL_INTERVAL)
+
+    async def _windows_event(self, runtime: _SystemSource, data: Dict[str, Any]):
+        """Queue one event of a Windows event log."""
+        source = runtime.source
+        record = data["RecordId"]
+        metadata = {
+            'log_source': source.name,
+            'log_name': source.log_name,
+            'format': 'windows_event'
+        }
+        message = data.get("Message")
+        if isinstance(message, str) and len(message) > MAX_LINE_BYTES:
+            data = dict(data, Message=message[:MAX_LINE_BYTES])
+            metadata['truncated'] = True
+            runtime.entries_truncated += 1
+
+        event = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'source': 'log_forwarder',
+            'type': f"log.{source.name}",
+            'data': data,
+            'metadata': metadata
+        }
+        entry = _Pending(record)
+        runtime.pending.append(entry)
+        event[DELIVERY_KEY] = Delivery(
+            lambda: self._windows_settled(runtime, entry),
+            replayable=self.positions.persistent,
+        )
+        runtime.read_record = record
+
+        await self.event_queue.put(event)
+        runtime.entries_forwarded += 1
+
+    def _windows_settled(self, runtime: _SystemSource, entry: _Pending):
+        """The sensor has finished with an event: the saved record id moves
+        to the last event settled with all those read before it."""
+        last = _settle_in_order(runtime.pending, entry)
+        if last is not None:
+            runtime.accepted_record = last.end
+            self._positions_dirty = True
 
     # the macOS unified log
 
@@ -1523,21 +1732,6 @@ class LogForwarder:
         await self.event_queue.put(event)
         self.stats["lines_forwarded"] += 1
         return True
-
-    async def _process_windows_event(self, event: Dict[str, Any], source: LogSourceConfig):
-        """Process a Windows event"""
-        processed_event = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'source': 'log_forwarder',
-            'type': f"log.windows.{source.log_name.lower()}",
-            'data': event,
-            'metadata': {
-                'log_source': source.log_name,
-                'format': 'windows_event'
-            }
-        }
-
-        await self.event_queue.put(processed_event)
 
     def _parse_log_line(self, line: str, format_type: str) -> Optional[Dict[str, Any]]:
         """Parse a log line based on its format"""
