@@ -39,8 +39,10 @@ What the script does:
    [JWT_SECRET_KEY](#jwt_secret_key)). Set `COMPOSE_FILE` to the files you
    start the stack with, for example
    `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`.
-4. Refuses `POSTGRES_PASSWORD` unless the `postgres` service is running (see
-   [POSTGRES_PASSWORD](#postgres_password)).
+4. Refuses `POSTGRES_PASSWORD` unless the `postgres` service is running, and
+   `REDIS_PASSWORD` unless the `wildbox-redis` service is (see
+   [POSTGRES_PASSWORD](#postgres_password) and
+   [REDIS_PASSWORD](#redis_password)).
 5. Copies the file to `.env.bak.<timestamp>` with mode `0600`. The copy
    holds the **old** secret: delete it once the rotation is verified.
 6. Generates the new value with the generator `make generate-secrets` uses
@@ -52,11 +54,14 @@ What the script does:
    `JWT_SECRET_KEY` value instead of generating one.
 7. Prints the next step: which services receive the secret, read from
    `docker compose config`, and the command that recreates them. It does not
-   restart anything.
+   restart anything. A service that receives the secret but sits behind a
+   Compose profile that is not active (`backup`, for example) is named
+   separately and left out of the command, because `docker compose up` starts
+   a profile's service when it is named, whether you run that profile or not.
 
-Except for `POSTGRES_PASSWORD`, the script changes `.env` only. Running
-containers keep the old value until they are recreated, with the command the
-script prints, for example:
+Except for `POSTGRES_PASSWORD` and `REDIS_PASSWORD`, the script changes `.env`
+only. Running containers keep the old value until they are recreated, with
+the command the script prints, for example:
 
 ```bash
 docker compose up -d --no-deps api tools-worker tools-flower
@@ -137,14 +142,81 @@ submitted again.
 
 ### REDIS_PASSWORD
 
-The Redis container starts with `--requirepass ${REDIS_PASSWORD}`, and
-`docker-compose.yml` builds every service's Redis and Celery URL from the
-same variable. Recreate all services together. Redis keeps its data
-(append-only file) across the restart.
+This password lives in two places as well, in another way. Redis keeps no
+password of its own: the container starts with
+`--requirepass ${REDIS_PASSWORD}` on its command line. `docker-compose.yml`
+builds every service's Redis and Celery URL from the same variable, unless
+`.env` overrides one (variables such as `IDENTITY_REDIS_URL`,
+`GUARDIAN_CELERY_BROKER_URL` or `AGENTS_REDIS_URL`), and then the password is
+inside that URL.
 
-If `.env` overrides any of those URLs (variables such as
-`IDENTITY_REDIS_URL` or `AGENTS_REDIS_URL`), the password inside them is not
-updated by the script: edit them by hand.
+The script changes the running server and `.env` together or neither, and
+needs the stack running:
+
+```bash
+./scripts/rotate_secrets.sh --secret REDIS_PASSWORD
+```
+
+1. It refuses, changing nothing, if Docker is missing; if the
+   `wildbox-redis` service is not running in the Compose project
+   (`COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`; `REDIS_SERVICE` names another
+   service); if `REDIS_PASSWORD` is not set in `.env`; if the compose
+   configuration does not pass that value to the Redis service, since a
+   recreated Redis would then not start with the new one; if the running
+   Redis does not accept the value in `.env`; or if Redis is not writing its
+   append-only file (`appendonly` is off, or its last write failed), since
+   the last step recreates the container that holds the only copy of scan
+   and run state, queues, revoked tokens and lockouts.
+2. It rewrites `REDIS_PASSWORD` and the password inside every `redis://` or
+   `rediss://` URL in `.env` that points at the stack's Redis (host
+   `wildbox-redis`) as the default user (`:password@` or
+   `default:password@`). Nothing else in the URLs changes. URLs for another
+   host or another user are left alone and listed, so you can update them by
+   hand, and so is a URL for the stack's Redis that carries no password.
+3. It sets the new password in the running server with
+   `CONFIG SET requirepass`. Both passwords reach `redis-cli` over standard
+   input, the old one as `REDISCLI_AUTH`, so neither is in a command line.
+   Redis keeps `CONFIG` out of `MONITOR` and writes `(redacted)` for the
+   value in its slow log.
+4. It asks the server, over TCP, about both passwords: the new one must be
+   accepted and the old one refused.
+5. If step 3 or 4 fails, or the script is interrupted, it restores `.env`
+   from the backup and puts the server's previous password back, and says
+   so. If Redis does not confirm the previous password, it says
+   `INCONSISTENT`, exits with status 3, and prints the command that
+   recreates Redis from `.env`.
+
+Then recreate Redis and the services it names, with the one command it
+prints, without waiting:
+
+```bash
+docker compose up -d --no-deps wildbox-redis agents api cspm cspm-worker guardian guardian-beat guardian-worker identity responder tools-flower tools-worker
+```
+
+Both halves of that command matter:
+
+- **Redis itself.** `CONFIG SET` changes the running server only. The
+  container was created with the old password on its command line, and
+  Redis runs without a configuration file, so it cannot store the new one.
+  If the container restarts before it is recreated (a crash, a host reboot,
+  `docker compose restart`), Redis comes back with the **old** password
+  while `.env` holds the new one, and the script then refuses to rotate
+  again until Redis is recreated from `.env`.
+- **The services.** They hold the old password in their environment. They
+  keep the connections they already have and fail to open new ones.
+
+Recreating Redis replaces its container and keeps its data volume. Redis
+writes the append-only file before it stops and reads it back when it starts,
+so queues, scan and run state, revoked tokens and lockouts are still there.
+Compose starts Redis before the services that depend on it. The services are
+without Redis for those seconds, and work running in a worker when it is
+recreated is interrupted, as at any restart of that worker. If you run the
+`backup` profile, recreate that container too.
+
+The health check of the Redis container does not notice a wrong password:
+`redis-cli` exits with status 0 when the server answers `NOAUTH`. The
+container stays `healthy` between the rotation and the recreation, and that
+status says nothing about which password the server holds.
 
 ### POSTGRES_PASSWORD
 
@@ -187,7 +259,8 @@ docker compose up -d --no-deps identity data data-scheduler guardian guardian-wo
 
 Until then they keep the connections they already have and fail to open new
 ones. The `postgres` container itself keeps running. If you run the `backup`
-profile, recreate that container too.
+profile, recreate that container too; the script names it apart from the
+command.
 
 ### NEXTAUTH_SECRET
 

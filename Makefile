@@ -103,6 +103,13 @@ restore-drill:
 	@echo "$(BLUE)Running the restore drill (backup -> restore into scratch databases -> compare)...$(NC)"
 	@./scripts/verify_restore.sh
 
+# There is no target for a real restore, on purpose. It overwrites live data,
+# and each script takes that decision as a flag on its own command line
+# (scripts/restore_postgres.sh --overwrite-live-databases,
+# scripts/restore_redis.sh --replace-redis-data), never as a default and
+# never from a target someone can run by habit (#723). The steps are in
+# docs/guides/deployment.md, section 6.
+
 rotate-secrets:
 	@./scripts/rotate_secrets.sh --list
 

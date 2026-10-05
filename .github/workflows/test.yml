@@ -69,8 +69,39 @@ jobs:
           pip install ../open-security-shared || true
           pip install -r requirements.txt
           pip install pytest pytest-cov pytest-asyncio
-      
+
+      # The tools service keeps in Redis what its processes must share: each
+      # caller's hourly operation count and the outcomes of asynchronous runs
+      # (#721). Those tests ask from several processes, and kill a task at
+      # its time limit in a real prefork worker, so they need a server, the
+      # version docker-compose.yml runs. With TOOLS_TEST_REDIS_URL set, a
+      # server that does not answer fails the tests instead of skipping them
+      # (open-security-tools/tests/unit/conftest.py).
+      - name: Start Redis for the tools tests
+        if: matrix.service == 'tools'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          image="$(awk '/^  wildbox-redis:/{found=1} found && $1 == "image:"{print $2; exit}' docker-compose.yml)"
+          test -n "$image"
+          docker run -d --name tools-unit-redis -p 127.0.0.1:6379:6379 "$image"
+          for _ in $(seq 1 30); do
+            if docker exec tools-unit-redis redis-cli ping | grep -q PONG; then
+              echo "TOOLS_TEST_REDIS_URL=redis://127.0.0.1:6379/15" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs tools-unit-redis
+          exit 1
+
       - name: Run unit tests
+        # The agents suite starts a throwaway Redis with the runner's Docker
+        # and a real Celery worker, to hit the task time limits (#727). It
+        # skips where Docker is missing; here it must run. No other suite
+        # reads the variable.
+        env:
+          WILDBOX_REQUIRE_DOCKER_TESTS: "1"
         run: |
           cd open-security-${{ matrix.service }}
           # Truthful gating: a service WITH unit tests must pass them (no
@@ -139,9 +170,13 @@ jobs:
         # tripped the tools service's weak-pattern check and killed it at
         # start-up. tests/scripts had no CI step at all; this is where it runs.
         #
-        # test_backup_restore.py also starts a throwaway PostgreSQL and Redis
-        # with the runner's Docker, under its own Compose project name, and
-        # skips those tests where Docker is missing. Here they must run.
+        # The backup, restore and rotation tests also start a throwaway
+        # PostgreSQL and Redis with the runner's Docker, under their own
+        # Compose project names, and skip where Docker is missing. Here they
+        # must run: with this variable tests/scripts/conftest.py fails every
+        # test of the directory that would be skipped, whatever skipped it
+        # (#723). tests/scripts/test_docker_tests_must_run.py fails if this
+        # step loses the variable.
         env:
           WILDBOX_REQUIRE_DOCKER_TESTS: "1"
         run: pytest tests/scripts -v -p no:cacheprovider -o addopts=""
@@ -184,13 +219,16 @@ jobs:
           # Frontend-only smoke: these specs are backend-free by design (they
           # assert the dashboard builds, the login UI renders, form validation,
           # and the client-side auth-guard redirects), plus tool-schema.spec.ts,
-          # the toolbox's schema-to-form mapping, which needs no page (#585).
+          # the toolbox's schema-to-form mapping, which needs no page (#585),
+          # and ai-analysis-ui.spec.ts, the AI analysis page with the agents
+          # service's answers supplied by the spec (#727).
           # The backend-dependent specs are tagged @backend and run against
           # the full compose stack in e2e-fullstack.yml (#103).
           npx playwright test --project=chromium \
             tests/e2e/admin-ui-only.spec.ts \
             tests/e2e/quick-login-test.spec.ts \
-            tests/e2e/tool-schema.spec.ts
+            tests/e2e/tool-schema.spec.ts \
+            tests/e2e/ai-analysis-ui.spec.ts
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7

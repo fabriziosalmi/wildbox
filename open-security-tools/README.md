@@ -151,19 +151,31 @@ stack, from the host on `127.0.0.1:8000`:
 
 | Path            | Content                                                         |
 | --------------- | --------------------------------------------------------------- |
-| `/health`       | Status, environment, tool count and names, active executions    |
+| `/health`       | Status, service, version, number of loaded tools, active executions |
 | `/metrics`      | Prometheus exposition format; `monitoring/prometheus.yml` scrapes it |
 | `/openapi.json` | OpenAPI schema, only when `ENVIRONMENT` is `development` (there is no Swagger UI or ReDoc page) |
-| `/api`          | Service name and the list of loaded tools                       |
+| `/api`          | Service name, version and the path of the tool list             |
 
 ```bash
 curl -s http://127.0.0.1:8000/health
 ```
 
 `/health` is the route the image's and the compose file's health checks
-probe. `/metrics` carries the request counters and
-`wildbox_tool_executions_total`, the synchronous executions by tool and
-outcome; asynchronous runs happen in the worker, which exposes no metrics.
+probe. It and `/api` answer anyone who reaches the service port, so they
+say how the service is and which version answered, and nothing about the
+deployment: not the environment, not its settings, not the names of the
+loaded tools (`GET /api/v1/tools`, through the gateway, lists those). The
+version is the one in `app/__init__.py`, which the OpenAPI schema and the
+`X-API-Version` response header carry too. `/metrics` carries the request counters,
+`wildbox_tool_executions_total` (the synchronous executions by tool and
+outcome) and the asynchronous ones. Those execute in the worker, which
+Prometheus cannot scrape: the worker counts in Redis how each task ended,
+a task killed at the hard time limit or canceled included, and this
+service exports the counts as `wildbox_tool_async_executions_total`, with
+the length of the task queue (`wildbox_tool_async_queue_length`) and the
+number of tasks the worker has taken
+(`wildbox_tool_async_tasks_consumed_total`). See
+[the endpoint reference](https://www.wildbox.io/api/tools/endpoints/#asynchronous-run-metrics).
 
 There are no `/api/system/` routes: `info`, `metrics`, `operational-metrics`
 and `health-aggregate` answered without authentication and were removed
@@ -278,9 +290,13 @@ nobody may run the scanner**. That is the default in `docker-compose.yml`:
 
 See `config/*.json.example`. To grant access, mount the files into both the
 `api` and `tools-worker` containers of the root `docker-compose.yml`.
-Destructive tests are limited to one per caller per hour; the counter is kept
-in each process's memory, so the API process and the Celery worker count
-separately and a restart resets them.
+Destructive tests are limited to one per caller in any hour. The count is
+kept in the service's Redis (`REDIS_URL`), one key per caller and operation
+(`wildbox:tools:operation-limit:<user>:<operation>`), so the API process and
+every worker process share it and a restart does not reset it. When Redis
+cannot be reached the tool is not run: the API answers 503
+(`Rate limiting temporarily unavailable`) and an asynchronous task fails
+after its retries. A deployment without `REDIS_URL` cannot run these tools.
 
 ### Network targets
 

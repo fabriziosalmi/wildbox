@@ -256,7 +256,14 @@ curl --cacert "$CA" https://<host>/api/v1/agents/analyze/550e8400-e29b-41d4-a716
 }
 ```
 
-`status` is `pending`, `running` or `failed` here.
+`status` is `pending`, `running`, `failed` or `revoked` here. A task canceled
+with `DELETE` reads `revoked`; it used to read `pending` for the rest of its
+life (#727).
+
+`started_at` is when the worker started the task, and is set while the task is
+`running`. `completed_at` is when the task ended, and is set once it has
+`failed` or was `revoked`. Both used to be the time of the request, whenever it
+was made (#727).
 
 **A failed task has no report.** An analysis that could not run, or could not
 finish, answers `status: failed` with the reason in `error`; it is never
@@ -268,11 +275,19 @@ are in the service logs.
 | --- | --- |
 | `AI analysis is not configured on this server: no model API key is set.` | `ANTHROPIC_API_KEY` is empty; the task fails before anything runs |
 | `The AI model could not be reached, or refused the request. Nothing was analyzed.` | The model's API answered an error or was unreachable, or failed three times in a row, after which calls to it are suspended for two minutes |
-| `The analysis did not finish within its time limit.` | The analysis timed out |
+| `The analysis did not finish within its time limit.` | The analysis timed out, or was still running at a [time limit](#task-limits) of the task |
+| `The analysis was interrupted before it finished. No verdict was produced.` | The process running the analysis was killed (out of memory, for example), or the worker was stopped or restarted under it |
 | `The investigation ran, but its report could not be generated. No verdict was produced.` | The tools ran, and the model did not return the structured report |
 | `The analysis had no user identity to act for and was not run.` | The task reached the worker without a complete caller (#594) |
 | `The analysis failed because of an internal error.` | Anything else |
-| `Analysis failed. Please retry or contact support.` | The cause was not recorded, for example a worker stopped at its hard time limit |
+| `Analysis failed. Please retry or contact support.` | The recorded cause is one this version of the service does not know |
+
+Every failed task has a recorded cause and is counted once in `failed_today`
+([Statistics](#statistics)), including a task that could not record its own: one
+killed at the hard time limit, or whose process died, is recorded by the worker's
+main process, and a task nobody recorded is recorded by this request, from what
+Celery holds for it (#727). Those two used to answer the last reason of the
+table and were not counted.
 
 **Response once the task has completed (200 OK)**: the analysis result, which
 has no `status` field:
@@ -361,11 +376,17 @@ curl --cacert "$CA" https://<host>/api/v1/agents/stats \
   "completed_today": 0,
   "failed_today": 0,
   "average_duration": null,
-  "uptime_seconds": 86400.0
+  "uptime_seconds": 86400.0,
+  "model_configured": true
 }
 ```
 
-`average_duration` is always `null`. `completed_today` and `failed_today` count
+`model_configured` says whether a model API key is set (`ANTHROPIC_API_KEY`);
+when it is `false` every analysis fails, with the first reason of the
+[table above](#get-apiv1agentsanalyzetask_id). It is what the service's own
+`/health` reports as `services.anthropic`, which is not served through the
+gateway; the dashboard's AI analysis page reads it to say so before a
+submission (#727). `average_duration` is always `null`. `completed_today` and `failed_today` count
 the tasks that ended since 00:00 UTC of the current date: the worker keeps one
 counter per UTC date, which expires two days later
 (`open-security-agents/app/stats.py`). `total_analyses` counts submissions
@@ -570,9 +591,20 @@ The gateway's per-address request limit applies as well.
 
 From `open-security-agents/app/config.py` and the agent executor:
 
-- **Maximum analysis time**: 10 minutes. The Celery hard time limit is 600
-  seconds, the soft limit 570 seconds, and the agent itself stops after
-  `max_analysis_time_minutes` (10) minutes.
+- **Maximum analysis time**: 10 minutes. The Celery hard time limit is
+  `TASK_TIMEOUT`, 600 seconds, and the soft limit is 30 seconds before it, at
+  570 seconds; the agent itself stops after `max_analysis_time_minutes` (10)
+  minutes. At the soft limit the task is interrupted and records
+  `The analysis did not finish within its time limit.` itself. A task that is
+  still running at the hard limit is killed, and the worker's main process
+  records the same reason for it. The service refuses to start with a
+  `TASK_TIMEOUT` below 60 seconds, which would leave the task less time to run
+  than it has to stop. `docker-compose.yml` does not pass `TASK_TIMEOUT`.
+- **A task whose worker is gone**: a task still `running` more than 60 seconds
+  past the hard limit reads `failed`, with
+  `The analysis was interrupted before it finished. No verdict was produced.`:
+  a worker kills a task at the hard limit, so the worker that had this one was
+  stopped or restarted under it. It used to read `running` until it expired.
 - **Maximum agent iterations**: 15.
 - **Result retention**: task state and results expire after 1 hour (3600
   seconds); after that the task answers `404`.
