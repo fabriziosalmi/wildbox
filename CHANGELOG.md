@@ -231,6 +231,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same thing would have refused nothing. The lines are gone from
   `docker-compose.yml` and both `.env.example` files; in the Compose
   stack, leftover lines in `.env` are ignored (#646).
+- **tools: `WORKERS` and `ENABLE_METRICS` in `docker-compose.prod.yml`,
+  which nothing read** (#721). The production overlay set `WORKERS=4`
+  for the tools API, and the image starts one uvicorn process whatever
+  it says. It is removed, not honored: the API's execution manager (the
+  `MAX_CONCURRENT_TOOLS` ceiling, the runs `/health` counts and shutdown
+  cancels) and its Prometheus registry are one per process, so four
+  processes would have allowed four times the ceiling and answered each
+  scrape with one process's counters. Runs that need more capacity are
+  the asynchronous ones, and `tools-worker` scales. `ENABLE_METRICS=true`
+  on the same service changed nothing either: `/metrics` is always
+  served. `docker-compose.dev.yml` no longer passes the tools API the
+  addresses of four other services, which only the health-aggregate
+  route removed in #646 read. A tools test now fails on any variable a
+  root Compose file sets for the tools containers that neither the
+  settings nor the code reads.
 - **tools: `GET /api/system/metrics`, which answered 500 to every
   request.** It imported a name that `app/middleware.py` never defined.
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
