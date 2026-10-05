@@ -113,10 +113,24 @@ def test_the_production_overlay_sets_production_on_every_one_of_them():
     assert set(overlay.values()) == {"production"}
 
 
-def test_the_development_overlay_only_ever_says_development():
-    # It says so for the service that needs it (data, which refuses DEBUG in
-    # production); the rest take the value of .env.
-    assert set(environments(DEVELOPMENT).values()) <= {"development"}
+def test_the_development_overlay_says_development_where_it_turns_debug_on():
+    # The overlay turns DEBUG on for data and its scheduler, whose
+    # configuration refuses DEBUG anywhere but in development: without the
+    # line the generated .env (production) left them crash-looping under
+    # `make start`. The rest take the value of .env.
+    assert environments(DEVELOPMENT) == {
+        "data": "development",
+        "data-scheduler": "development",
+    }
+
+
+def test_the_standalone_identity_stack_says_it_is_a_development_one():
+    # It passes an optional API_KEY_HASH_SECRET, and only a development
+    # environment starts without one.
+    path = "open-security-identity/docker-compose.yml"
+    text = (REPO_ROOT / path).read_text(encoding="utf-8")
+    assert "API_KEY_HASH_SECRET=${API_KEY_HASH_SECRET:-}" in text
+    assert environments(path) == {"identity": "development"}
 
 
 def test_no_compose_file_gives_the_variable_a_default():

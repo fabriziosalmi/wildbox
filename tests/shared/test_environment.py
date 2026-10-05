@@ -102,10 +102,9 @@ def exact_production_tests() -> list:
                     if isinstance(operand, ast.Constant)
                     and isinstance(operand.value, str)
                 ]
-                if (
-                    "production" in literals
-                    and "environment" in ast.unparse(node).lower()
-                ):
+                # Whatever the other side is called: no service code has any
+                # other use for the word in a comparison.
+                if "production" in literals:
                     found.append(f"{relative}:{node.lineno}: {ast.unparse(node)}")
     return found
 

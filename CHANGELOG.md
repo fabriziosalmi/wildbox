@@ -1007,6 +1007,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The unit-test job no longer masks a shared package that does not
   install** (#736): `pip install ../open-security-shared || true` lost
   its `|| true`, and a test refuses a masked install in any workflow.
+- **The gateway's mock identity answers errors as identity does**
+  (#736). `open-security-gateway/test/mock_identity.py` answered
+  `{"detail": "..."}` for 400, 401 and 403; it now answers the canonical
+  body, with the request id the gateway sent and identity's own words,
+  and 422 for a body that is not JSON. The gateway reads only the
+  status, so no gateway test changes; a test compares the mock's
+  answers with what `open_security_shared.errors` builds.
 - **An image whose environment does not satisfy the shared package does
   not build, and Dependency Integrity says so first** (#722). The
   offline install of the shared package with extras and the `pip check`
