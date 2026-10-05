@@ -65,27 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of a request that carries a session token, an API key, the session
   cookie and forged copies of the gateway's own headers.
 
-- **guardian: a request that overtakes a membership notice no longer
-  undoes it** (#724, after #676). When identity removes a member from a
-  team it tells the gateway, then guardian, which deletes its record of
-  the membership. A request the gateway had authenticated a moment
-  earlier could reach guardian after the notice, and guardian records a
-  membership for every request it lets in: the record came back, and
-  the former member could be assigned and named in that team again for
-  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` (30 days by default). guardian
-  now remembers a notice for ten minutes and records no such membership
-  in that time; the request itself is still served. A member removed and
-  added back within ten minutes can use guardian at once, and can be
-  named once the ten minutes have passed and they have made a request.
-- **guardian: a report no longer names where its file is on the
-  server** (#724). Every answer that carried a report (the list, the
-  record, `recent/`, `failed/`, a template's `reports/`, and the answers
-  of `generate/` and `run_now/`) had a read-only `file_path`, such as
-  `/app/media/reports/<team id>/<report id>.json`. The field is gone
-  from the API; the file is still `reports/reports/{id}/download/`. A
-  report that failed because its file could not be written says so in
-  `error_message` without the text of the operating system's error,
-  which names the path too.
 - **API-key scopes reach the services, and data, guardian and tools
   check them again** (#637). The gateway enforced an API key's scopes
   and forwarded the user, the team and the role alone, so no service
@@ -383,6 +362,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on PostgreSQL 15 the heap files of the four tables held the secrets
   after a drop alone and none after the migrations as written.
   Twenty-two mutations of the fix each fail a test.
+- **guardian: a request that overtakes a membership notice no longer
+  undoes it** (#724, after #676). When identity removes a member from a
+  team it tells the gateway, then guardian, which deletes its record of
+  the membership. A request the gateway had authenticated a moment
+  earlier could reach guardian after the notice, and guardian records a
+  membership for every request it lets in: the record came back, and
+  the former member could be assigned and named in that team again for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` (30 days by default). guardian
+  now remembers a notice for ten minutes and records no such membership
+  in that time; the request itself is still served. A member removed and
+  added back within ten minutes can use guardian at once, and can be
+  named once the ten minutes have passed and they have made a request.
+- **guardian: a report no longer names where its file is on the
+  server** (#724). Every answer that carried a report (the list, the
+  record, `recent/`, `failed/`, a template's `reports/`, and the answers
+  of `generate/` and `run_now/`) had a read-only `file_path`, such as
+  `/app/media/reports/<team id>/<report id>.json`. The field is gone
+  from the API; the file is still `reports/reports/{id}/download/`. A
+  report that failed because its file could not be written says so in
+  `error_message` without the text of the operating system's error,
+  which names the path too.
 
 ### Removed
 
@@ -401,27 +401,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an SSH tunnel. The `N8N_BASIC_AUTH_*` variables are removed with it:
   leftover lines in `.env` are ignored, and `validate_secrets.py` no
   longer asks for `N8N_BASIC_AUTH_PASSWORD`.
-- **guardian: the threat-intelligence enrichment task** (#724).
-  `enrich_vulnerability_with_threat_intel` was queued for every new
-  vulnerability that had a CVE, read a `THREAT_INTEL_URLS` setting that
-  was never defined, and so answered "No threat intelligence sources
-  available" every time and changed nothing. The task, its queue entry
-  and its dispatch are removed. A vulnerability's `threat_level` and
-  `exploitability_score` are what the team records, as they always were.
-- **guardian: the scan-schedule routes that could only refuse** (#724).
-  Since #548, `POST scanners/scan-schedules/`, `PUT` and `PATCH` on a
-  schedule, and `POST .../{id}/trigger/` and `.../{id}/enable/` answered
-  400 "Scheduled scans are not supported" to every request: guardian
-  cannot start a scan on an external scanner, so a schedule would never
-  run. A route that can do nothing else is not part of an API. The first
-  three now answer 405, with the methods that exist in `Allow`, and the
-  two actions 404. Listing, reading, disabling and deleting a stored
-  schedule are unchanged.
-- **guardian: `GET vulnerabilities/{id}/attachments/`** (#724). guardian
-  has never had a route, a task or a command that attaches a file to a
-  vulnerability, so the list was always empty; and the `file` of an
-  attachment would have been a `/media/` URL, which nothing serves. The
-  route answers 404 and its serializer is gone. The table stays, unused.
 - **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
   `ENABLE_RATE_LIMITING`, settings that no code enforced.**
   `docker-compose.yml` set the first two and operators could tune them,
@@ -536,6 +515,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that sends a value in one of them answers `400` on that field, with
   the reason, instead of `201` or `200` for a secret guardian would
   discard; an empty value (`""`, `null`, `{}`, `[]`) is ignored.
+- **guardian: the threat-intelligence enrichment task** (#724).
+  `enrich_vulnerability_with_threat_intel` was queued for every new
+  vulnerability that had a CVE, read a `THREAT_INTEL_URLS` setting that
+  was never defined, and so answered "No threat intelligence sources
+  available" every time and changed nothing. The task, its queue entry
+  and its dispatch are removed. A vulnerability's `threat_level` and
+  `exploitability_score` are what the team records, as they always were.
+- **guardian: the scan-schedule routes that could only refuse** (#724).
+  Since #548, `POST scanners/scan-schedules/`, `PUT` and `PATCH` on a
+  schedule, and `POST .../{id}/trigger/` and `.../{id}/enable/` answered
+  400 "Scheduled scans are not supported" to every request: guardian
+  cannot start a scan on an external scanner, so a schedule would never
+  run. A route that can do nothing else is not part of an API. The first
+  three now answer 405, with the methods that exist in `Allow`, and the
+  two actions 404. Listing, reading, disabling and deleting a stored
+  schedule are unchanged.
+- **guardian: `GET vulnerabilities/{id}/attachments/`** (#724). guardian
+  has never had a route, a task or a command that attaches a file to a
+  vulnerability, so the list was always empty; and the `file` of an
+  attachment would have been a `/media/` URL, which nothing serves. The
+  route answers 404 and its serializer is gone. The table stays, unused.
 
 ### Fixed
 
@@ -574,42 +574,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads `error.message` before `detail`, so neither changes; a client
   that read `detail` from an identity 404, 500 or 503 must read
   `error.message`.
-- **guardian: a vulnerability can be recorded without a CVE, its
-  creation answers with its `id`, and its record is served when its
-  asset has an environment** (#724). `POST vulnerabilities/` answered
-  400 without `cve_id`, which the model and the reference call optional;
-  the answer to a creation carried no `id`, so the responder's
-  `create_vulnerability` action returned none to its playbook; and
-  `GET vulnerabilities/{id}/` answered 500 when the asset had an
-  environment, because `asset_details.environment` was a database row
-  and not a value. It is the environment's name, or null.
-- **guardian: a discovery rule that never runs cannot be enabled**
-  (#724). A rule of a type guardian does not implement (cloud API, CMDB
-  import, agent report, DNS zone), stored before the API refused those
-  types, is never run by the dispatcher, and could still be switched
-  on: `enable/` answered "enabled". It now answers 501 with
-  `DISCOVERY_TYPE_NOT_IMPLEMENTED`, as `execute/` does, and a `PATCH`
-  with `"enabled": true` answers 400. A migration switches off the
-  stored rules of those types.
-- **guardian: a discovery is checked before it is queued, and sweeps
-  at most 1,024 addresses** (#724). `POST assets/assets/discover/`
-  accepted any `network_range`: a value that is not a network answered
-  "Asset discovery initiated" and failed in the worker after three
-  retries, and `10.0.0.0/8` was sixteen million connection attempts in
-  one task. A discovery rule checked that its networks parse, not their
-  size. Both now refuse, with 400, a network of more than 1,024
-  addresses (the tools service's bound on a scan target), a value that
-  is not a network, and a `scan_type` other than `basic` or
-  `comprehensive`; a rule lists at most 32 networks. The task refuses
-  the same ranges, so a rule stored with a larger network skips it.
-- **guardian: `total_open` in `vulnerabilities/trends/` is the number
-  open on that day** (#724). For a past day it was the vulnerabilities
-  discovered by then whose status is open now, so one open for a month
-  and resolved yesterday was open on no day of that month. It is now
-  read from the history of status changes guardian keeps: the
-  vulnerabilities whose status was `open` when the day ended. In the
-  same way `avg_risk_score` is the average of the score those had on
-  that day. The whole window costs two queries instead of two a day.
 - **Every Python image holds what the shared package requires of it**
   (#722). `open-security-shared` declared FastAPI, Pydantic, passlib,
   PyJWT and prometheus-client as dependencies of the whole package, and
@@ -670,48 +634,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did not show it: it mounts `open-security-gateway/nginx` over
   `/etc/nginx`. The Dockerfile removes the file, and
   `test/production_image_tests.sh` checks the image as built.
-- **guardian: `assign_guardian_team --dry-run` says what the run would
-  do** (#724). It printed what `--list` prints, "N row(s) without a
-  team", whatever team was given. It now names the team, how many rows
-  of each model it would get, and the key and name of the first ten of
-  each (`-v 2` for all), and ends with "Dry run: N row(s) would be
-  assigned to <team>; nothing changed." `--list` together with `--team`
-  or `--dry-run` is refused instead of answering one of the two.
-- **guardian: a bulk assignment notifies the assignee, as `assign/`
-  does** (#724). `vulnerabilities/bulk_action/` with `assign` and an
-  `assigned_to` set the assignee of up to a hundred vulnerabilities and
-  told them of none. It queues the assignment e-mail for each one; a
-  bulk assignment to a group alone still sends nothing.
-- **guardian: a vulnerability's `resolved_at` follows its status**
-  (#724). Only `close/` and `reopen/` wrote it, so a vulnerability
-  resolved with `PATCH {"status": "resolved"}` had no date: `stats/`
-  left it out of the average resolution time and `trends/` out of the
-  day's `resolved_count`, and one reopened with PATCH kept the date of a
-  resolution it no longer had. The code meant to do this ran after the
-  list of changes it read had been deleted. Any save that makes the
-  status `resolved` now sets the date, and any that takes it away clears
-  it. A migration gives the resolved vulnerabilities without a date the
-  time their history says they were resolved, where it says, and clears
-  the date of those that are not resolved.
-- **guardian: assigning a vulnerability with `PUT` or `PATCH` notifies
-  the new assignee** (#724). `assign/` queued the assignment e-mail; the
-  same assignment made by changing `assigned_to` told nobody: the notice
-  was to come from the same dead code. It is queued now, when the
-  assignee changes to a user. Who is told is unchanged: the assignee,
-  while a member of the team.
-- **guardian no longer writes to stdout when a vulnerability is saved.**
-  Three `print()` calls in the vulnerability signals put a line outside
-  the log, with the vulnerability's title, for every creation, history
-  entry and deletion; a creation is a log line now and the others are
-  gone, with a signal nothing sent and its handler (#724).
-- **guardian answers JSON, and serves the browsable API only in
-  development** (#724). Django REST framework's HTML renderer was on in
-  every environment, and in the image any request that asked for
-  `text/html` answered 500, "Missing staticfiles manifest entry": the
-  pages link static files, and the image never runs `collectstatic`.
-  With `DEBUG` false the only renderer is JSON; a request that accepts
-  nothing else answers 406. With `DEBUG=true` the pages are served and
-  work.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
@@ -970,6 +892,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the service are gone too (`@validator`, `Field(env=...)` in the
   settings, `.dict()`, `Path(regex=...)`); they worked, with deprecation
   warnings, so nothing else changes for a client or an operator.
+- **guardian: a vulnerability can be recorded without a CVE, its
+  creation answers with its `id`, and its record is served when its
+  asset has an environment** (#724). `POST vulnerabilities/` answered
+  400 without `cve_id`, which the model and the reference call optional;
+  the answer to a creation carried no `id`, so the responder's
+  `create_vulnerability` action returned none to its playbook; and
+  `GET vulnerabilities/{id}/` answered 500 when the asset had an
+  environment, because `asset_details.environment` was a database row
+  and not a value. It is the environment's name, or null.
+- **guardian: a discovery rule that never runs cannot be enabled**
+  (#724). A rule of a type guardian does not implement (cloud API, CMDB
+  import, agent report, DNS zone), stored before the API refused those
+  types, is never run by the dispatcher, and could still be switched
+  on: `enable/` answered "enabled". It now answers 501 with
+  `DISCOVERY_TYPE_NOT_IMPLEMENTED`, as `execute/` does, and a `PATCH`
+  with `"enabled": true` answers 400. A migration switches off the
+  stored rules of those types.
+- **guardian: a discovery is checked before it is queued, and sweeps
+  at most 1,024 addresses** (#724). `POST assets/assets/discover/`
+  accepted any `network_range`: a value that is not a network answered
+  "Asset discovery initiated" and failed in the worker after three
+  retries, and `10.0.0.0/8` was sixteen million connection attempts in
+  one task. A discovery rule checked that its networks parse, not their
+  size. Both now refuse, with 400, a network of more than 1,024
+  addresses (the tools service's bound on a scan target), a value that
+  is not a network, and a `scan_type` other than `basic` or
+  `comprehensive`; a rule lists at most 32 networks. The task refuses
+  the same ranges, so a rule stored with a larger network skips it.
+- **guardian: `total_open` in `vulnerabilities/trends/` is the number
+  open on that day** (#724). For a past day it was the vulnerabilities
+  discovered by then whose status is open now, so one open for a month
+  and resolved yesterday was open on no day of that month. It is now
+  read from the history of status changes guardian keeps: the
+  vulnerabilities whose status was `open` when the day ended. In the
+  same way `avg_risk_score` is the average of the score those had on
+  that day. The whole window costs two queries instead of two a day.
+- **guardian: `assign_guardian_team --dry-run` says what the run would
+  do** (#724). It printed what `--list` prints, "N row(s) without a
+  team", whatever team was given. It now names the team, how many rows
+  of each model it would get, and the key and name of the first ten of
+  each (`-v 2` for all), and ends with "Dry run: N row(s) would be
+  assigned to <team>; nothing changed." `--list` together with `--team`
+  or `--dry-run` is refused instead of answering one of the two.
+- **guardian: a bulk assignment notifies the assignee, as `assign/`
+  does** (#724). `vulnerabilities/bulk_action/` with `assign` and an
+  `assigned_to` set the assignee of up to a hundred vulnerabilities and
+  told them of none. It queues the assignment e-mail for each one; a
+  bulk assignment to a group alone still sends nothing.
+- **guardian: a vulnerability's `resolved_at` follows its status**
+  (#724). Only `close/` and `reopen/` wrote it, so a vulnerability
+  resolved with `PATCH {"status": "resolved"}` had no date: `stats/`
+  left it out of the average resolution time and `trends/` out of the
+  day's `resolved_count`, and one reopened with PATCH kept the date of a
+  resolution it no longer had. The code meant to do this ran after the
+  list of changes it read had been deleted. Any save that makes the
+  status `resolved` now sets the date, and any that takes it away clears
+  it. A migration gives the resolved vulnerabilities without a date the
+  time their history says they were resolved, where it says, and clears
+  the date of those that are not resolved.
+- **guardian: assigning a vulnerability with `PUT` or `PATCH` notifies
+  the new assignee** (#724). `assign/` queued the assignment e-mail; the
+  same assignment made by changing `assigned_to` told nobody: the notice
+  was to come from the same dead code. It is queued now, when the
+  assignee changes to a user. Who is told is unchanged: the assignee,
+  while a member of the team.
+- **guardian no longer writes to stdout when a vulnerability is saved.**
+  Three `print()` calls in the vulnerability signals put a line outside
+  the log, with the vulnerability's title, for every creation, history
+  entry and deletion; a creation is a log line now and the others are
+  gone, with a signal nothing sent and its handler (#724).
+- **guardian answers JSON, and serves the browsable API only in
+  development** (#724). Django REST framework's HTML renderer was on in
+  every environment, and in the image any request that asked for
+  `text/html` answered 500, "Missing staticfiles manifest entry": the
+  pages link static files, and the image never runs `collectstatic`.
+  With `DEBUG` false the only renderer is JSON; a request that accepts
+  nothing else answers 406. With `DEBUG=true` the pages are served and
+  work.
 
 ### Changed
 
@@ -1297,14 +1297,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
-- **guardian's unit tests run on PostgreSQL too** (#724). They ran on
-  in-memory SQLite only, and two modules could run nowhere else:
-  `test_gateway_only_auth.py` created a table in SQLite's dialect, and
-  `test_celery_schedule.py` passed because SQLite ignores the
-  connection the beat scheduler closes. Both are portable now, and a
-  new job, Guardian Unit Tests (PostgreSQL), runs the whole suite on the
-  PostgreSQL version of the stack; a test fails if that run is not on
-  PostgreSQL.
 - **No script test can be skipped in CI** (#723). The backup, restore
   and rotation tests start a throwaway PostgreSQL or Redis and skip
   where Docker is missing. The step that runs `tests/scripts` already
@@ -1446,6 +1438,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refused batch is now dropped and counted in `events_failed`; a batch
   that failed for a reason that may pass (a network error, 429, 5xx) is
   still kept and retried.
+- **guardian's unit tests run on PostgreSQL too** (#724). They ran on
+  in-memory SQLite only, and two modules could run nowhere else:
+  `test_gateway_only_auth.py` created a table in SQLite's dialect, and
+  `test_celery_schedule.py` passed because SQLite ignores the
+  connection the beat scheduler closes. Both are portable now, and a
+  new job, Guardian Unit Tests (PostgreSQL), runs the whole suite on the
+  PostgreSQL version of the stack; a test fails if that run is not on
+  PostgreSQL.
 
 ## [0.11.2] - 2026-10-05
 
