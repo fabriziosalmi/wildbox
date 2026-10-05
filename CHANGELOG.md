@@ -32,9 +32,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   headers; a unit test fails when the header, the location and guardian's
   API root stop agreeing. Reverting to the stock paginator, or dropping
   the header from the gateway, fails both.
+- **tools no longer serves `/api/system/info`,
+  `/api/system/operational-metrics` and `/api/system/health-aggregate`,
+  which answered without authentication.** Anyone who could reach the
+  service port (the Docker network, or `127.0.0.1:8000` on the host)
+  read the environment and debug flag, the tool inventory and the health
+  body of every other service. The gateway never routed them and nothing
+  called them. They are removed rather than put behind a role: the
+  gateway forwards a team role, anyone who registers owns a team, and so
+  tools cannot tell a platform operator from a tenant. What they
+  reported was also wrong: the execution counters stayed at zero, and
+  the aggregate called a healthy stack `degraded`, because it probed
+  guardian at `/health` (a redirect to `/health/`), and answered 500
+  when any service was unreachable. The real counters are in
+  `GET /metrics` (`wildbox_tool_executions_total`); for the health of
+  the other services use their own health checks or Prometheus (#646).
+
+### Removed
+
+- **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
+  `ENABLE_RATE_LIMITING`, settings that no code enforced.**
+  `docker-compose.yml` set the first two and operators could tune them,
+  but the service never applied a limit. They are removed, not enforced:
+  every request reaches tools through the gateway, which already limits
+  each team (`RATE_LIMIT_PER_HOUR`, 166 requests a minute at the
+  default, well under the 500 these named), so a second counter of the
+  same thing would have refused nothing. The lines are gone from
+  `docker-compose.yml` and both `.env.example` files; in the Compose
+  stack, leftover lines in `.env` are ignored (#646).
+- **tools: `GET /api/system/metrics`, which answered 500 to every
+  request.** It imported a name that `app/middleware.py` never defined.
+  The service's metrics endpoint is the Prometheus one, `GET /metrics`,
+  which `monitoring/prometheus.yml` scrapes; it is now registered by the
+  shared package, as in the other services (#646).
 
 ### Fixed
 
+- **tools registers one `GET /health` handler instead of two.** The
+  second, with `uptime_seconds` and `tools_loaded`, never ran: the first
+  one registered answers. The response does not change (#646).
+- **`active_executions` in the tools `/health` response counts the runs
+  in progress.** It was always 0: the tool routes ran through an
+  execution manager of their own, not the one `/health` reads. For the
+  same reason the service canceled nothing when it shut down; it now
+  cancels the synchronous runs in progress and waits up to 10 seconds
+  for them to stop (#646).
+- **Seven tools no longer add the tools service's `app` directory to
+  `sys.path` when they are imported.** The entry was a leftover from
+  before tools were loaded as packages, and it made every module of the
+  service importable a second time under its bare name (#646).
+- **The `network_scanner` and `port_scanner` forms no longer suggest a
+  target the service refuses.** Their schema examples, which the
+  dashboard shows as placeholders, were `192.168.1.0/24` and
+  `127.0.0.1`: internal targets, refused unless the operator lists them
+  in `TOOLS_ALLOWED_INTERNAL_TARGETS`. They are now `8.8.8.8` and the
+  host the Nmap project keeps for test scans, and the field descriptions
+  name the setting (#646).
 - **guardian: the rate limit is configurable, checked at start and counted
   per user; the health check is no longer throttled** (#645).
   `API_RATE_LIMIT` was documented as guardian's rate limit, but
