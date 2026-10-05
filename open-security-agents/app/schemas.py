@@ -208,3 +208,10 @@ class StatsResponse(BaseModel):
     failed_today: int = Field(..., description="Analyses failed today")
     average_duration: Optional[float] = Field(None, description="Average analysis duration")
     uptime_seconds: float = Field(..., description="Service uptime in seconds")
+    model_configured: bool = Field(
+        ...,
+        description=(
+            "Whether a model API key is set. Without one every analysis "
+            "fails, with the reason \"not configured\""
+        ),
+    )

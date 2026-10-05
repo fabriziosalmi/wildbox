@@ -376,11 +376,17 @@ curl --cacert "$CA" https://<host>/api/v1/agents/stats \
   "completed_today": 0,
   "failed_today": 0,
   "average_duration": null,
-  "uptime_seconds": 86400.0
+  "uptime_seconds": 86400.0,
+  "model_configured": true
 }
 ```
 
-`average_duration` is always `null`. `completed_today` and `failed_today` count
+`model_configured` says whether a model API key is set (`ANTHROPIC_API_KEY`);
+when it is `false` every analysis fails, with the first reason of the
+[table above](#get-apiv1agentsanalyzetask_id). It is what the service's own
+`/health` reports as `services.anthropic`, which is not served through the
+gateway; the dashboard's AI analysis page reads it to say so before a
+submission (#727). `average_duration` is always `null`. `completed_today` and `failed_today` count
 the tasks that ended since 00:00 UTC of the current date: the worker keeps one
 counter per UTC date, which expires two days later
 (`open-security-agents/app/stats.py`). `total_analyses` counts submissions

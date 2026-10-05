@@ -36,6 +36,7 @@ from .config import settings
 from .worker import (
     celery_app,
     failure_code,
+    model_configured,
     record_failure,
     run_threat_enrichment_task,
 )
@@ -285,7 +286,11 @@ async def get_stats(user: GatewayUser = Depends(get_current_user)):
             completed_today=int(completed_today),
             failed_today=int(failed_today),
             average_duration=None,  # Could be calculated from historical data
-            uptime_seconds=uptime
+            uptime_seconds=uptime,
+            # What /health reports as services.anthropic, where a client can
+            # read it: /health is not served through the gateway. The
+            # dashboard says so before a submission, which would fail (#727).
+            model_configured=model_configured(),
         )
         
     except (KombuOperationalError, RedisError, ConnectionError, TimeoutError) as e:

@@ -241,7 +241,8 @@ submission answers `503`.
 
 `GET /stats` reports `completed_today` and `failed_today` for the current
 UTC date (`app/stats.py`): one Redis counter per date, expiring after two
-days.
+days. Its `model_configured` says whether a model API key is set; the
+dashboard's AI analysis page (`/ai-analysis`) reads it.
 
 The root `docker-compose.yml` sets `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
 (default `claude-opus-4-8`), `GATEWAY_INTERNAL_SECRET`, `WILDBOX_API_URL`

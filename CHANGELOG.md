@@ -689,6 +689,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The dashboard has an AI analysis page** (#727). `/ai-analysis`, in
+  the sidebar, submits an indicator to the agents service and follows
+  the task: queued, running with the worker's progress, failed with the
+  service's reason and no report, canceled, or completed with the
+  verdict, the confidence, the evidence, the recommended actions and
+  the full report. The dashboard had a client for the agents service
+  that no page used. The service lists no tasks and keeps each for a
+  limited time, so the page shows the tasks submitted from this
+  browser by the signed-in account, kept in the browser under the
+  account's own key, and says when one has expired. `GET
+  /api/v1/agents/stats` gains `model_configured`, and the page says
+  before a submission that an analysis cannot run when no model API key
+  is set. The route is behind the sign-in guard, which listed a path,
+  `/ai-analyst`, that no page had.
 - **`scripts/restore_redis.sh` restores the Redis snapshot a backup
   takes.** Redis runs with the append-only file enabled and then ignores
   `dump.rdb` at start, so copying the snapshot into the data volume gave
