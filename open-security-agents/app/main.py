@@ -35,6 +35,7 @@ from .schemas import (
 from .config import settings
 from .worker import celery_app, run_threat_enrichment_task
 from .auth import get_current_user, GatewayUser
+from .failures import reason_for
 from .rate_limit import limit_analysis, limiter, rate_limited_caller
 from .stats import COMPLETED, FAILED, LEGACY_KEYS, read_today
 from .tools.langchain_tools import enabled_tools
@@ -47,6 +48,22 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# Where a client reads a task back: the gateway path, the only one a client
+# can reach. The service accepts gateway-authenticated requests only, and the
+# gateway publishes /v1/<x> as /api/v1/agents/<x>
+# (open-security-gateway/nginx/conf.d/wildbox_gateway.conf). It was the
+# service's own /v1/analyze/{id}, which on the gateway is not the task
+# (#716).
+#
+# A constant, as the tools service's TASK_STATUS_PATH and the responder's
+# RUN_STATUS_PATH are, and a path without scheme or host: nothing in it
+# comes from the request, so no Host or X-Forwarded-* header a client sends
+# can change where it points, and a client resolves it against the address
+# it called. tests/unit/test_result_url.py keeps it equal to the gateway's
+# route.
+RESULT_PATH = "/api/v1/agents/analyze/{task_id}"
 
 
 # Global state
@@ -415,7 +432,7 @@ async def analyze_ioc(
             task_id=task_id,
             status=TaskStatus.PENDING,
             created_at=datetime.now(timezone.utc),
-            result_url=f"/v1/analyze/{task_id}"
+            result_url=RESULT_PATH.format(task_id=task_id)
         )
         
     except (KombuOperationalError, RedisError, ConnectionError, TimeoutError) as e:
@@ -526,10 +543,13 @@ async def get_analysis_result(
         if celery_task.state == "SUCCESS" and celery_task.result:
             return AnalysisResult(**celery_task.result)
         
-        # If task failed, return generic error (details are in server logs)
+        # A failed task says why, in the words app/failures.py has for the
+        # cause the worker recorded; the details are in the server logs. It
+        # was one sentence for every failure, and most failures never got
+        # here: they were answered above, as reports (#717).
         error_message = None
         if celery_task.state == "FAILURE":
-            error_message = "Analysis failed. Please retry or contact support."
+            error_message = reason_for(redis_client.get(f"task:{task_id}:error"))
         
         # Return status information
         return AnalysisTaskStatus(
@@ -540,7 +560,7 @@ async def get_analysis_result(
             completed_at=datetime.now(timezone.utc) if status_value in [TaskStatus.COMPLETED, TaskStatus.FAILED] else None,
             progress=celery_task.info.get("progress") if isinstance(celery_task.info, dict) else None,
             error=error_message,
-            result_url=f"/v1/analyze/{task_id}"
+            result_url=RESULT_PATH.format(task_id=task_id)
         )
         
     except HTTPException:

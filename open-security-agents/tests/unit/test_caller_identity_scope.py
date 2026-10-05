@@ -22,13 +22,13 @@ import types
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.tools import StructuredTool
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from app import main, worker  # noqa: E402
+from scripted_model import ScriptedModel  # noqa: E402
 from app.agents.threat_enrichment_agent import ThreatEnrichmentAgent  # noqa: E402
 from app.auth import get_current_user  # noqa: E402
 from app.tools import wildbox_client as client_module  # noqa: E402
@@ -230,11 +230,14 @@ def test_the_identity_is_reset_after_a_task_that_raised(agent, recorded):
     assert sent_user_ids(recorded) == [CALLER_A["user_id"]]
 
 
-def test_the_identity_is_reset_after_a_task_that_failed_softly(agent, recorded):
-    """A handled failure returns an error result; the scope still ends."""
+def test_the_identity_is_reset_after_a_task_that_failed_on_a_builtin_error(
+    agent, recorded
+):
+    """The errors the task used to answer with an "Informational" report
+    (#717) fail it like any other; the scope still ends."""
     agent.error = ValueError("bad tool output")
-    result = run_task("task-a", CALLER_A)
-    assert result["verdict"] == "Informational"
+    with pytest.raises(ValueError, match="bad tool output"):
+        run_task("task-a", CALLER_A)
     assert _caller_identity.get() is None
 
 
@@ -309,11 +312,10 @@ def test_the_client_refuses_a_partial_identity_set_directly(recorded):
 # --- Where the tool calls run -----------------------------------------------
 
 
-class ToolCallingFakeModel(FakeMessagesListChatModel):
-    """A scripted chat model the tool-calling agent can bind tools to."""
-
-    def bind_tools(self, tools, **kwargs):
-        return self
+# A scripted chat model the tool-calling agent can bind tools to, and which
+# answers the structured report: a report that cannot be generated fails
+# the task, where it used to be replaced by a made-up one (#717).
+ToolCallingFakeModel = ScriptedModel
 
 
 def test_the_identity_reaches_every_tool_call_through_the_real_agent(
