@@ -357,7 +357,11 @@ CI runs two checks on this directory:
   It also builds the production `Dockerfile` and runs
   `test/route_scope_tests.sh` against it: the scope each authenticated
   location of `wildbox_gateway.conf` requires, per method, with the mock
-  answering for every upstream.
+  answering for every upstream. `test/production_image_tests.sh` checks the
+  image as built, with nothing mounted over `/etc/nginx`: only this
+  project's configuration is loaded, port 80 answers `/health` and
+  redirects the rest whatever the `Host`, and Docker reports the container
+  healthy by the image's own `HEALTHCHECK`.
 
 The `docker-compose.yml`, `docker-compose.dev.yml` and `Makefile` in this
 directory are for standalone use. They use a separate `wildbox-net` network

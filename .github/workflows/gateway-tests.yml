@@ -120,6 +120,13 @@ jobs:
       - name: Run gateway route scope tests
         run: bash open-security-gateway/test/route_scope_tests.sh
 
+      # The image as built, nothing mounted over /etc/nginx: only this
+      # project's configuration is loaded, port 80 is the gateway's, and
+      # Docker reports the container healthy by the image's own HEALTHCHECK
+      # (#713).
+      - name: Run gateway production image tests
+        run: bash open-security-gateway/test/production_image_tests.sh gateway-prod
+
       # Logout must hold on every worker even with an authorization in flight
       # (#571). Strict: no retries, many iterations.
       - name: Run gateway revocation tests

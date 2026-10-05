@@ -311,6 +311,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **gateway: a container run from the image alone is healthy, and its
+  port 80 is the gateway's** (#713). The image kept the base image's
+  `/etc/nginx/conf.d/default.conf`, a server for `localhost` on port 80
+  with a welcome page. It was loaded beside `wildbox_gateway.conf`, so
+  the image's own `HEALTHCHECK` (`curl http://localhost:80/health`) got
+  404 and Docker reported the container unhealthy, and port 80 served
+  the welcome page instead of the redirect to HTTPS. The Compose stack
+  did not show it: it mounts `open-security-gateway/nginx` over
+  `/etc/nginx`. The Dockerfile removes the file, and
+  `test/production_image_tests.sh` checks the image as built.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
