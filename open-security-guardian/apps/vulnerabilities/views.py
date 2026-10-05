@@ -302,6 +302,10 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
                 if data.get('assignee_group'):
                     vuln.assignee_group = data['assignee_group']
                 vuln.save()
+                # As assign/ does for one: a bulk assignment to a user told
+                # them nothing (#724).
+                if assigned_to is not None:
+                    self._notify_assignment(vuln)
                 updated_count += 1
 
         elif action_type == 'close':

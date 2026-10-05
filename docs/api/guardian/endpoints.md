@@ -375,11 +375,13 @@ is cleared when the status stops being `resolved`. Before #724 only `close/` and
 `reopen/` wrote it, so a vulnerability resolved by a `PATCH` had none and was
 missing from the resolution figures of `stats/` and `trends/`.
 
-A user who is assigned a vulnerability is sent an e-mail when the assignment is
-made with `assign/`, or with a `PUT` or `PATCH` that changes `assigned_to` (the
-latter since #724). It goes to the assignee's address while they are a member of
-the team; an assignment to a group alone sends nothing, and so does creating a
-vulnerability that already names its assignee.
+A user who is assigned a vulnerability is sent an e-mail, whichever way the
+assignment is made: `assign/`, `bulk_action/` with `assign`, or a `PUT` or `PATCH`
+that changes `assigned_to` (the last two since #724). It goes to the address
+identity has for the assignee, while they are a member of the team, and the
+vulnerability's history says what became of it. An assignment to a group alone
+sends nothing, and so does creating a vulnerability that already names its
+assignee.
 
 `bulk_action/` takes `vulnerability_ids` (1 to 100 UUIDs) and `action`, one of:
 
@@ -387,7 +389,7 @@ vulnerability that already names its assignee.
 | --- | --- | --- |
 | `close` | `reason` (optional) | As `close/` |
 | `reopen` | `reason` (optional) | As `reopen/` |
-| `assign` | `assigned_to` and/or `assignee_group` | Sets the ones given and leaves the other as it was. Unlike `assign/`, sends no assignment e-mail |
+| `assign` | `assigned_to` and/or `assignee_group` | Sets the ones given and leaves the other as it was. With `assigned_to`, queues the assignment e-mail for each vulnerability, as `assign/` does |
 | `tag` | `tag` | Adds the tag |
 | `untag` | `tag` | Removes the tag |
 | `priority` | `priority` (`p1` to `p4`) | Sets the priority |

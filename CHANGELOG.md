@@ -542,6 +542,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did not show it: it mounts `open-security-gateway/nginx` over
   `/etc/nginx`. The Dockerfile removes the file, and
   `test/production_image_tests.sh` checks the image as built.
+- **guardian: a bulk assignment notifies the assignee, as `assign/`
+  does** (#724). `vulnerabilities/bulk_action/` with `assign` and an
+  `assigned_to` set the assignee of up to a hundred vulnerabilities and
+  told them of none. It queues the assignment e-mail for each one; a
+  bulk assignment to a group alone still sends nothing.
 - **guardian: a vulnerability's `resolved_at` follows its status**
   (#724). Only `close/` and `reopen/` wrote it, so a vulnerability
   resolved with `PATCH {"status": "resolved"}` had no date: `stats/`
