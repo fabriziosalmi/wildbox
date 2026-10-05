@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The sensor in the root `docker-compose.yml` drops all capabilities**
+  (#725). Its README and `DOCKER.md` said the container runs with
+  `cap_drop: ALL`, which only the standalone compose file did; in the
+  default stack the sensor kept Docker's default bounding set. It runs
+  as uid 999 with `no-new-privileges`, so it had no effective
+  capability either way, and none of its collectors needs one: in the
+  built image osquery's tables, `osqueryd`, the file monitor, the log
+  forwarder and the data volume behave the same with and without. A
+  unit test now reads the three compose files and fails if the sensor
+  loses `cap_drop: ALL` or `no-new-privileges`, or gains a capability,
+  `privileged`, the host's PID namespace or the root user.
 - **guardian: pagination links no longer name the internal host, and a
   client can follow them** (#643). A list of more than one page answered
   `next` and `previous` links such as

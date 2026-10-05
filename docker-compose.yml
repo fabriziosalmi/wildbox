@@ -1109,6 +1109,14 @@ services:
     stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
+    # No capability, as the sensor's README says and its standalone compose
+    # file already did (#725). The sensor runs as uid 999, which has no
+    # effective capability to begin with; this empties the bounding set too.
+    # Checked in the built image: osquery's tables, osqueryd, the file
+    # monitor, the log forwarder and the data volume behave the same with
+    # and without it.
+    cap_drop:
+      - ALL
     ports:
       - "127.0.0.1:8004:8004"
     environment:

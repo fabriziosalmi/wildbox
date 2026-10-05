@@ -870,8 +870,16 @@ never measured them, and they were always zero or a constant.
 
 ## Security notes
 
-- The container runs as the non-root `sensor` user with
-  `no-new-privileges` and all capabilities dropped (`cap_drop: ALL`).
+- The container runs as the non-root `sensor` user (uid 999) with
+  `no-new-privileges` and all capabilities dropped (`cap_drop: ALL`), in the
+  root `docker-compose.yml` as in the standalone one. No collector needs a
+  capability: in the built image, as uid 999, every osquery table the sensor
+  queries, `osqueryd`, the file monitor, the log forwarder and the data
+  volume behave the same with the default capability set and with none. What
+  the sensor cannot do is a matter of its user, not of capabilities: it sees
+  only the processes and sockets of its own container (the container does
+  not share the host's PID or network namespace), and it reads only the
+  files uid 999 may read.
 - Host access is limited to read-only mounts of `/proc/stat`, `/proc/meminfo`,
   the `/proc` load average file and `/sys/class/net`. No host log is mounted:
   the log forwarder reads a host log only after its directory is mounted on
