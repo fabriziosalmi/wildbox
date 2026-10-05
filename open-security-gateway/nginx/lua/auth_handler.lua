@@ -1017,9 +1017,52 @@ local function service_unavailable(retry_after)
     ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
 end
 
+-- Who the request is proxied to, once it is let through.
+--
+-- A Wildbox service checks X-Gateway-Secret and trusts the identity headers
+-- that come with it, so that is what it is sent. Anything else behind the
+-- gateway (n8n, the automations service) checks none of it and must be
+-- sent none of it: the secret is what lets its holder state any user, team
+-- and role to every service, and a workflow started by a webhook reads the
+-- headers of the request that started it (#711). For such an upstream the
+-- gateway authenticates the caller, applies the scope and the rate limit,
+-- strips the caller's credentials, and vouches for nobody.
+local UPSTREAM_BACKEND = "backend"
+local UPSTREAM_THIRD_PARTY = "third_party"
+
+-- The upstream a location named: authenticate({ upstream = "third_party" }).
+-- Nothing named is a backend. A value that is neither is a mistake in the
+-- configuration, and is answered 500 rather than read as "backend": a typo
+-- must not hand a third party the secret.
+local function upstream_kind(options)
+    local kind = UPSTREAM_BACKEND
+    if type(options) == "table" and options.upstream ~= nil then
+        kind = options.upstream
+    elseif options ~= nil and type(options) ~= "table" then
+        kind = nil
+    end
+    if kind ~= UPSTREAM_BACKEND and kind ~= UPSTREAM_THIRD_PARTY then
+        utils.log("error", "authenticate() called with an unknown upstream kind", {
+            path = ngx.var.uri
+        })
+        ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    end
+    return kind
+end
+
+-- For an upstream that is not a Wildbox service: no proof of origin, no
+-- identity, no credential. clean_request_headers() removes what the client
+-- sent; the $wildbox_* variables proxy_params.conf reads stay empty, as on
+-- a location that authenticates nobody.
+local function withhold_caller(auth_data)
+    utils.clean_request_headers()
+    ngx.header["X-Wildbox-Team-ID"] = auth_data.team_id
+end
+
 -- Main authentication handler
-function _M.authenticate()
+function _M.authenticate(options)
     local request_start = ngx.now()
+    local upstream = upstream_kind(options)
 
     -- Get configuration
     local config = get_config()
@@ -1167,8 +1210,12 @@ function _M.authenticate()
     -- Apply rate limiting
     apply_rate_limiting(auth_data)
 
-    -- Set authentication headers for backend services
-    set_auth_headers(auth_data, config, token_type)
+    -- Set authentication headers for backend services, and for them only
+    if upstream == UPSTREAM_THIRD_PARTY then
+        withhold_caller(auth_data)
+    else
+        set_auth_headers(auth_data, config, token_type)
+    end
 
     local request_time = (ngx.now() - request_start) * 1000
     utils.log("debug", "Authorization completed", {

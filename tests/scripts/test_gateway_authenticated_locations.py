@@ -131,7 +131,7 @@ def test_the_production_configuration_is_read():
     calls = sum(
         1
         for line in text.splitlines()
-        if "auth_handler.authenticate()" in al.strip_comment(line)
+        if "auth_handler.authenticate(" in al.strip_comment(line)
     )
     assert len(locations) == calls
 
@@ -151,3 +151,123 @@ def test_the_command_prints_one_location_a_line(capsys):
 
     assert printed == al.authenticated_locations(PRODUCTION_CONF.read_text())
     assert al.main([]) == 2
+
+
+# --- The locations that proxy (#711) ----------------------------------------
+
+UPSTREAM_HARNESS = GATEWAY / "test" / "upstream_header_tests.sh"
+
+
+def test_a_location_that_proxies_is_listed_whether_it_authenticates_or_not():
+    conf = server(
+        location(
+            "/api/v1/data/", AUTH + "        proxy_pass http://data_service/api/v1/;\n"
+        ),
+        location("/", "        proxy_pass http://dashboard_service;\n"),
+        location("/api/", '        return 404 \'{"error":"endpoint_not_found"}\';\n'),
+        location("/health", "        return 200 'ok';\n"),
+    )
+
+    assert al.proxying_locations(conf) == ["/api/v1/data/", "/"]
+
+
+def test_a_commented_out_proxy_pass_does_not_proxy():
+    conf = server(
+        location(
+            "/api/v1/sensor/",
+            "        # proxy_pass http://sensor_service/api/v1/;\n        return 404;\n",
+        ),
+        "    # The original content was a proxy_pass to the legacy service.\n",
+    )
+
+    assert al.proxying_locations(conf) == []
+
+
+def test_the_production_configuration_proxies_where_it_says():
+    text = PRODUCTION_CONF.read_text()
+    proxying = al.proxying_locations(text)
+
+    # One location for each proxy_pass directive outside comments.
+    directives = sum(
+        1
+        for line in text.splitlines()
+        if al.strip_comment(line).lstrip().startswith("proxy_pass ")
+    )
+    assert len(proxying) == directives
+    assert (
+        "/" in proxying
+        and "/api/v1/automations/" in proxying
+        and "/api/v1/identity/" in proxying
+    )
+    # Every location that authenticates proxies somewhere.
+    assert set(al.authenticated_locations(text)) <= set(proxying)
+    # The catch-all and the health checks answer by themselves.
+    assert "/api/" not in proxying and "/health" not in proxying
+
+
+def test_the_harness_classifies_every_proxying_location():
+    """Checked on the wire by the harness; here so that it also fails early."""
+    harness = UPSTREAM_HARNESS.read_text()
+    classified = set(re.findall(r"^upstream '([^']+)'", harness, re.MULTILINE))
+    locations = set(al.proxying_locations(PRODUCTION_CONF.read_text()))
+
+    assert (
+        locations - classified == set()
+    ), "proxying locations without a classification"
+    assert (
+        classified - locations == set()
+    ), "classifications for locations that do not exist"
+
+
+def test_only_wildbox_services_are_classified_as_backends():
+    """A backend is sent the gateway's secret: the upstream must be one that checks it."""
+    text = PRODUCTION_CONF.read_text()
+    harness = UPSTREAM_HARNESS.read_text()
+    kinds = dict(
+        re.findall(
+            r"^upstream '([^']+)'\s*\\?\s*(backend|identity|dashboard|third_party)\b",
+            harness,
+            re.MULTILINE,
+        )
+    )
+    assert set(kinds) == set(al.proxying_locations(text))
+    blocks = {}
+    current = None
+    for raw in text.splitlines():
+        line = al.strip_comment(raw)
+        match = re.match(r"^\s*location\s+(.+?)\s*\{\s*$", line)
+        if match:
+            current = match.group(1)
+            blocks[current] = []
+        elif current is not None:
+            blocks[current].append(line)
+
+    wildbox_services = (
+        "identity_service",
+        "data_service",
+        "cspm_service",
+        "guardian_service",
+        "responder_service",
+        "agents_service",
+        "api_service",
+    )
+    for spec, kind in kinds.items():
+        body = "\n".join(blocks[spec])
+        target = re.search(r"proxy_pass\s+http://([^/;\s]+)", body).group(1)
+        if kind == "backend":
+            assert (
+                target in wildbox_services
+            ), f"{spec} is a backend but proxies to {target}"
+            assert "upstream = " not in body, spec
+        if target not in wildbox_services and target != "dashboard_service":
+            # Not a Wildbox service: it must be authenticated as a third party.
+            assert kind == "third_party", f"{spec} proxies to {target}"
+            assert 'authenticate({ upstream = "third_party" })' in body, spec
+
+
+def test_the_command_lists_proxying_locations(capsys):
+    assert al.main(["--proxying", str(PRODUCTION_CONF)]) == 0
+    printed = capsys.readouterr().out.splitlines()
+
+    assert printed == al.proxying_locations(PRODUCTION_CONF.read_text())
+    assert al.main(["--proxying"]) == 2

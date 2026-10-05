@@ -389,10 +389,6 @@ services:
       # and the setting had no effect wherever it was written.
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10000}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
-      # Used to inject n8n's HTTP basic-auth on proxied /api/v1/automations/ requests
-      # (only relevant when the optional "automations" profile is enabled).
-      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
     networks:
       - wildbox
     # Every service whose hostname appears in an `upstream` block of

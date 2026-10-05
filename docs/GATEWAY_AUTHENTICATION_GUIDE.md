@@ -36,7 +36,9 @@ shared handler (`authenticate()` in
    60-second windows of one sixtieth of that figure (166 with the default).
    The gateway validates `RATE_LIMIT_PER_HOUR` at startup and does not start
    when it is not a whole number from 1 to 1,000,000,000.
-4. It removes `Authorization`, `X-API-Key` and any client-supplied
+4. It removes `Authorization`, `X-API-Key`, the `auth_token` cookie (the
+   session JWT as the dashboard stores it; other cookies are kept) and any
+   client-supplied
    `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`,
    `X-Wildbox-Auth-Type` and `X-Wildbox-Scopes`
    (`utils.clean_request_headers()`), then stores the validated identity in
@@ -72,6 +74,15 @@ configuration that calls `authenticate()` without declaring the variables.
 
 ### Routes that differ
 
+- **Automations** (`/api/v1/automations/`): the upstream is n8n, which is not
+  a Wildbox service. The location runs the shared handler as
+  `authenticate({ upstream = "third_party" })`: the caller is authenticated,
+  needs the `tools:admin` scope and counts against the rate limit, and the
+  request is then proxied with no `X-Gateway-Secret`, no `X-Wildbox-*`
+  header and none of the caller's credentials (`Authorization`,
+  `X-API-Key`, the `auth_token` cookie). The secret must never leave the
+  set of services that validate it: whoever holds it can state any user,
+  team and role to all of them (#711).
 - **Identity** (`/api/v1/identity/`, `/auth/`): identity is the
   authentication authority and validates the bearer token itself, so these
   routes do not run the shared handler and pass `Authorization` through.

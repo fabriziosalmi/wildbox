@@ -9,9 +9,11 @@ Stdlib-only stand-in for open-security-identity, faithful to the real
 - 200 with {is_authenticated, user_id, team_id, role, permissions, scopes}
   for the fixture tokens below.
 
-Every other path echoes the request back as JSON ({method, path, headers})
-so tests can assert exactly which headers the gateway forwarded upstream
-(X-Wildbox-* injection, Authorization/X-API-Key stripping).
+Every other path echoes the request back as JSON ({method, path, port,
+headers}) so tests can assert exactly which headers the gateway forwarded
+upstream (X-Wildbox-* injection, Authorization/X-API-Key stripping), and to
+which upstream: ``port`` is the port the request arrived on, one for each
+service the mock stands in for (#711).
 
 GET /__mock/counts returns per-token /internal/authorize call counts, which
 lets tests prove the gateway's auth cache short-circuits repeat validations.
@@ -122,6 +124,15 @@ TOKENS = {
         "scopes": [],
         "api_key_id": "key-noscopes",
     },
+    # The session upstream_header_tests.sh uses (#711): a token of its
+    # own, so that the authorization counts other scripts assert on do not
+    # depend on which script ran first.
+    "upstream-headers-session-token": {
+        "user_id": "user-1616",
+        "team_id": "team-1616",
+        "role": "admin",
+        "scopes": None,
+    },
     "wsk_oddscope_ci_fixture": {
         "user_id": "user-1515",
         "team_id": "team-1515",
@@ -219,6 +230,7 @@ class Handler(BaseHTTPRequestHandler):
             {
                 "method": self.command,
                 "path": self.path,
+                "port": self.server.server_address[1],
                 "headers": {k.lower(): v for k, v in self.headers.items()},
             },
         )
@@ -362,6 +374,7 @@ class Handler(BaseHTTPRequestHandler):
                     "status": "ok",
                     "method": self.command,
                     "path": self.path,
+                    "port": self.server.server_address[1],
                     "headers": {k.lower(): v for k, v in self.headers.items()},
                 },
             )

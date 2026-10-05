@@ -162,6 +162,32 @@ describes how a service reads them. `test/scope_vectors.txt` is the scope
 hierarchy written out; `test/scope_vector_tests.sh` checks `scopes_satisfy`
 against it and the shared package's tests check the services' copy.
 
+### What each upstream receives
+
+`X-Gateway-Secret` and the `X-Wildbox-*` headers are what a Wildbox service
+trusts, so they go to Wildbox services and to nothing else, and a caller's
+own credentials go only where they are validated:
+
+| Upstream | Receives | Does not receive |
+| --- | --- | --- |
+| A Wildbox service behind `authenticate()` | `X-Gateway-Secret`, the caller's user, team and role, the credential's type and scopes | the caller's `Authorization`, `X-API-Key` and `auth_token` cookie |
+| identity's own routes (`/api/v1/identity/`, `/auth/users/`, `/auth/jwt/`, ...) | the caller's `Authorization`, which identity validates | `X-Gateway-Secret`, any `X-Wildbox-*`, `X-API-Key` |
+| The dashboard | its cookies | `X-Gateway-Secret`, any `X-Wildbox-*`, `Authorization`, `X-API-Key` |
+| Anything else (n8n) | what the client sent for that service itself, such as `X-N8N-API-KEY` or n8n's own cookie | `X-Gateway-Secret`, any `X-Wildbox-*`, `Authorization`, `X-API-Key`, the `auth_token` cookie |
+
+The `auth_token` cookie is where the dashboard keeps the session JWT. A
+browser sends it with every request to the gateway's origin, so
+`clean_request_headers()` removes it, and only it, on every route
+`authenticate()` guards.
+
+A location that proxies to something that is not a Wildbox service must
+call `authenticate({ upstream = "third_party" })`. The harness enforces
+the table: `test/upstream_header_tests.sh` reads every location with a
+`proxy_pass` from `wildbox_gateway.conf`, fails for one it has no
+classification for, and checks on the wire what each one's upstream
+receives of a request that carries a session token, an API key, the
+session cookie and forged copies of the gateway's own headers.
+
 ## Routing
 
 All routes below are on the HTTPS listener (port 443). "Gateway auth" means
@@ -219,9 +245,11 @@ Notes:
   relative references without a host (#643).
 - `/api/v1/automations/*` reaches n8n, which runs only with the `automations`
   Compose profile; the upstream is resolved at request time, so the route
-  answers `502` while n8n is not running. The gateway replaces the
-  `Authorization` header with n8n's basic auth from `N8N_BASIC_AUTH_USER` and
-  `N8N_BASIC_AUTH_PASSWORD`.
+  answers `502` while n8n is not running. n8n is not a Wildbox service, so
+  the location calls `authenticate({ upstream = "third_party" })`: the
+  caller is authenticated, needs `tools:admin` and counts against the rate
+  limit, and n8n is sent nothing the gateway vouches with; see
+  [What each upstream receives](#what-each-upstream-receives).
 
 ### Dashboard and other locations
 
@@ -303,7 +331,6 @@ them through the `env` directives in `nginx.conf`.
 | `IDENTITY_SERVICE_URL` | `http://open-security-identity:8001` | Base URL for `/internal/authorize` |
 | `AUTH_CACHE_TTL` | `300` | Seconds a decision is cached |
 | `RATE_LIMIT_PER_HOUR` | `10000` | Per-team request budget, see above. Must be a whole number from 1 to 1,000,000,000; any other value stops the gateway at startup |
-| `N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD` | `admin`, empty | Basic auth injected on `/api/v1/automations/*` |
 
 The Compose file and `.env.example` also set `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`
 and `GATEWAY_DEBUG`. They have no effect: no nginx or Lua code reads
@@ -357,7 +384,9 @@ CI runs two checks on this directory:
   It also builds the production `Dockerfile` and runs
   `test/route_scope_tests.sh` against it: the scope each authenticated
   location of `wildbox_gateway.conf` requires, per method, with the mock
-  answering for every upstream. `test/production_image_tests.sh` checks the
+  answering for every upstream. `test/upstream_header_tests.sh`
+  runs against the same image: which of Wildbox's own headers each
+  proxying location sends its upstream. `test/production_image_tests.sh` checks the
   image as built, with nothing mounted over `/etc/nginx`: only this
   project's configuration is loaded, port 80 answers `/health` and
   redirects the rest whatever the `Host`, and Docker reports the container

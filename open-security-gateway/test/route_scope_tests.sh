@@ -78,15 +78,29 @@ requires() {
     else
         fail "$method $path with $scope: HTTP $STATUS, upstream '$(field .method) $(field .path)', expected '$method $upstream' — $(head -c 200 "$WORK/body")"
     fi
-    # Every location of the production configuration forwards what the
-    # gateway decided on, so the service can check the scope again (#637).
-    if [ "$(field '.headers["x-wildbox-auth-type"]')" = api_key ] \
+    # Every location of the production configuration that proxies to a
+    # Wildbox service forwards what the gateway decided on, so the service
+    # can check the scope again (#637). An upstream that is not one (n8n) is
+    # told nothing about the credential (#711; upstream_header_tests.sh has
+    # the rest).
+    if [ "$TOLD" = nothing ]; then
+        if [ "$(field '.headers["x-wildbox-auth-type"] // "absent"')" = absent ] \
+                && [ "$(field '.headers["x-wildbox-scopes"] // "absent"')" = absent ]; then
+            pass "$method $path tells its upstream nothing about the credential"
+        else
+            fail "$method $path: a third party was told auth type '$(field '.headers["x-wildbox-auth-type"]')', scopes '$(field '.headers["x-wildbox-scopes"]')'"
+        fi
+    elif [ "$(field '.headers["x-wildbox-auth-type"]')" = api_key ] \
             && [ "$(field '.headers["x-wildbox-scopes"]')" = "$scope" ]; then
         pass "$method $path tells the service the key holds $scope"
     else
         fail "$method $path: the service was told auth type '$(field '.headers["x-wildbox-auth-type"]')', scopes '$(field '.headers["x-wildbox-scopes"]')', expected api_key and '$scope'"
     fi
 }
+
+# What the upstream of the pin being checked is told about the credential:
+# "scopes" for a Wildbox service, "nothing" for a third party.
+TOLD=scopes
 
 PINNED="$WORK/pinned"
 : > "$PINNED"
@@ -102,6 +116,10 @@ pin() {
     local location="$1" path="$2" upstream="$3" read="$4" write="$5" delete="$6" method
     printf '%s\n' "$location" >> "$PINNED"
     echo "-- $path ($location)"
+    TOLD=scopes
+    if [ "$location" = /api/v1/automations/ ]; then
+        TOLD=nothing
+    fi
     requires GET "$path" "$read" "$upstream"
     for method in POST PUT PATCH; do
         requires "$method" "$path" "$write" "$upstream"

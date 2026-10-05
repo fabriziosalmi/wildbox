@@ -120,6 +120,13 @@ jobs:
       - name: Run gateway route scope tests
         run: bash open-security-gateway/test/route_scope_tests.sh
 
+      # Which of Wildbox's own headers each proxying location of
+      # wildbox_gateway.conf sends its upstream, and a classification for
+      # every one of them: the gateway's secret goes to Wildbox services
+      # only (#711).
+      - name: Run gateway upstream header tests
+        run: bash open-security-gateway/test/upstream_header_tests.sh
+
       # The image as built, nothing mounted over /etc/nginx: only this
       # project's configuration is loaded, port 80 is the gateway's, and
       # Docker reports the container healthy by the image's own HEALTHCHECK

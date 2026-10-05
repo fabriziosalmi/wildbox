@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **gateway: n8n no longer receives the gateway's secret, the caller's
+  identity or the session cookie** (#711). The automations location
+  proxies to n8n with the same settings as a Wildbox service, so n8n was
+  sent `X-Gateway-Secret` and the caller's user, team and role on every
+  request, and from a browser the session JWT in the `auth_token`
+  cookie. The secret is what the services accept as proof that the
+  identity headers came from the gateway: whoever holds it can state any
+  user, team and role to all of them, a workflow started by a webhook
+  reads the headers of the request that started it, and n8n reaches
+  every service on the internal network. The location now calls
+  `authenticate({ upstream = "third_party" })`: the caller is still
+  authenticated, still needs `tools:admin` and still counts against the
+  rate limit, and n8n is sent none of it. The same audit of every other
+  upstream: the `auth_token` cookie is removed on every authenticated
+  route, so the backends, from which `Authorization` was already
+  withheld, no longer get the same token in a cookie; and a client's
+  `X-API-Key` no longer reaches the dashboard or identity's own routes,
+  which do not read it. The gateway also stops adding
+  `Authorization: Basic` from `N8N_BASIC_AUTH_USER` and
+  `N8N_BASIC_AUTH_PASSWORD`: n8n 1.x has no basic auth and ignores it
+  (#714). A new `test/upstream_header_tests.sh` runs the production
+  image and configuration, fails for a proxying location it has no
+  classification for, and checks what each upstream receives of a
+  request that carries a session token, an API key, the session cookie
+  and forged copies of the gateway's own headers.
+
 - **API-key scopes reach the services, and data, guardian and tools
   check them again** (#637). The gateway enforced an API key's scopes
   and forwarded the user, the team and the role alone, so no service
