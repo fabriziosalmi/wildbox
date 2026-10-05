@@ -34,6 +34,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   served when `ENVIRONMENT` is `development`, 404 for any other value.
   cspm no longer follows `DEBUG`. None of these paths was, or is,
   reachable through the gateway.
+- **gateway: the development Compose file no longer mounts the Docker
+  socket** (#680). `open-security-gateway/docker-compose.dev.yml` ran
+  `gliderlabs/logspout:latest` with `/var/run/docker.sock` mounted
+  read-only. `:ro` restricts the socket file, not the Docker API behind
+  it, so anything that compromised that container was root on the
+  developer's host; the image is unmaintained and was pulled at whatever
+  version the registry served. It also shipped to `syslog://logs:514`, a
+  host the file never defined, so nothing read its output. The service
+  is removed: `docker compose logs -f` follows every container.
+- **The standalone Compose files publish on loopback and name image
+  versions** (#680). An audit of all 21 tracked Compose files found no
+  other socket mount and no privileged setting, but 19 ports published
+  on every interface by development stacks: the debugging gateway,
+  Redis without a password (gateway, tools, sensor, agents), the
+  sensor's test PostgreSQL, the tools API with its default key, the
+  agents API, the standalone dashboard, and the Prometheus and Grafana
+  of the data and sensor stacks. They now bind `127.0.0.1`, as the root
+  `docker-compose.yml` already did. Four `nginx:alpine` and one `curlimages/curl:latest`
+  followed upstream with no version; they are `nginx:1.30-alpine` and
+  `curlimages/curl:8.22.0`. The gateway's 80, 443 and 8080 in the root
+  stack, and the reverse proxies of the standalone data, tools and
+  scaled-sensor stacks, stay on every interface: they are entry points.
+
+- **Image builds no longer run or download an installer that nothing
+  pinned** (#657). cspm, guardian, responder, tools and the tools
+  development image ran `pip install --upgrade pip` before their
+  hash-checked install: the installer was whatever PyPI served at build
+  time, unhashed, and it then installed everything else. They now use
+  the pip of the digest-pinned base image (24.0), as identity, data,
+  agents and sensor did. A second download was in all eight images:
+  `pip install --no-deps /tmp/open-security-shared` built the shared
+  package in an isolated environment, for which pip fetched the latest
+  setuptools (84.0.0 on the day of the fix) from PyPI, unhashed, at
+  every build. The shared package, and the sensor's own
+  `pip install -e .`, are now installed with
+  `--no-index --no-deps --no-build-isolation`, so pip cannot reach an
+  index for them; the hash-checked installs carry
+  `--no-build-isolation`, so a source distribution in a lockfile is
+  built with the base image's setuptools instead of one downloaded for
+  the occasion. The tools development image also moves from Python
+  3.12 to the 3.11 its lockfile is compiled for, states
+  `--require-hashes`, drops an unpinned `pip install watchdog` that
+  nothing imported, and installs the shared package, without which its
+  container could not import the application.
+- **The downloads in the image builds are checked against a SHA-256**
+  (#657). Trivy in the tools image, osquery in the sensor image and the
+  three lua-resty-http files in the gateway images were pinned by
+  version in the URL and nothing else; a release asset or a git tag can
+  be replaced under the same name. Each is now verified with
+  `sha256sum -c` before it is unpacked or installed, against the value
+  upstream publishes (Trivy's checksum file; the osquery packages on
+  pkg.osquery.io and on the GitHub release; the lua-resty-http files at
+  the commit the tag names).
+
+- **A user who left a team is no longer one of its users in guardian**
+  (#676). guardian recorded a membership the first time the gateway
+  authenticated a user in a team and never removed it. A member that
+  identity removed from a team could no longer authenticate in it, but the
+  team could still assign vulnerabilities to them and share dashboards
+  with them, and its data went on naming them as assignee, owner or
+  approver. Two things end a membership in guardian now. identity tells
+  guardian when it removes a member from a team or deletes an account
+  (`POST /internal/team-memberships/revoke/` on the internal network,
+  authenticated with the gateway-internal secret, refused when that
+  secret is not configured, and not routed by the gateway): the user is
+  refused at once wherever a team names a user, and the roles they held in
+  the team are cleared, a vulnerability's assignee with a line in its
+  history. And a membership counts only for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` (30, from 1 to 365, no way to
+  switch it off) from the user's last request in the team, so a notice
+  that never arrived, or a member who left before this release, does not
+  stay a member: a user who left can make no request that renews it. The
+  notice is sent after identity has committed the removal and does not
+  block it, because removing a member must not depend on guardian being
+  up; a notice guardian does not confirm is logged as an error by
+  identity, and `manage.py revoke_team_membership` applies it by hand.
+  What a former member did stays on record. The SLA and assignment
+  e-mails go to an assignee only while they are a member of the
+  vulnerability's team. Deactivating an account sends no notice: it keeps
+  its memberships and can be reactivated. Tests list, from the URL
+  configuration, the 24 fields through which a team can name a user and
+  check each against a member who left, by notice and by window; an
+  integration test removes a member in identity and has guardian refuse
+  them through the gateway.
+
+- **guardian has no platform-wide notification recipient** (#678).
+  Alert rules, scheduled reports and compliance notifications without
+  recipients fell back to a `DEFAULT_NOTIFICATION_RECIPIENTS` setting,
+  and every SLA violation was copied to `SECURITY_TEAM_EMAIL`. Nothing
+  defined either, so no such e-mail was sent; an operator who did define
+  them would have sent every team's asset names, vulnerability titles and
+  findings to one mailbox, across the team boundary of #642. Both are no
+  longer read. An alert rule and a report schedule e-mail the recipients
+  their team gave them, and an SLA violation e-mails the vulnerability's
+  assignee. A notification without recipients is not sent, and says so:
+  an alert notification is recorded with `delivered: false`, an SLA
+  violation is recorded once in the vulnerability's history as not
+  sent, and the worker logs a warning for each. Compliance notifications
+  have no recipients of their own, so none is e-mailed until a team can
+  name them. The SLA check no longer records a notification as sent when
+  its delivery failed. Unit tests define both settings and check that
+  nothing reaches them; eleven mutations of the fix each fail a test.
 
 ### Removed
 
@@ -75,6 +177,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `TOOLS_ALLOWED_INTERNAL_TARGETS`. They are now `8.8.8.8` and the
   host the Nmap project keeps for test scans, and the field descriptions
   name the setting (#646).
+- **An error detail that is a dict or a list reaches the client as JSON,
+  not as a Python dict string** (#655). The shared error handler built
+  `error.message` with `str()` unless the dict had a `reason`, so the
+  refusals of the gateway authentication dependency read
+  `"{'error': 'Gateway authentication required', 'message': ..., 'code':
+  'GATEWAY_AUTH_REQUIRED'}"` in tools, data, agents and responder.
+  `error.message` is now the dict's `reason`, else its `message`, else
+  its `error`, else the status phrase, and the dict is under
+  `error.details`, so the code is at `error.details.code`. A list detail
+  goes to `error.details` too. `error.message` is never empty.
+- **cspm answers the errors its endpoints raise in the canonical body**
+  (#655). A handler of its own replaced the shared one, so they left as
+  `{"error": "HTTPException", "message": ..., "details": {"status_code":
+  ...}, "timestamp": ...}`, with the same Python dict string for a dict
+  detail. They are now `{"error": {"code", "message", "type",
+  "request_id"}}`, as cspm's 422 and its 404 for an unknown path already
+  were, and as every other service answers. A client that read the
+  top-level `message` of a cspm error must read `error.message`.
+- **Input that a validator refuses answers 422, not 500.** When a model's
+  validator raised `ValueError`, the field errors could not be rendered
+  as JSON and the request ended in an internal error: an IOC value of
+  the wrong format sent to `POST /api/v1/agents/analyze`, for one.
+
+- **A guardian webhook endpoint path is unique per team, not across
+  guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642
+  left unique across every team: a team could not use a path another team
+  had taken, such as the conventional `/webhooks/jira`, and the `400` it
+  got told it that the path existed in a team it cannot see. The path is
+  a stored record, not a routing key: guardian serves no inbound webhook
+  route and nothing looks a request up by it, so it does not need to be
+  generated. The database now keeps it unique within the external system
+  the endpoint belongs to, and the API refuses a path that any endpoint of
+  the caller's own team already uses, looking at that team's rows only. A
+  path another team uses is answered exactly as a free one. Migration
+  `integrations.0003` replaces the constraint; existing rows already
+  satisfy the new one. Unit tests cover both teams, a second system of the
+  same team, updates and the database constraint; six mutations of the
+  fix each fail a test.
 - **Rotating `POSTGRES_PASSWORD` no longer locks every service out.**
   `scripts/rotate_secrets.sh` rewrote only the `POSTGRES_PASSWORD=` line
   of `.env`. The services connect with `DATABASE_URL`,
@@ -103,6 +243,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever the secret. It now prints the services that receive the
   rotated secret, read from `docker compose config`, and the command
   that recreates only those (#649).
+
+### CI
+
+- **Code Quality checks every Dockerfile** (#657).
+  `scripts/check_container_hygiene.py` also reads every tracked
+  Dockerfile and fails on a `pip install` that is neither
+  `--require-hashes --no-build-isolation -r <lockfile>` nor
+  `--no-index <local path>`, on an npm install that resolves versions
+  at build time, on a `FROM` or `COPY --from=<image>` without a digest,
+  on a download piped to a shell, and on a `curl`, `wget` or
+  `ADD <url>` that nothing in the same instruction verifies. The pip,
+  npm, base image and pipe-to-shell rules cannot be allow-listed. On
+  the commit before these fixes it reports 33 problems in the 13
+  Dockerfiles. `apt-get install` and `apk add` without versions are
+  not checked.
+- **Code Quality checks every Compose file** (#680). Only the root
+  `docker-compose.yml` was ever validated, so the gateway's development
+  file could mount the Docker socket unnoticed.
+  `scripts/check_container_hygiene.py` reads every tracked YAML file
+  with a top-level `services:` and fails on a runtime socket mount, an
+  image that names no version, a privileged setting or a port published
+  on every interface. Deliberate exceptions go in
+  `scripts/container_hygiene_allowlist.txt` with a reason; an entry
+  that matches nothing any more fails too. On the previous commit it
+  reports 27 problems.
 
 ## [0.11.2] - 2026-10-05
 

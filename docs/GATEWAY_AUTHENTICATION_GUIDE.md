@@ -105,12 +105,16 @@ and in the service's `Dockerfile`:
 
 ```dockerfile
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-deps /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
 ```
 
 `--no-deps` because the service's own `requirements.txt` already provides the
 package's dependencies (FastAPI, Pydantic and the others listed in
-`open-security-shared/pyproject.toml`).
+`open-security-shared/pyproject.toml`). `--no-index --no-build-isolation`
+because pip would otherwise download setuptools from PyPI to build the
+package, unpinned and unhashed; with them it uses the setuptools already in
+the image. The Code Quality job refuses a Dockerfile that installs a local
+path without `--no-index`.
 
 ### Authenticate a route
 
@@ -178,8 +182,29 @@ The tools service wraps the dependency (`open-security-tools/app/auth.py`):
 a request without the identity headers gets `401` there instead of `403`.
 
 Services that install the shared error handlers
-(`open_security_shared.errors.install_error_handlers`) return these errors in
-the canonical body, `{"error": {"code", "message", "type", "request_id"}}`.
+(`open_security_shared.errors.install_error_handlers`: tools, data, agents,
+responder and cspm) return these errors in the canonical body. `error.code`
+is the HTTP status; the `code` of the table above is at `error.details.code`,
+and `error.message` is the explanation:
+
+```json
+{
+  "error": {
+    "code": 403,
+    "message": "Direct access is not permitted; requests must traverse the gateway.",
+    "type": "HTTPException",
+    "request_id": "6f1c2d...",
+    "details": {
+      "error": "Gateway authentication required",
+      "message": "Direct access is not permitted; requests must traverse the gateway.",
+      "code": "GATEWAY_SECRET_REQUIRED"
+    }
+  }
+}
+```
+
+guardian, the Django service, answers the same refusals with the dict itself
+as the body, so its `code` is at the top level.
 
 ### Calls between services
 

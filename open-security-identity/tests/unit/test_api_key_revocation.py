@@ -57,10 +57,17 @@ def gateway(monkeypatch, log):
     a test scripts another answer."""
     monkeypatch.setenv("GATEWAY_INTERNAL_SECRET", SECRET)
     monkeypatch.setattr(gateway_cache, "_RETRY_DELAYS", (0, 0))
-    state = {"script": [], "bodies": []}
+    state = {"script": [], "bodies": [], "guardian": []}
 
     def handler(request):
         body = json.loads(request.content)
+        if "open-security-guardian" in str(request.url):
+            # identity tells guardian after the commit (#676). Not a gateway
+            # call: it has its own log entry and consumes no scripted answer.
+            (scope,) = body
+            log.append(f"guardian:{scope}")
+            state["guardian"].append(body)
+            return httpx.Response(200, json={"revoked": len(body[scope]), "scope": scope})
         state["bodies"].append(body)
         scope = next(
             name
@@ -401,7 +408,14 @@ def test_deletion_through_the_users_api_ends_keys_and_sessions_first(
     target = make_user(email="bob@example.com")
     manager = user_manager.UserManager(UserStore(log, target))
     run(manager.delete(target))
-    assert log == ["gateway:api_keys", "gateway:users", "database:delete"]
+    assert log == [
+        "gateway:api_keys",
+        "gateway:users",
+        "database:delete",
+        # guardian is told the account is gone, once it is (#676).
+        "guardian:users",
+    ]
+    assert gateway["guardian"] == [{"users": [str(target.id)]}]
 
 
 def test_deletion_through_the_users_api_fails_closed(gateway, log, key_ids):
@@ -412,6 +426,7 @@ def test_deletion_through_the_users_api_fails_closed(gateway, log, key_ids):
         run(manager.delete(target))
     assert exc.value.status_code == 503
     assert "database:delete" not in log
+    assert gateway["guardian"] == []
 
 
 def test_an_administrator_s_deletion_revokes_before_anything_is_deleted(
@@ -434,7 +449,9 @@ def test_an_administrator_s_deletion_revokes_before_anything_is_deleted(
     )
 
     assert log[:2] == ["gateway:api_keys", "gateway:users"]
-    assert log[-1] == "commit"
+    # The commit, then the notice to guardian that the account is gone (#676).
+    assert log[-2:] == ["commit", "guardian:users"]
+    assert gateway["guardian"] == [{"users": [str(target.id)]}]
     # The account's keys and those of the team deleted with it.
     assert sorted(gateway["bodies"][0]["api_keys"]) == ["k-1", "k-2", "k-team"]
     assert {"user_id": None, "team_ids": [lone_team.id]} in key_ids["calls"]
@@ -451,6 +468,7 @@ def test_an_administrator_s_deletion_fails_closed(gateway, log, key_ids):
         )
     assert exc.value.status_code == 503
     assert not any(entry.startswith("delete") or entry == "commit" for entry in log)
+    assert gateway["guardian"] == []
 
 
 @pytest.fixture
@@ -472,7 +490,8 @@ def test_deleting_one_s_own_account_ends_keys_and_sessions_first(
             FakeDB(log, []),
         )
     )
-    assert log == ["gateway:api_keys", "gateway:users", "commit"]
+    assert log == ["gateway:api_keys", "gateway:users", "commit", "guardian:users"]
+    assert gateway["guardian"] == [{"users": [str(me.id)]}]
     assert me.is_active is False and me.tokens_valid_after is not None
 
 
@@ -489,6 +508,7 @@ def test_deleting_one_s_own_account_fails_closed(gateway, log, key_ids, password
         )
     assert exc.value.status_code == 503
     assert "commit" not in log and me.is_active is True
+    assert gateway["guardian"] == []
 
 
 # -- removing a member from a team ----------------------------------------------
@@ -513,6 +533,8 @@ def test_removing_a_member_revokes_their_keys_in_that_team_first(gateway, log, k
         "gateway:memberships",
         "delete:SimpleNamespace",
         "commit",
+        # guardian is told last, once the member is gone (#676).
+        "guardian:memberships",
     ]
     assert key_ids["calls"] == [
         {"user_id": member.user_id, "team_ids": [member.team_id]}
@@ -525,6 +547,7 @@ def test_removing_a_member_fails_closed(gateway, log, key_ids):
         remove_member(log)
     assert exc.value.status_code == 503
     assert log == ["gateway:api_keys"] * 3
+    assert gateway["guardian"] == []
 
 
 def test_a_member_without_keys_still_has_their_team_sessions_ended(
@@ -532,7 +555,12 @@ def test_a_member_without_keys_still_has_their_team_sessions_ended(
 ):
     key_ids["ids"] = []
     remove_member(log)
-    assert log == ["gateway:memberships", "delete:SimpleNamespace", "commit"]
+    assert log == [
+        "gateway:memberships",
+        "delete:SimpleNamespace",
+        "commit",
+        "guardian:memberships",
+    ]
 
 
 # -- the key query --------------------------------------------------------------
