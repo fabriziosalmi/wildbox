@@ -497,44 +497,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **guardian: the severity, status, priority and threat-level filters
-  of the vulnerability list match again** (#724).
-  `GET /api/v1/guardian/vulnerabilities/?severity=medium` answered an
-  empty list whatever the team held, and so did `?status=`, `?priority=`
-  and `?threat_level=`, on `vulnerabilities/stats/` too: each compared
-  the column with the characters of the value. The dashboard's severity
-  and status menus send these two, so choosing an entry of either read
-  "No vulnerabilities found". Each filter takes one value, or several
-  when the parameter is repeated.
-- **guardian: every filter of every list was tried, and the ones that
-  did not do what they say were fixed** (#724). On the vulnerability
-  list, `asset_environment` answered 500 and now matches the name of the
-  asset's environment; `unassigned=true` matched nothing and now matches
-  the vulnerabilities with neither an assignee nor a group. A true/false
-  filter given `false` was ignored and now selects the other rows
-  (`overdue`, `due_today`, `due_this_week` and `unassigned` on
-  vulnerabilities, `is_overdue` on compliance assessments,
-  `needs_review` on compliance exceptions). `?format=` on
-  `reports/reports/` answered 404, because guardian read the parameter
-  as the name of a renderer; it is the filter on a report's format, and
-  no longer chooses a renderer on any route. `?ip_range=` on the asset
-  list listed every address of the range before it asked the database:
-  sixteen million strings for `10.0.0.0/8`, and `0.0.0.0/0` did not
-  answer. An IPv4 range of any size is now one bounded condition, and an
-  IPv6 range of more than 256 addresses answers 400. A unit test walks the
-  URLconf and, for each filter and each search field of each list,
-  stores two rows and requires the one the value describes.
-- **guardian: `?search=` on the vulnerability list reads every field it
-  names** (#724). The list had two searches, applied one after the
-  other, so a vulnerability was found only by its title, description,
-  CVE or asset name: a match on the asset's address, the scanner or the
-  service, which one of the two also read, never counted. There is one
-  search now, over the seven fields, and each word of the text must be
-  found in one of them.
-- **guardian honors `?page_size=`** (#724), from 1 to 200; the default
-  stays 50. It was ignored: the dashboard home asked for one asset to
-  read a count, and for the three newest vulnerabilities, and was sent
-  fifty rows each time. `next` and `previous` keep the parameter.
 - **tools reports one version.** `/health` and `/api` said `1.0.0` while
   the OpenAPI schema and the `X-API-Version` header of the same
   responses said `0.1.6`. All four now read the version written once in
@@ -888,6 +850,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the service are gone too (`@validator`, `Field(env=...)` in the
   settings, `.dict()`, `Path(regex=...)`); they worked, with deprecation
   warnings, so nothing else changes for a client or an operator.
+- **guardian: the severity, status, priority and threat-level filters
+  of the vulnerability list match again** (#724).
+  `GET /api/v1/guardian/vulnerabilities/?severity=medium` answered an
+  empty list whatever the team held, and so did `?status=`, `?priority=`
+  and `?threat_level=`, on `vulnerabilities/stats/` too: each compared
+  the column with the characters of the value. The dashboard's severity
+  and status menus send these two, so choosing an entry of either read
+  "No vulnerabilities found". Each filter takes one value, or several
+  when the parameter is repeated.
+- **guardian: every filter of every list was tried, and the ones that
+  did not do what they say were fixed** (#724). On the vulnerability
+  list, `asset_environment` answered 500 and now matches the name of the
+  asset's environment; `unassigned=true` matched nothing and now matches
+  the vulnerabilities with neither an assignee nor a group. A true/false
+  filter given `false` was ignored and now selects the other rows
+  (`overdue`, `due_today`, `due_this_week` and `unassigned` on
+  vulnerabilities, `is_overdue` on compliance assessments,
+  `needs_review` on compliance exceptions). `?format=` on
+  `reports/reports/` answered 404, because guardian read the parameter
+  as the name of a renderer; it is the filter on a report's format, and
+  no longer chooses a renderer on any route. `?ip_range=` on the asset
+  list listed every address of the range before it asked the database:
+  sixteen million strings for `10.0.0.0/8`, and `0.0.0.0/0` did not
+  answer. An IPv4 range of any size is now one bounded condition, and an
+  IPv6 range of more than 256 addresses answers 400. A unit test walks the
+  URLconf and, for each filter and each search field of each list,
+  stores two rows and requires the one the value describes.
+- **guardian: `?search=` on the vulnerability list reads every field it
+  names** (#724). The list had two searches, applied one after the
+  other, so a vulnerability was found only by its title, description,
+  CVE or asset name: a match on the asset's address, the scanner or the
+  service, which one of the two also read, never counted. There is one
+  search now, over the seven fields, and each word of the text must be
+  found in one of them.
+- **guardian honors `?page_size=`** (#724), from 1 to 200; the default
+  stays 50. It was ignored: the dashboard home asked for one asset to
+  read a count, and for the three newest vulnerabilities, and was sent
+  fifty rows each time. `next` and `previous` keep the parameter.
 
 ### Changed
 
