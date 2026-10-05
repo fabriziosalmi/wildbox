@@ -383,7 +383,7 @@ class LocalAPI:
     async def _stats_handler(self, request: web_request.Request) -> web.Response:
         """Get sensor statistics"""
         try:
-            stats = self.agent.stats.copy()
+            stats = self.agent.get_stats()
             stats['timestamp'] = datetime.now(timezone.utc).isoformat()
             
             return web.json_response(stats)
@@ -396,61 +396,53 @@ class LocalAPI:
             )
     
     async def _dashboard_metrics_handler(self, request: web_request.Request) -> web.Response:
-        """Get dashboard metrics for endpoint management"""
+        """A summary of this endpoint, from what the sensor measures.
+
+        It used to report a hostname and an operating system of "unknown",
+        zeros for CPU, memory, disk, connections and processes, the current
+        time as the last activity and a trend it did not compute: none of
+        those was read from anything. What the sensor does not measure is
+        no longer in the answer.
+        """
         try:
-            # Get basic endpoint information
-            status = self.agent.get_status()
-            stats = self.agent.stats
-            
-            # Calculate metrics
-            total_endpoints = 1  # This sensor represents one endpoint
-            online_endpoints = 1 if self.agent.running else 0
-            
-            # Check for any alerts/issues
+            stats = self.agent.get_stats()
+            processor = self.agent.data_processor
+
+            # What deserves a look: errors, and resource limits exceeded.
             alerts = 0
-            if stats.get('error_count', 0) > 0:
+            if stats.get('errors', 0) > 0:
                 alerts += 1
-            if stats.get('cpu_usage', 0) > 80:
+            if stats.get('throttled'):
                 alerts += 1
-            if stats.get('memory_usage', 0) > 80:
-                alerts += 1
-            
-            # Last activity timestamp
-            last_activity = datetime.now(timezone.utc).isoformat()
-            
-            # Trends (simplified for single endpoint)
-            trends_change = 0  # Would need historical data for proper trends
-            if not self.agent.running:
-                trends_change = -100  # Endpoint went offline
-            
+
             dashboard_metrics = {
-                'total_endpoints': total_endpoints,
-                'online_endpoints': online_endpoints,
+                'total_endpoints': 1,  # this sensor is one endpoint
+                'online_endpoints': 1 if self.agent.running else 0,
                 'alerts': alerts,
-                'last_activity': last_activity,
-                'trends_change': trends_change,
+                'last_activity': stats['last_activity'],
                 'endpoint_details': {
-                    'hostname': status.get('hostname', 'unknown'),
-                    'os': status.get('os', 'unknown'),
-                    'agent_version': status.get('version', '1.0.0'),
-                    'uptime_seconds': stats.get('uptime_seconds', 0),
-                    'cpu_usage': stats.get('cpu_usage', 0),
-                    'memory_usage': stats.get('memory_usage', 0),
-                    'disk_usage': stats.get('disk_usage', 0),
-                    'network_connections': stats.get('network_connections', 0),
-                    'process_count': stats.get('process_count', 0)
+                    'hostname': processor.hostname if processor else None,
+                    'os': processor.platform_info.get('system') if processor else None,
+                    'uptime_seconds': stats['uptime_seconds'],
+                    # Of the sensor's own process, as the resource monitor
+                    # last measured them; absent until it has.
+                    'cpu_percent': stats.get('cpu_percent'),
+                    'memory_mb': stats.get('memory_mb'),
+                    'events_collected': stats['events_collected'],
+                    'events_forwarded': stats['events_forwarded'],
+                    'events_dropped': stats['events_dropped'],
                 }
             }
-            
+
             return web.json_response(dashboard_metrics)
-            
+
         except Exception as e:
             logger.error(f"Error getting dashboard metrics: {e}")
             return web.json_response(
                 {'error': 'Failed to get dashboard metrics'},
                 status=500
             )
-    
+
     async def _test_connection_handler(self, request: web_request.Request) -> web.Response:
         """Test connection to data lake"""
         try:

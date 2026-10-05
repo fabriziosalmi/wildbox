@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from app.auth import require_tools_execute, verify_api_key
 from app.execution_manager import execution_manager
 from app.logging_config import get_logger
+from app.security.rate_limit import UNAVAILABLE_MESSAGE, RateLimitUnavailable
 from app.target_policy import TargetRefused, enforce_target_policy
 from app.tool_loader import find_schema_classes
 
@@ -257,6 +258,15 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                 
         except HTTPException:
             raise
+        except RateLimitUnavailable as e:
+            # The caller's hourly allowance is counted in Redis and Redis did
+            # not answer. The tool was not started: a run that cannot be
+            # counted is refused, and the caller can retry (#721).
+            logger.error(f"Rate limit unavailable for {tool_name}: {e.reason}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=UNAVAILABLE_MESSAGE,
+            )
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Tool execution failed: {tool_name}", extra={
                 "tool": tool_name,

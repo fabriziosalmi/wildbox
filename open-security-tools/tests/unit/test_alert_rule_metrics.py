@@ -3,21 +3,28 @@
 Prometheus loads a rule on a metric or a label that does not exist without a
 word: the expression is empty for ever and the alert can never fire. So this
 runs the service, produces every outcome a synchronous tool run can have,
-scrapes ``/metrics`` and checks each ``wildbox_*`` selector in
+records every outcome an asynchronous one can have where the worker records
+it, scrapes ``/metrics`` and checks each ``wildbox_*`` selector in
 ``monitoring/alert_rules.yml`` against what was scraped: the metric, the
 labels it matches or aggregates on, and the label values it names.
 
 It also pins what ``wildbox_tool_executions_total`` counts, because the rule
 ``WildboxSyncToolFailureRate`` is named and described for it: runs the api
-process executes, by outcome. Asynchronous runs execute in the worker, which
-exports no metrics.
+process executes, by outcome. Asynchronous runs execute in the worker and
+are counted in Redis, which the api exports as
+``wildbox_tool_async_executions_total`` (#721); how each end of a task gets
+there is tested with a real worker in ``test_async_run_metrics_worker.py``.
+The asynchronous counts are read from a Redis server, so this module needs
+one (the ``redis_url`` fixture).
 """
 
 import asyncio
 import importlib.util
 import os
+import re
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -28,6 +35,7 @@ from prometheus_client.parser import text_string_to_metric_families
 os.environ.setdefault("API_KEY", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from app import async_metrics  # noqa: E402
 from app.execution_manager import (  # noqa: E402
     ExecutionStatus,
     ToolExecutionManager,
@@ -45,6 +53,8 @@ pytestmark = pytest.mark.skipif(
 
 PREFIX = "wildbox_"
 TOOL = "alert_rule_contract"
+# A tool of the service: the asynchronous counter labels nothing else by name.
+ASYNC_TOOL = "hash_generator"
 
 
 def _checker():
@@ -100,8 +110,41 @@ def _counted(tool_name):
 
 
 @pytest.fixture(scope="module")
-def scraped():
-    """{metric: {label: {values}}} from /metrics after every sync outcome."""
+def async_counts(redis_url):
+    """The service's asynchronous counts, in keys of this module's own."""
+    import redis
+    from app.config import settings
+
+    run = uuid.uuid4().hex
+    keys = [
+        f"wildbox:tools:test-{run}:async-outcomes",
+        f"wildbox:tools:test-{run}:async-consumed",
+    ]
+    client = redis.Redis.from_url(redis_url, decode_responses=True)
+    counts = async_metrics.AsyncRunCounts(client, queue=f"wildbox-tools-test-{run}")
+    patch = pytest.MonkeyPatch()
+    patch.setattr(async_metrics, "OUTCOMES_KEY", keys[0])
+    patch.setattr(async_metrics, "CONSUMED_KEY", keys[1])
+    patch.setattr(async_metrics, "_counts", (os.getpid(), counts))
+    # With a REDIS_URL the service exports the counts; without, there is no
+    # asynchronous execution.
+    patch.setattr(settings, "redis_url", redis_url)
+    try:
+        yield counts
+    finally:
+        patch.undo()
+        client.delete(*keys)
+        client.close()
+
+
+@pytest.fixture(scope="module")
+def scraped(async_counts):
+    """{metric: {label: {values}}} from /metrics after every outcome."""
+    # An asynchronous task of each outcome, written as the worker writes it.
+    async_metrics.record_taken("task-0")
+    for outcome in async_metrics.OUTCOMES:
+        async_metrics.record_outcome("task-0", ASYNC_TOOL, outcome)
+
     manager = ToolExecutionManager()
     assert _run(manager, _completes).status is ExecutionStatus.COMPLETED
     assert (
@@ -180,20 +223,25 @@ def test_every_label_the_rules_aggregate_on_exists(scraped, expressions):
 def test_every_outcome_the_rules_name_is_one_the_service_reports(expressions):
     # `outcome="failure"` would load, match nothing and never fire.
     checker = _checker()
-    outcomes = {status.value for status in ExecutionStatus}
+    reported = {
+        "wildbox_tool_executions_total": {status.value for status in ExecutionStatus},
+        "wildbox_tool_async_executions_total": set(async_metrics.OUTCOMES),
+    }
     named = []
     for alert, expr in expressions:
         selectors = checker.rule_selectors(expr)
-        for operator, value in selectors.get("wildbox_tool_executions_total", {}).get(
-            "outcome", []
-        ):
-            assert operator in (
-                "=",
-                "!=",
-            ), f"{alert}: check {operator}{value!r} by hand"
-            assert value in outcomes, f"{alert}: no run ever has outcome {value!r}"
-            named.append(value)
-    assert named == ["failed"]
+        for metric, outcomes in reported.items():
+            for operator, value in selectors.get(metric, {}).get("outcome", []):
+                assert operator in (
+                    "=",
+                    "!=",
+                ), f"{alert}: check {operator}{value!r} by hand"
+                assert value in outcomes, f"{alert}: no run ever has outcome {value!r}"
+                named.append((metric, value))
+    assert named == [
+        ("wildbox_tool_executions_total", "failed"),
+        ("wildbox_tool_async_executions_total", "failed"),
+    ]
 
 
 def test_the_execution_counter_has_the_labels_and_outcomes_the_rule_describes(scraped):
@@ -251,15 +299,104 @@ def test_the_http_counter_has_the_labels_the_rule_reads(scraped):
     assert "401" in requests["status"]  # a status code, as the rule's 5.. expects
 
 
-def test_an_asynchronous_run_is_not_counted():
-    # The rule says so; this is why. The Celery task records nothing in the
-    # counter, and the worker serves no /metrics for Prometheus to read.
-    source = (Path(__file__).resolve().parents[2] / "app" / "tasks.py").read_text()
-    told = (
-        "the worker now counts runs: rename WildboxSyncToolFailureRate and "
-        "rewrite its description in monitoring/alert_rules.yml, which say "
-        "asynchronous runs are not measured"
-    )
+# --- the asynchronous runs ------------------------------------------------------
 
-    assert "TOOL_EXECUTIONS" not in source, told
-    assert "outcome_counter" not in source, told
+
+def test_the_asynchronous_counter_has_the_labels_and_outcomes_the_rule_describes(
+    scraped,
+):
+    executions = scraped["wildbox_tool_async_executions_total"]
+
+    assert set(executions) == {"tool", "outcome"}
+    assert executions["outcome"] == {
+        "completed",
+        "failed",
+        "timeout",
+        "cancelled",
+        "refused",
+    }
+    assert ASYNC_TOOL in executions["tool"]
+
+
+def test_the_queue_metrics_are_plain_numbers(scraped):
+    # WildboxAsyncToolTasksNotConsumed compares them with `and on ()`: no
+    # label of either may be needed to tell two series apart.
+    for metric in (
+        "wildbox_tool_async_queue_length",
+        "wildbox_tool_async_tasks_consumed_total",
+        "wildbox_tool_async_metrics_up",
+    ):
+        assert scraped[metric] == {}, metric
+
+
+def test_a_synchronous_run_is_not_in_the_asynchronous_counter(async_counts):
+    """Each alert measures its own runs: the two counters share nothing."""
+    tool = f"{TOOL}_sync_only"
+    before = dict(async_counts.read().outcomes)
+
+    _run(ToolExecutionManager(), _raises, tool)
+
+    assert _counted(tool) == {"failed": 1.0}
+    assert async_counts.read().outcomes == before
+
+
+def test_an_asynchronous_run_is_not_in_the_synchronous_counter(async_counts):
+    # Not a tool of the service, so the asynchronous counter files it under
+    # "unknown"; neither name may appear in the synchronous one.
+    tool = f"{TOOL}_async_only"
+    before = async_counts.read().outcomes.get(("unknown", "failed"), 0)
+
+    async_metrics.record_outcome("task-1", tool, "failed")
+
+    assert async_counts.read().outcomes[("unknown", "failed")] == before + 1
+    assert _counted(tool) == {}
+    assert _counted("unknown") == {}
+
+
+def _seconds(duration):
+    value, unit = re.fullmatch(r"(\d+)([smh])", duration).groups()
+    return int(value) * {"s": 1, "m": 60, "h": 3600}[unit]
+
+
+def test_no_task_can_run_for_as_long_as_the_queue_alert_waits():
+    """What makes "queued and nothing taken for 15 minutes" mean a dead worker.
+
+    A worker that is alive frees a child within the hard time limit and then
+    takes the next task. If a task could run for the whole window, a busy
+    worker would look like one that consumes nothing.
+    """
+    from app.celery_app import celery_app
+
+    rules = yaml.safe_load(ALERT_RULES.read_text(encoding="utf-8"))
+    (rule,) = [
+        rule
+        for group in rules["groups"]
+        for rule in group["rules"]
+        if rule["alert"] == "WildboxAsyncToolTasksNotConsumed"
+    ]
+    (window,) = re.findall(
+        r"increase\(wildbox_tool_async_tasks_consumed_total\[(\w+)\]\)", rule["expr"]
+    )
+    hard_limit = celery_app.conf.task_time_limit
+
+    assert celery_app.conf.task_soft_time_limit < hard_limit == 600
+    assert hard_limit < _seconds(window) == 900
+    # And the queue must have been non-empty for at least as long.
+    assert _seconds(rule["for"]) >= _seconds(window)
+
+
+def test_the_worker_reads_the_queue_the_api_measures():
+    """The queue length is the length of the list the worker consumes.
+
+    docker-compose.yml starts the worker without -Q, so it reads the app's
+    default queue, which is also where the api sends the tasks.
+    """
+    from app.celery_app import celery_app
+
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text("utf-8"))
+    command = compose["services"]["tools-worker"]["command"]
+
+    assert "celery -A app.celery_app worker" in command
+    assert " -Q" not in command and "--queues" not in command
+    assert celery_app.conf.task_default_queue == "celery"
+    assert celery_app.conf.task_routes is None

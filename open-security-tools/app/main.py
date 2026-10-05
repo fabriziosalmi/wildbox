@@ -13,14 +13,16 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import ValidationError
 
+from app import __version__ as SERVICE_VERSION
 from app.config import settings
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, CacheControlMiddleware
 from open_security_shared.api_docs import api_docs_urls
 from open_security_shared.errors import install_error_handlers
-from open_security_shared.observability import install_observability
+from open_security_shared.observability import install_observability, register_collector
 from app.api.router import router as api_router, DISCOVERED_TOOLS, register_tool_endpoint
 from app.api.async_router import router as async_router
+from app.async_metrics import AsyncRunsCollector
 from app.execution_manager import execution_manager
 from app.tool_loader import discover_tools as _discover_tools
 
@@ -107,7 +109,10 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Wildbox Security Tools",
         description="A modular security tools platform with dynamic tool discovery",
-        version="0.1.6",
+        # One version, written once, in app/__init__.py: the schema and the
+        # X-API-Version header said 0.1.6 while /health and /api said 1.0.0
+        # (#721).
+        version=SERVICE_VERSION,
         # No Swagger UI or ReDoc pages in any environment: the standalone
         # web UI that served them is gone (#581), and FastAPI's own pages
         # load their scripts from a CDN, which SecurityHeadersMiddleware's
@@ -143,8 +148,15 @@ def create_app() -> FastAPI:
     # Prometheus endpoint: GET /metrics, registered by the shared package as
     # in every other service and scraped by monitoring/prometheus.yml. It is
     # the service's only metrics endpoint (#646).
-    install_observability(app, service_name="tools", service_version="0.1.6")
-    
+    install_observability(app, service_name="tools", service_version=SERVICE_VERSION)
+
+    # The asynchronous runs execute in the worker, which Prometheus cannot
+    # scrape; the worker counts them in Redis and this process exports the
+    # counts from the same /metrics (app/async_metrics.py, #721). Without
+    # REDIS_URL there is no asynchronous execution and nothing to export.
+    if settings.redis_url:
+        register_collector("tools_async_runs", AsyncRunsCollector())
+
     # Discover and register tools
     discovered_tools = discover_tools()
     
@@ -165,36 +177,35 @@ def create_app() -> FastAPI:
     # the integration tests, directly on the service port. A second handler
     # for the same path used to be registered further down; FastAPI serves
     # the first one registered, so that one never ran (#646).
+    #
+    # It answers anyone who reaches the service port: every container on the
+    # development network, and the host. So it says how the service is and
+    # which service and version answered, with two counts an operator reads,
+    # and nothing about the deployment. It used to name the environment, the
+    # concurrency ceiling, the default timeout and every loaded tool (#721):
+    # the probes read the status, the tool list is an authenticated route
+    # (GET /api/tools), and the settings are the operator's own.
     @app.get("/health", tags=["System"])
     async def health_check():
-        """Health of this service: status, loaded tools, active executions."""
-        start_time = time.time()
+        """Health of this service: status, tool count, active executions."""
         try:
             active_executions = execution_manager.get_active_executions()
-            response_time_ms = (time.time() - start_time) * 1000
-            
+
             return {
                 "status": "healthy",
                 "service": "tools",
-                "version": "1.0.0",
+                "version": SERVICE_VERSION,
                 "timestamp": time.time(),
-                "response_time_ms": round(response_time_ms, 2),
-                "environment": settings.environment,
                 "tools_count": len(discovered_tools),
-                "available_tools": list(discovered_tools.keys()),
                 "active_executions": len(active_executions),
-                "max_concurrent_tools": settings.max_concurrent_tools,
-                "default_timeout": settings.tool_timeout
             }
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Health check error: {e}")
-            response_time_ms = (time.time() - start_time) * 1000
             return {
                 "status": "degraded",
                 "service": "tools",
-                "version": "1.0.0",
+                "version": SERVICE_VERSION,
                 "timestamp": time.time(),
-                "response_time_ms": round(response_time_ms, 2),
                 "error": "An internal error occurred"
             }
 
@@ -211,15 +222,15 @@ def create_app() -> FastAPI:
     # service's own health check (#646). Do not add a route here without a
     # dependency on app.auth.get_current_user.
 
-    # Root redirect
+    # The service banner. Unauthenticated like /health, and for the same
+    # reason it points at the tool list instead of holding it (#721).
     @app.get("/api")
     async def api_root():
         """API root endpoint with basic information."""
         return {
             "message": "Wildbox Security Tools",
-            "version": "1.0.0",
-            "tools": f"/api/tools",
-            "available_tools": list(discovered_tools.keys())
+            "version": SERVICE_VERSION,
+            "tools": "/api/tools",
         }
     
     return app

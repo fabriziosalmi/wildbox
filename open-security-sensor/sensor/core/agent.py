@@ -21,8 +21,32 @@ from sensor.pipeline.data_forwarder import DataForwarder
 from sensor.core.config import SensorConfig
 from sensor.api.local_api import LocalAPI
 from sensor.utils.resource_monitor import ResourceMonitor
+from sensor.pipeline.delivery import take_delivery
 
 logger = logging.getLogger(__name__)
+
+# Seconds the events already collected get to reach the sender when the
+# sensor stops, before the pipeline is stopped under them.
+QUEUE_DRAIN_SECONDS = 2.0
+
+
+class CountingQueue(asyncio.Queue):
+    """A queue that counts what is put on it, and when the last item was.
+
+    The collectors put their events on one of these: its count is the
+    number of events collected, whatever becomes of them afterwards.
+    """
+
+    def _init(self, maxsize):
+        super()._init(maxsize)
+        self.total = 0
+        self.last_put: Optional[datetime] = None
+
+    def _put(self, item):
+        super()._put(item)
+        self.total += 1
+        self.last_put = datetime.now(timezone.utc)
+
 
 class SecuritySensorAgent:
     """
@@ -51,18 +75,13 @@ class SecuritySensorAgent:
         self.local_api = None
         self.resource_monitor = None
         
-        # Statistics
-        self.stats = {
-            'events_collected': 0,
-            'events_processed': 0,
-            'events_forwarded': 0,
-            'errors': 0,
-            'last_activity': None,
-            'uptime_seconds': 0
-        }
-        
+        # What the resource monitor measures (memory_mb, cpu_percent,
+        # throttled). The event counters are not kept here: get_stats()
+        # reads them from the components that do the counting.
+        self.resources: Dict[str, Any] = {}
+
         # Event queues for inter-component communication
-        self.event_queue = asyncio.Queue(maxsize=self.config.performance.max_queue_size)
+        self.event_queue = CountingQueue(maxsize=self.config.performance.max_queue_size)
         self.processed_queue = asyncio.Queue(maxsize=self.config.performance.max_queue_size)
     
     async def start(self):
@@ -86,7 +105,7 @@ class SecuritySensorAgent:
             # Initialize resource monitor
             self.resource_monitor = ResourceMonitor(
                 config=self.config,
-                stats=self.stats
+                stats=self.resources
             )
             
             # Initialize collectors based on configuration
@@ -125,8 +144,7 @@ class SecuritySensorAgent:
             self.running = True
             logger.info("Security Sensor Agent started successfully")
             
-            # Start monitoring and statistics tasks
-            asyncio.create_task(self._update_statistics())
+            # Start the monitoring task
             asyncio.create_task(self._monitor_health())
             
         except Exception as e:
@@ -172,60 +190,140 @@ class SecuritySensorAgent:
         await asyncio.gather(*components_to_start)
     
     async def _stop_components(self):
-        """Stop all components gracefully"""
-        stop_tasks = []
-        
-        if self.local_api:
-            stop_tasks.append(self.local_api.stop())
-        
+        """Stop all components gracefully.
+
+        In this order: what produces events; then, once the events already
+        collected have reached the sender or QUEUE_DRAIN_SECONDS have
+        passed, what carries them, so that the sender's last batches are the
+        last events; then the log positions once more, for what those
+        batches delivered.
+        """
+        collectors = [
+            component
+            for component in (
+                self.local_api,
+                self.log_forwarder,
+                self.file_monitor,
+                self.osquery_manager,
+                self.resource_monitor,
+            )
+            if component
+        ]
+        pipeline = [
+            component
+            for component in (self.data_processor, self.data_forwarder)
+            if component
+        ]
+
+        await self._stop_all(collectors)
+        if self.data_processor and self.data_forwarder:
+            await self._drain_queues()
+        await self._stop_all(pipeline)
+        self._report_left_in_queues()
+
         if self.log_forwarder:
-            stop_tasks.append(self.log_forwarder.stop())
-        
-        if self.file_monitor:
-            stop_tasks.append(self.file_monitor.stop())
-        
-        if self.osquery_manager:
-            stop_tasks.append(self.osquery_manager.stop())
-        
-        if self.resource_monitor:
-            stop_tasks.append(self.resource_monitor.stop())
-        
-        if self.data_forwarder:
-            stop_tasks.append(self.data_forwarder.stop())
-        
-        if self.data_processor:
-            stop_tasks.append(self.data_processor.stop())
-        
-        # Stop all components concurrently with timeout
-        if stop_tasks:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*stop_tasks, return_exceptions=True),
-                    timeout=30
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Some components did not stop within timeout")
-    
-    async def _update_statistics(self):
-        """Update agent statistics periodically"""
-        while self.running:
-            try:
-                if self.start_time:
-                    self.stats['uptime_seconds'] = int(
-                        (datetime.now(timezone.utc) - self.start_time).total_seconds()
-                    )
-                
-                self.stats['last_activity'] = datetime.now(timezone.utc).isoformat()
-                
-                await asyncio.sleep(60)  # Update every minute
-                
-            except asyncio.CancelledError:
+            self.log_forwarder.save_positions()
+
+    @staticmethod
+    async def _stop_all(components):
+        if not components:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    *(component.stop() for component in components),
+                    return_exceptions=True,
+                ),
+                timeout=15
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Some components did not stop within timeout")
+
+    async def _drain_queues(self):
+        """Give the events already collected the time to reach the sender.
+
+        Nothing new is collected at this point. When the sender takes no
+        more (its buffer is full), waiting would not help: it gives up after
+        QUEUE_DRAIN_SECONDS.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + QUEUE_DRAIN_SECONDS
+        while (
+            self.event_queue.qsize()
+            or self.data_processor.in_flight
+            or self.processed_queue.qsize()
+        ):
+            if loop.time() >= deadline:
                 break
-            except Exception as e:
-                logger.error(f"Error updating statistics: {e}")
-                self.stats['errors'] += 1
-                await asyncio.sleep(60)
-    
+            await asyncio.sleep(0.02)
+
+    def _report_left_in_queues(self):
+        """Say what the queues still held when the pipeline stopped: those
+        events never reached the sender, which counts only its own."""
+        left = []
+        for queue in (self.event_queue, self.processed_queue):
+            while not queue.empty():
+                left.append(queue.get_nowait())
+        if not left:
+            return
+        returned = 0
+        for event in left:
+            delivery = take_delivery(event)
+            if delivery is not None and delivery.replayable:
+                returned += 1
+        logger.warning(
+            "Stopped with %d events still on their way to the sender: %d are "
+            "dropped, %d will be read again from their log source after the "
+            "restart",
+            len(left),
+            len(left) - returned,
+            returned,
+        )
+
+    def get_stats(self) -> Dict[str, Any]:
+        """The sensor's counters, read where they are counted.
+
+        They used to be a dictionary of zeros that nothing incremented.
+
+        * events_collected: events the collectors put on the queue.
+        * events_processed / events_filtered: what the processor passed on
+          or filtered out.
+        * events_forwarded: events the gateway accepted.
+        * events_dropped: events that left the sensor unsent (the reasons
+          are under data_forwarder in /api/v1/components).
+        * events_in_pipeline: events waiting in the two queues and in the
+          sender's buffer.
+        * errors: errors of the processor and of the sender (network errors
+          and error answers of the gateway).
+        * last_activity: when the last event was collected, or null.
+        """
+        processor = self.data_processor.stats if self.data_processor else {}
+        forwarder = self.data_forwarder.stats if self.data_forwarder else {}
+        buffered = len(self.data_forwarder.buffer) if self.data_forwarder else 0
+        last_put = self.event_queue.last_put
+        uptime = 0
+        if self.start_time:
+            uptime = int((datetime.now(timezone.utc) - self.start_time).total_seconds())
+        stats = {
+            'events_collected': self.event_queue.total,
+            'events_processed': processor.get('events_processed', 0),
+            'events_filtered': processor.get('events_filtered', 0),
+            'events_forwarded': forwarder.get('events_forwarded', 0),
+            'events_dropped': forwarder.get('events_dropped', 0),
+            'events_in_pipeline': (
+                self.event_queue.qsize() + self.processed_queue.qsize() + buffered
+            ),
+            'errors': (
+                processor.get('errors', 0)
+                + forwarder.get('network_errors', 0)
+                + forwarder.get('api_errors', 0)
+            ),
+            'last_activity': last_put.isoformat() if last_put else None,
+            'uptime_seconds': uptime,
+        }
+        stats.update(self.resources)
+        return stats
+
     async def _monitor_health(self):
         """Monitor agent health and perform maintenance tasks"""
         while self.running:
@@ -264,7 +362,7 @@ class SecuritySensorAgent:
         status = {
             'running': self.running,
             'start_time': self.start_time.isoformat() if self.start_time else None,
-            'stats': self.stats.copy(),
+            'stats': self.get_stats(),
             'config': {
                 'data_lake_endpoint': self.config.data_lake.endpoint,
                 'collection_enabled': {
@@ -319,9 +417,3 @@ class SecuritySensorAgent:
         
         return await self.osquery_manager.execute_query(query)
     
-    def increment_stat(self, stat_name: str, amount: int = 1):
-        """Increment a statistics counter"""
-        if stat_name in self.stats:
-            self.stats[stat_name] += amount
-        else:
-            self.stats[stat_name] = amount

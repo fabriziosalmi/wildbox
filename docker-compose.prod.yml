@@ -172,8 +172,13 @@ services:
       - LOG_LEVEL=INFO
       - DEBUG=false
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - ENABLE_METRICS=true
-      - WORKERS=4
+      # No WORKERS and no ENABLE_METRICS: nothing read either (#721). The
+      # image starts one uvicorn process on purpose: the execution manager
+      # (the MAX_CONCURRENT_TOOLS ceiling, the runs /health counts and
+      # shutdown cancels) and the Prometheus registry are one per process,
+      # so a second process would double the ceiling and make /metrics
+      # answer for whichever one the scrape reached. /metrics is always
+      # served. Long or many runs belong on tools-worker, which scales.
     deploy:
       resources:
         limits:

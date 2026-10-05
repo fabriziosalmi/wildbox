@@ -33,7 +33,7 @@ and shows your team's telemetry only.
 
    ```bash
    cd /path/to/wildbox
-   docker-compose up -d
+   docker compose up -d
    ```
 
 2. Configure and start the sensor with sample logs:
@@ -176,7 +176,7 @@ and shows your team's telemetry only.
    docker stats sensor
 
    # Check sensor logs for performance issues
-   docker-compose logs sensor | grep -i error
+   docker compose logs sensor | grep -i error
    ```
 
 3. Verify all events were ingested:
@@ -302,13 +302,13 @@ and shows your team's telemetry only.
 
 ```bash
 # Check sensor logs
-docker-compose logs sensor
+docker compose logs sensor
 
 # Verify log file exists and is readable
 ls -la /tmp/wildbox-test/access.log
 
 # Test the connection to the gateway with the sensor's key
-docker-compose exec sensor python main.py --config /etc/security-sensor/config.yaml --test-connection
+docker compose exec sensor python main.py --config /etc/security-sensor/config.yaml --test-connection
 ```
 
 **Common Fixes**:
@@ -318,7 +318,7 @@ docker-compose exec sensor python main.py --config /etc/security-sensor/config.y
   the reason for each file it does not
 - With `read_from: end` (the default) only lines written after the sensor
   started are sent
-- Check the gateway is running: `docker-compose ps gateway`
+- Check the gateway is running: `docker compose ps gateway`
 - Set `SENSOR_DATA_LAKE_API_KEY` to an identity API key with the
   `data:ingest` scope; without one the sensor logs that forwarding is
   disabled

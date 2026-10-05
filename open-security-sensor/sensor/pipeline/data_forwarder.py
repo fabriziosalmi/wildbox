@@ -2,7 +2,7 @@
 Data Forwarder
 
 Forwards processed telemetry to the data service through the gateway, in
-batches, with retries.
+batches, and keeps what the gateway does not take yet.
 
 How a batch gets in (#628): the sensor posts to the gateway's
 ``/api/v1/data/ingest`` with an identity personal API key in ``X-API-Key``. The
@@ -15,19 +15,51 @@ requests the gateway has authenticated, so every batch was refused.
 
 The key is a credential. It is set once, as a session header, and nothing here
 logs it, the headers or the request.
+
+The buffer (#725). Events wait here, serialized, until the gateway accepts
+them:
+
+* It is bounded: at most ``data_lake.buffer_max_events`` events and
+  ``data_lake.buffer_max_bytes`` bytes of serialized events. The two queues
+  before it hold at most ``performance.max_queue_size`` events each.
+* A batch is the oldest events, at most ``batch_size`` of them and
+  ``MAX_BATCH_BYTES`` bytes. It leaves the buffer when the gateway answers:
+  accepted, or refused. A batch that fails for a reason that may pass (a
+  network error, HTTP 429, a 5xx answer) stays where it is, whole, and is
+  sent again after a delay that doubles from ``retry_delay`` up to
+  ``retry_max_delay``, for as long as it takes.
+* Nothing is dropped to make room. When the buffer is full the forwarder
+  stops taking events, the queues fill, and the collectors wait: a log source
+  goes on later from where it stopped, the file monitor reports what changed
+  when it scans again, and osquery's snapshots are not taken meanwhile.
+* What is dropped, and counted under ``events_dropped_*``: the events of a
+  batch the gateway refuses (a 4xx answer: sending it again would get the
+  same answer), an event that cannot be serialized or is larger than a
+  batch may be, every event while no API key is configured, and what is
+  still here when the sensor stops.
+* An event may carry a ``Delivery`` (``sensor.pipeline.delivery``), which is
+  settled when the gateway accepts the event's batch or the event is
+  dropped. What is still here when the sensor stops is not settled; an
+  event whose collector will read it again after the restart is then
+  counted under ``events_returned_to_source`` and not as dropped.
 """
 
 import asyncio
+import json
 import logging
+import random
 import socket
 import ssl
 import time
 import uuid
+from collections import deque
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from itertools import islice
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import aiohttp
-from sensor.core.config import SensorConfig
+from sensor.core.config import MAX_BATCH_BYTES, SensorConfig
+from sensor.pipeline.delivery import Delivery, settle, take_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +81,15 @@ _DEFAULT_EVENT_TYPE = "security_event"
 SENT = "sent"
 RETRY = "retry"  # transient: network error, 429, 5xx
 REFUSED = "refused"  # the request itself is wrong: retrying cannot help
+
+# Why an event leaves the sensor without reaching the data service.
+DROP_REASONS = ("refused", "oversize", "unserializable", "unconfigured", "shutdown")
+# Seconds to wait after an HTTP 429 that names no Retry-After.
+RATE_LIMIT_DELAY = 10
+# Seconds the last batches get when the sensor stops.
+STOP_FLUSH_SECONDS = 10
+# Seconds between two log lines that sum up what was dropped.
+DROP_REPORT_INTERVAL = 60
 
 
 def ingest_event_type(sensor_type: Any) -> str:
@@ -113,6 +154,35 @@ def build_batch(events: List[Dict[str, Any]], sensor_id: str) -> Dict[str, Any]:
     }
 
 
+def encode_event(event: Dict[str, Any], sensor_id: str) -> bytes:
+    """One event as it travels in a batch: the JSON of ``to_ingest_event``.
+
+    Raises TypeError or ValueError for an event JSON cannot carry: a value
+    of a type it has none for, or NaN, which the data service would refuse
+    with the whole batch.
+    """
+    return json.dumps(to_ingest_event(event, sensor_id), allow_nan=False).encode(
+        "utf-8"
+    )
+
+
+def encode_batch(bodies: List[bytes]) -> bytes:
+    """The request body for events already encoded; see ``build_batch``."""
+    head = json.dumps({"batch_id": str(uuid.uuid4())})[:-1].encode("utf-8")
+    return head + b', "events": [' + b",".join(bodies) + b"]}"
+
+
+def retry_delay(failures: int, first: float, longest: float) -> float:
+    """Seconds to wait after ``failures`` failed attempts in a row.
+
+    ``first`` after the first one, twice as long after each further one, and
+    never more than ``longest``.
+    """
+    if failures < 1 or first <= 0:
+        return 0.0
+    return float(min(first * 2 ** min(failures - 1, 32), max(longest, first)))
+
+
 def build_ssl_context(tls_verify: bool, ca_bundle: Optional[str]) -> ssl.SSLContext:
     """The TLS context for the gateway: verified unless explicitly disabled.
 
@@ -138,26 +208,54 @@ class DataForwarder:
         # HTTP session for connections
         self.session: Optional[aiohttp.ClientSession] = None
 
-        # Batching
-        self.batch_buffer: List[Dict[str, Any]] = []
-        self.last_flush_time = time.time()
+        # The events waiting for the gateway, oldest first, as they will be
+        # sent, each with what its collector wants to be told; see the
+        # module's description for the bounds.
+        self.buffer: Deque[Tuple[bytes, Optional[Delivery]]] = deque()
+        self.buffer_bytes = 0
+        self.max_events = config.data_lake.buffer_max_events
+        self.max_bytes = config.data_lake.buffer_max_bytes
+        # An event that no batch could carry is not kept.
+        self.max_event_bytes = min(MAX_BATCH_BYTES, self.max_bytes)
+        self._oldest_since = time.monotonic()
+        self._full_since: Optional[float] = None
+        self._in_hand: Optional[Tuple[bytes, Optional[Delivery]]] = None
+        self._room = asyncio.Event()
+        self._wake = asyncio.Event()
+        self._stopping = asyncio.Event()
+        self._tasks: List[asyncio.Task] = []
 
         self.sensor_id = config.data_lake.sensor_id or socket.gethostname()
 
-        # Statistics
-        self.stats = {
-            "batches_sent": 0,
+        # Statistics. events_received is every event taken from the pipeline:
+        # it equals events_forwarded + events_dropped +
+        # events_returned_to_source + what the buffer holds.
+        self.stats: Dict[str, Any] = {
+            "events_received": 0,
             "events_forwarded": 0,
-            "events_failed": 0,
-            "events_dropped_unconfigured": 0,
+            "events_dropped": 0,
+            "events_returned_to_source": 0,
+            "batches_sent": 0,
+            "batches_refused": 0,
+            "send_failures": 0,
+            "times_buffer_full": 0,
             "network_errors": 0,
             "api_errors": 0,
             "last_successful_send": None,
             "last_error": None,
         }
+        for reason in DROP_REASONS:
+            self.stats[f"events_dropped_{reason}"] = 0
+        self._dropped_reported = dict.fromkeys(DROP_REASONS, 0)
+        self._next_drop_report = time.monotonic() + DROP_REPORT_INTERVAL
+
+        # Consecutive attempts that failed for a reason that may pass.
+        self.failures = 0
+        self._retry_after = 0.0
+        self._next_attempt: Optional[float] = None
 
         # Rate limiting
-        self.last_request_time = 0
+        self.last_request_time = 0.0
         self.min_request_interval = 1.0  # Minimum seconds between requests
 
     @property
@@ -169,9 +267,24 @@ class DataForwarder:
         logger.info("Starting data forwarder")
         self.running = True
 
+        for key in self.config.data_lake.obsolete_keys:
+            logger.warning(
+                "data_lake.%s is set and no longer used: a batch that fails "
+                "for a reason that may pass is kept and sent again until the "
+                "gateway answers for it. Remove the key; see "
+                "data_lake.retry_max_delay and data_lake.buffer_max_events",
+                key,
+            )
+
         try:
             if self.enabled:
                 await self._init_session()
+                logger.info(
+                    "Events are kept until the gateway accepts them, up to %d "
+                    "events and %d bytes; beyond that the collectors wait",
+                    self.max_events,
+                    self.max_bytes,
+                )
             else:
                 logger.warning(
                     "Telemetry forwarding is disabled: data_lake.api_key "
@@ -182,8 +295,10 @@ class DataForwarder:
                 )
 
             # Start forwarding tasks
-            asyncio.create_task(self._collect_events())
-            asyncio.create_task(self._flush_periodically())
+            self._tasks = [
+                asyncio.create_task(self._collect_events()),
+                asyncio.create_task(self._send_batches()),
+            ]
 
             logger.info("Data forwarder started successfully")
 
@@ -196,10 +311,58 @@ class DataForwarder:
         """Stop data forwarding"""
         logger.info("Stopping data forwarder")
         self.running = False
+        # A gateway that does not answer must not keep the sensor from
+        # stopping: everything below shares this much time.
+        deadline = time.monotonic() + STOP_FLUSH_SECONDS
 
-        # Flush any remaining events
-        if self.batch_buffer:
-            await self._flush_batch()
+        tasks, self._tasks = self._tasks, []
+        if tasks:
+            collecting, sending = tasks
+            collecting.cancel()
+            # The sender is not cancelled: a request the gateway is
+            # answering would be sent a second time by the lines below. It
+            # ends by itself after the attempt it is making, if any.
+            self._stopping.set()
+            self._wake.set()
+            try:
+                await asyncio.wait_for(sending, STOP_FLUSH_SECONDS)
+            except asyncio.TimeoutError:
+                pass
+            await asyncio.gather(*tasks, return_exceptions=True)
+        if self._in_hand is not None:
+            # Taken from the queue and still waiting for room.
+            self._hold(*self._in_hand)
+            self._in_hand = None
+
+        # The last batches.
+        if self.session and not self.session.closed:
+            while self.buffer:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    outcome = await asyncio.wait_for(self._flush_batch(), remaining)
+                except asyncio.TimeoutError:
+                    break
+                if outcome == RETRY:
+                    break
+
+        if self.buffer:
+            # Not settled: the collector of an event that can be read again
+            # keeps its position before it.
+            left = self._release(len(self.buffer))
+            returned = sum(1 for delivery in left if delivery and delivery.replayable)
+            self.stats["events_returned_to_source"] += returned
+            self._count_dropped("shutdown", len(left) - returned)
+            logger.warning(
+                "Stopped with %d events the gateway had not accepted: %d are "
+                "dropped, %d will be read again from their log source after "
+                "the restart",
+                len(left),
+                len(left) - returned,
+                returned,
+            )
+        self._report_drops(force=True)
 
         # Close HTTP session
         if self.session:
@@ -256,25 +419,150 @@ class DataForwarder:
             ),
         )
 
+    # -- the buffer -------------------------------------------------------
+
+    def accept(self, event: Dict[str, Any]) -> bool:
+        """Take one processed event; False when it is dropped instead.
+
+        It does not wait for room: the running forwarder takes events with
+        ``_collect_events``, which does.
+        """
+        held = self._prepare(event)
+        if held is None:
+            return False
+        self._hold(*held)
+        return True
+
+    def _prepare(
+        self, event: Dict[str, Any]
+    ) -> Optional[Tuple[bytes, Optional[Delivery]]]:
+        """The event as it will be sent and its Delivery, or None when the
+        event is dropped."""
+        self.stats["events_received"] += 1
+        # Taken out first: it is not part of what is sent.
+        delivery = take_delivery(event)
+        body = self._encode(event)
+        if body is None:
+            # Dropped for good: the sensor has finished with it.
+            settle(delivery)
+            return None
+        return body, delivery
+
+    def _encode(self, event: Dict[str, Any]) -> Optional[bytes]:
+        """The event as it will be sent; None, and counted, when dropped."""
+        if not self.enabled:
+            # Nowhere to send it; keeping it would only fill the buffer.
+            self._count_dropped("unconfigured")
+            return None
+        event_type = event.get("type") if isinstance(event, dict) else None
+        try:
+            body = encode_event(event, self.sensor_id)
+        except (TypeError, ValueError, AttributeError) as e:
+            self._count_dropped("unserializable")
+            logger.warning(
+                "Dropped an event of type %r that JSON cannot carry: %s",
+                event_type,
+                e,
+            )
+            return None
+        if len(body) > self.max_event_bytes:
+            self._count_dropped("oversize")
+            logger.warning(
+                "Dropped an event of type %r: its %d bytes are more than a "
+                "batch may be (%d)",
+                event_type,
+                len(body),
+                self.max_event_bytes,
+            )
+            return None
+        return body
+
+    def _hold(self, body: bytes, delivery: Optional[Delivery] = None):
+        if not self.buffer:
+            self._oldest_since = time.monotonic()
+        self.buffer.append((body, delivery))
+        self.buffer_bytes += len(body)
+        if len(self.buffer) in (1, self.config.data_lake.batch_size):
+            # The sender has a deadline to compute, or a batch to send.
+            self._wake.set()
+
+    def _lacks_room(self, size: int) -> bool:
+        if len(self.buffer) >= self.max_events:
+            return True
+        return bool(self.buffer) and self.buffer_bytes + size > self.max_bytes
+
+    def _release(self, count: int) -> List[Optional[Delivery]]:
+        """Take the ``count`` oldest events out of the buffer; what their
+        collectors want to be told."""
+        deliveries = []
+        for _ in range(count):
+            body, delivery = self.buffer.popleft()
+            self.buffer_bytes -= len(body)
+            deliveries.append(delivery)
+        self._oldest_since = time.monotonic()
+        self._room.set()
+        if self._full_since is not None and not self._lacks_room(0):
+            logger.info(
+                "The buffer has room again after %.0f seconds: taking events "
+                "from the collectors",
+                time.monotonic() - self._full_since,
+            )
+            self._full_since = None
+        return deliveries
+
+    def _count_dropped(self, reason: str, count: int = 1):
+        self.stats[f"events_dropped_{reason}"] += count
+        self.stats["events_dropped"] += count
+
+    def _report_drops(self, force: bool = False):
+        """One line for what was dropped since the last one, if anything."""
+        now = time.monotonic()
+        if not force and now < self._next_drop_report:
+            return
+        self._next_drop_report = now + DROP_REPORT_INTERVAL
+        new = {
+            reason: self.stats[f"events_dropped_{reason}"]
+            - self._dropped_reported[reason]
+            for reason in DROP_REASONS
+        }
+        if not any(new.values()):
+            return
+        for reason in DROP_REASONS:
+            self._dropped_reported[reason] = self.stats[f"events_dropped_{reason}"]
+        logger.warning(
+            "Dropped %d events since the last report (%s); %d since the "
+            "sensor started",
+            sum(new.values()),
+            ", ".join(f"{reason}: {count}" for reason, count in new.items() if count),
+            self.stats["events_dropped"],
+        )
+
     async def _collect_events(self):
-        """Collect events from input queue and batch them"""
+        """Move events from the pipeline into the buffer, while it has room"""
         while self.running:
             try:
-                # Get event with timeout
-                event = await asyncio.wait_for(self.input_queue.get(), timeout=1.0)
-
-                # Add to batch buffer
-                self.batch_buffer.append(event)
-
-                # Check if we should flush the batch
-                if len(self.batch_buffer) >= self.config.data_lake.batch_size:
-                    await self._flush_batch()
-
-            except asyncio.TimeoutError:
-                # No events available, check if we should flush based on time
-                if self._should_flush_by_time():
-                    await self._flush_batch()
-                continue
+                event = await self.input_queue.get()
+                held = self._prepare(event)
+                if held is None:
+                    continue
+                self._in_hand = held
+                while self._lacks_room(len(held[0])):
+                    if self._full_since is None:
+                        self._full_since = time.monotonic()
+                        self.stats["times_buffer_full"] += 1
+                        logger.warning(
+                            "The buffer is full (%d events, %d bytes) and the "
+                            "gateway accepts none: the sensor stops taking "
+                            "events from its collectors until a batch is "
+                            "accepted. Log sources continue later from where "
+                            "they stopped",
+                            len(self.buffer),
+                            self.buffer_bytes,
+                        )
+                    self._room.clear()
+                    await self._room.wait()
+                self._in_hand = None
+                self._hold(*held)
 
             except asyncio.CancelledError:
                 break
@@ -283,111 +571,139 @@ class DataForwarder:
                 logger.error(f"Error collecting events: {e}")
                 await asyncio.sleep(1)
 
-    async def _flush_periodically(self):
-        """Flush batches periodically based on time interval"""
+    # -- sending ----------------------------------------------------------
+
+    def _until_due(self) -> float:
+        """Seconds until the oldest events are to be sent; 0 when they are."""
+        data_lake = self.config.data_lake
+        if not self.buffer:
+            return float(data_lake.flush_interval)
+        if (
+            len(self.buffer) >= data_lake.batch_size
+            or self.buffer_bytes >= MAX_BATCH_BYTES
+        ):
+            return 0.0
+        waited = time.monotonic() - self._oldest_since
+        return max(0.0, data_lake.flush_interval - waited)
+
+    async def _send_batches(self):
+        """Send the buffer's batches as they fall due; back off when one fails"""
         while self.running:
             try:
-                await asyncio.sleep(self.config.data_lake.flush_interval)
+                self._report_drops()
+                wait = self._until_due()
+                if wait > 0:
+                    self._wake.clear()
+                    try:
+                        await asyncio.wait_for(self._wake.wait(), timeout=wait)
+                    except asyncio.TimeoutError:
+                        pass
+                    continue
 
-                if self.batch_buffer and self._should_flush_by_time():
-                    await self._flush_batch()
+                if await self._flush_batch() != RETRY:
+                    continue
+                delay = self._backoff()
+                self._next_attempt = time.time() + delay
+                logger.warning(
+                    "The batch was not accepted (attempt %d in a row): it is "
+                    "kept and sent again in %.0f seconds. The buffer holds %d "
+                    "events (%d bytes)",
+                    self.failures,
+                    delay,
+                    len(self.buffer),
+                    self.buffer_bytes,
+                )
+                await self._pause(delay)
+                self._next_attempt = None
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in periodic flush: {e}")
+                logger.error(f"Error sending batches: {e}")
+                await asyncio.sleep(1)
 
-    def _should_flush_by_time(self) -> bool:
-        """Check if batch should be flushed based on time"""
-        return (
-            time.time() - self.last_flush_time
-        ) >= self.config.data_lake.flush_interval
+    async def _pause(self, seconds: float):
+        """Wait before the next attempt, unless the forwarder is stopping."""
+        try:
+            await asyncio.wait_for(self._stopping.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            pass
 
-    async def _flush_batch(self):
-        """Flush current batch to the data lake"""
-        if not self.batch_buffer:
-            return
+    def _backoff(self) -> float:
+        """Seconds before the next attempt, after ``self.failures`` failures."""
+        data_lake = self.config.data_lake
+        delay = retry_delay(
+            self.failures, data_lake.retry_delay, data_lake.retry_max_delay
+        )
+        # Up to a fifth less, so that the sensors of a site do not all come
+        # back at the same instant.
+        delay *= random.uniform(0.8, 1.0)  # nosec B311 - not a secret
+        return max(delay, self._retry_after)
 
-        batch_size = len(self.batch_buffer)
+    def _next_batch(self) -> int:
+        """How many of the oldest events the next batch takes."""
+        count = size = 0
+        for body, _ in islice(self.buffer, self.config.data_lake.batch_size):
+            if count and size + len(body) > MAX_BATCH_BYTES:
+                break
+            count += 1
+            size += len(body)
+        return count
 
-        if not self.enabled:
-            # Nowhere to send them; keeping them would only grow the buffer.
-            self.stats["events_dropped_unconfigured"] += batch_size
-            self.batch_buffer.clear()
-            self.last_flush_time = time.time()
-            return
+    async def _flush_batch(self) -> Optional[str]:
+        """Send the oldest events as one batch: SENT, RETRY or REFUSED.
 
-        logger.debug(f"Flushing batch of {batch_size} events")
+        None when there is nothing to send. The events leave the buffer when
+        the gateway has answered for them, and stay in it, in their place,
+        when the attempt fails for a reason that may pass.
+        """
+        count = self._next_batch()
+        if not count:
+            return None
 
-        # Clear buffer before sending (to avoid duplication on retry)
-        current_batch = self.batch_buffer.copy()
-        self.batch_buffer.clear()
-        self.last_flush_time = time.time()
+        logger.debug(f"Flushing batch of {count} events")
+        self._retry_after = 0.0
+        bodies = [body for body, _ in islice(self.buffer, count)]
+        outcome = await self._send(encode_batch(bodies))
 
-        batch_payload = build_batch(current_batch, self.sensor_id)
+        if outcome == RETRY:
+            self.failures += 1
+            self.stats["send_failures"] += 1
+            return RETRY
 
-        # Send batch with retries
-        outcome = await self._send_batch_with_retries(batch_payload)
-
+        self.failures = 0
+        deliveries = self._release(count)
         if outcome == SENT:
             self.stats["batches_sent"] += 1
-            self.stats["events_forwarded"] += batch_size
+            self.stats["events_forwarded"] += count
             self.stats["last_successful_send"] = datetime.now(timezone.utc).isoformat()
-            logger.debug(f"Successfully forwarded batch of {batch_size} events")
+            logger.debug(f"Successfully forwarded batch of {count} events")
         else:
-            # Re-add failed events to buffer for retry (with limit to prevent
-            # memory issues) -- unless the batch was refused. A refused batch
-            # put back in the buffer is sent again with every flush and
-            # refused again, and whatever is collected meanwhile goes out
-            # with it and is lost: one batch the gateway finds too large or
-            # malformed (HTTP 413, 422) stopped all forwarding for good.
-            if (
-                outcome == RETRY
-                and len(self.batch_buffer) < self.config.performance.max_queue_size
-            ):
-                self.batch_buffer.extend(current_batch[:100])  # Limit to 100 events
+            # Not kept: a refused batch sent again gets the same answer, and
+            # would hold back everything collected after it for good.
+            self.stats["batches_refused"] += 1
+            self._count_dropped("refused", count)
+            logger.error(
+                "The gateway refused a batch of %d events (%s): they are " "dropped",
+                count,
+                self.stats["last_error"],
+            )
+        # Accepted, or dropped for good: either way the sensor has finished
+        # with these events, and their collectors may move past them.
+        for delivery in deliveries:
+            settle(delivery)
+        return outcome
 
-            self.stats["events_failed"] += batch_size
-            logger.error(f"Failed to forward batch of {batch_size} events")
-
-    async def _send_batch_with_retries(self, batch_payload: Dict[str, Any]) -> str:
-        """Send batch with retry logic; SENT, RETRY (every attempt failed for
-        a reason that may pass) or REFUSED."""
-
-        for attempt in range(self.config.data_lake.retry_attempts):
-            try:
-                # Rate limiting
-                await self._apply_rate_limiting()
-
-                # Send HTTP request
-                outcome = await self._send_http_request(batch_payload)
-
-                if outcome == SENT:
-                    return SENT
-                if outcome == REFUSED:
-                    # Retrying a refused key or a malformed batch sends the
-                    # same request to get the same answer.
-                    return REFUSED
-
-                # Wait before retry
-                if attempt < self.config.data_lake.retry_attempts - 1:
-                    wait_time = self.config.data_lake.retry_delay * (
-                        2**attempt
-                    )  # Exponential backoff
-                    logger.debug(
-                        f"Retrying batch send in {wait_time} seconds (attempt {attempt + 1})"
-                    )
-                    await asyncio.sleep(wait_time)
-
-            except Exception as e:
-                logger.error(f"Error sending batch (attempt {attempt + 1}): {e}")
-                self.stats["network_errors"] += 1
-                self.stats["last_error"] = str(e)
-
-                if attempt < self.config.data_lake.retry_attempts - 1:
-                    await asyncio.sleep(self.config.data_lake.retry_delay)
-
-        return RETRY
+    async def _send(self, body: bytes) -> str:
+        """One attempt for one batch; SENT, RETRY or REFUSED."""
+        try:
+            await self._apply_rate_limiting()
+            return await self._send_http_request(body)
+        except Exception as e:
+            logger.error(f"Error sending batch: {e}")
+            self.stats["network_errors"] += 1
+            self.stats["last_error"] = str(e)
+            return RETRY
 
     async def _apply_rate_limiting(self):
         """Apply rate limiting to prevent overwhelming the API"""
@@ -400,17 +716,17 @@ class DataForwarder:
 
         self.last_request_time = time.time()
 
-    def _post(self, payload: Dict[str, Any]):
+    def _post(self, body: bytes):
         """POST to the ingest URL. Redirects are not followed: a redirected
         request would carry the API key to wherever the redirect points."""
         return self.session.post(
-            self.config.data_lake.ingest_url, json=payload, allow_redirects=False
+            self.config.data_lake.ingest_url, data=body, allow_redirects=False
         )
 
-    async def _send_http_request(self, payload: Dict[str, Any]) -> str:
+    async def _send_http_request(self, body: bytes) -> str:
         """Send one batch; SENT, RETRY or REFUSED."""
         try:
-            async with self._post(payload) as response:
+            async with self._post(body) as response:
                 if response.status in (200, 201):
                     return SENT
 
@@ -419,8 +735,11 @@ class DataForwarder:
                 self.stats["last_error"] = f"HTTP {response.status}"
 
                 if response.status == 429:
-                    logger.warning("API rate limit hit, backing off")
-                    await asyncio.sleep(10)
+                    self._retry_after = self._rate_limit_delay(response)
+                    logger.warning(
+                        "API rate limit hit, backing off for at least %.0f " "seconds",
+                        self._retry_after,
+                    )
                     return RETRY
                 if response.status == 401:
                     logger.error(
@@ -463,6 +782,16 @@ class DataForwarder:
             self.stats["last_error"] = str(e)
             return RETRY
 
+    def _rate_limit_delay(self, response) -> float:
+        """Seconds a 429 asks for: its Retry-After, within retry_max_delay."""
+        try:
+            asked = float(response.headers.get("Retry-After", ""))
+        except ValueError:
+            return float(RATE_LIMIT_DELAY)
+        if asked != asked or asked < 0:  # NaN, or a time already past
+            return float(RATE_LIMIT_DELAY)
+        return min(asked, float(self.config.data_lake.retry_max_delay))
+
     async def test_connection(self) -> Dict[str, Any]:
         """Test connection to the data lake API.
 
@@ -489,9 +818,7 @@ class DataForwarder:
         try:
             start_time = time.time()
 
-            async with self._post(
-                {"batch_id": str(uuid.uuid4()), "events": []}
-            ) as response:
+            async with self._post(encode_batch([])) as response:
                 response_time_ms = int((time.time() - start_time) * 1000)
                 test_result["response_time_ms"] = response_time_ms
                 test_result["status_code"] = response.status
@@ -509,15 +836,33 @@ class DataForwarder:
 
     def get_status(self) -> Dict[str, Any]:
         """Get forwarder status"""
+        data_lake = self.config.data_lake
+        next_attempt = None
+        if self._next_attempt is not None:
+            next_attempt = datetime.fromtimestamp(
+                self._next_attempt, timezone.utc
+            ).isoformat()
         return {
             "running": self.running,
             "forwarding_enabled": self.enabled,
-            "endpoint": self.config.data_lake.ingest_url,
+            "endpoint": data_lake.ingest_url,
             "sensor_id": self.sensor_id,
-            "tls_verify": self.config.data_lake.tls_verify,
-            "batch_size": self.config.data_lake.batch_size,
-            "flush_interval": self.config.data_lake.flush_interval,
-            "current_batch_size": len(self.batch_buffer),
+            "tls_verify": data_lake.tls_verify,
+            "batch_size": data_lake.batch_size,
+            "flush_interval": data_lake.flush_interval,
+            "buffer": {
+                "events": len(self.buffer),
+                "bytes": self.buffer_bytes,
+                "max_events": self.max_events,
+                "max_bytes": self.max_bytes,
+                # Full: no event is taken from the collectors until a batch
+                # is accepted.
+                "full": self._full_since is not None,
+            },
+            "retry": {
+                "consecutive_failures": self.failures,
+                "next_attempt": next_attempt,
+            },
             "queue_size": self.input_queue.qsize(),
             "stats": self.stats.copy(),
             "session_active": self.session is not None and not self.session.closed,

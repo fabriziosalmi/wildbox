@@ -1138,8 +1138,20 @@ services:
         shared: ./open-security-shared
     container_name: open-security-sensor
     restart: unless-stopped
+    # Stopping takes time: the collectors are stopped, the sender spends up
+    # to 10 seconds on what it still holds, and the log positions are
+    # written. Docker's default, 10 seconds, would kill it in the middle.
+    stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
+    # No capability, as the sensor's README says and its standalone compose
+    # file already did (#725). The sensor runs as uid 999, which has no
+    # effective capability to begin with; this empties the bounding set too.
+    # Checked in the built image: osquery's tables, osqueryd, the file
+    # monitor, the log forwarder and the data volume behave the same with
+    # and without it.
+    cap_drop:
+      - ALL
     ports:
       - "127.0.0.1:8004:8004"
     environment:
@@ -1177,7 +1189,12 @@ services:
       # does not exist before the gateway's first start, and the sensor is
       # in the default stack, so the bind would fail a fresh `up`.
       - gateway_cert:/etc/ssl/wildbox:ro
-      # Host monitoring (limited to safe read-only paths)
+      # Host monitoring (limited to safe read-only paths). Nothing of the
+      # host's /etc, /bin, /usr/bin or /opt is mounted: the file monitor's
+      # default paths (/host/etc...) do not exist here and it watches
+      # nothing, which it says when it starts. To watch a host directory,
+      # mount it read-only in an override file: see
+      # open-security-sensor/README.md, "File integrity monitoring".
       - /proc/stat:/host/proc/stat:ro
       - /proc/meminfo:/host/proc/meminfo:ro
       - /proc/loadavg:/host/proc/loadavg:ro
