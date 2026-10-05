@@ -141,10 +141,14 @@ PostgreSQL and Redis publish no port; reach them through Compose:
 docker compose exec postgres pg_isready -U postgres
 docker compose exec postgres psql -U postgres -c 'SELECT 1'
 
-docker compose exec \
-  -e REDISCLI_AUTH="$(sed -n 's/^REDIS_PASSWORD=//p' .env)" wildbox-redis \
-  redis-cli ping
+REDISCLI_AUTH="$(sed -n 's/^REDIS_PASSWORD=//p' .env)" \
+  docker compose exec -e REDISCLI_AUTH wildbox-redis redis-cli ping
 ```
+
+`-e REDISCLI_AUTH` names the variable and takes its value from the
+environment of the command. Do not write the password after the name, and
+do not pass it to `redis-cli -a`: an argument is visible to every user of the
+host in the process list.
 
 **Do not flush Redis** (`FLUSHALL`) to "clear a cache". It holds the only copy
 of CSPM scan state, responder run state and agents task ownership, as well as

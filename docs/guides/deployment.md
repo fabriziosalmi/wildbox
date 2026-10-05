@@ -233,10 +233,15 @@ Monitor the headroom and alert well before the ceiling, for example when
 `errorstat_OOM`, the count of refused writes:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec \
-  -e REDISCLI_AUTH="$REDIS_PASSWORD" wildbox-redis \
+REDISCLI_AUTH="$(sed -n 's/^REDIS_PASSWORD=//p' .env)" \
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec \
+  -e REDISCLI_AUTH wildbox-redis \
   sh -c 'redis-cli INFO memory | grep -E "^(used_memory|maxmemory):"; redis-cli INFO errorstats'
 ```
+
+`-e REDISCLI_AUTH` names the variable and takes its value from the
+environment of the command, so the password is not an argument of `docker`,
+where the process list of the host would show it.
 
 With the stack running,
 `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml python3

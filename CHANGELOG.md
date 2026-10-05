@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A Redis that is still loading its data is not healthy yet. After a
   `REDIS_PASSWORD` rotation the container reports `unhealthy` until it is
   recreated, which the rotation asks for.
+- **The Redis password is no longer an argument of a `docker` command**
+  (#740). `scripts/check_redis_config.py runtime` ran
+  `docker compose exec -e REDISCLI_AUTH=<password>`, and the deployment
+  guide, the authentication guide and `TROUBLESHOOTING.md` told operators
+  to do the same: the password reaches `redis-cli` through its
+  environment, but on the way it is an argument of the `docker` process
+  on the host, which every local user can read in the process list. The
+  script and the three pages now name the variable only
+  (`-e REDISCLI_AUTH`), and `docker` takes the value from the
+  environment of the command. `runtime --env-file FILE` also passes the
+  file to `docker compose`, which it used to leave out.
 - **gateway: n8n is no longer reachable through the gateway** (#714).
   `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
   REST API and its webhooks, for whoever the gateway authenticated:
