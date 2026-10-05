@@ -266,9 +266,10 @@ like an unusable `data_lake`, with a message that names every entry at fault
 (`log_sources[1] ('app'): unknown type 'tcp'; ...`): an unknown key, type or
 format, a missing or repeated name, a relative path, `**`, a value of
 `enabled` that is not `true` or `false`, more than 64 entries, or the key
-with no value under it (write `log_sources: []`, or remove the key). An unknown key is refused
-because `enable: false`, ignored, would leave the source forwarding its file.
-`python main.py --config <file> --validate-config` reports the same errors.
+with no value under it (write `log_sources: []`, or remove the key). An
+unknown key is refused because `enable: false`, ignored, would leave the
+source forwarding its file. The same errors are reported by
+`python main.py --config <file> --validate-config`.
 
 What a path names can change while the sensor runs, so it never stops the
 sensor. Each of these is a warning that names the source and the file,
