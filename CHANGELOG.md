@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its `error`, else the status phrase, and the dict is under
   `error.details`, so the code is at `error.details.code`. A list detail
   goes to `error.details` too. `error.message` is never empty.
+- **cspm answers the errors its endpoints raise in the canonical body**
+  (#655). A handler of its own replaced the shared one, so they left as
+  `{"error": "HTTPException", "message": ..., "details": {"status_code":
+  ...}, "timestamp": ...}`, with the same Python dict string for a dict
+  detail. They are now `{"error": {"code", "message", "type",
+  "request_id"}}`, as cspm's 422 and its 404 for an unknown path already
+  were, and as every other service answers. A client that read the
+  top-level `message` of a cspm error must read `error.message`.
 
 ## [0.11.2] - 2026-10-05
 

@@ -14,7 +14,6 @@ import json
 
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Request, Path, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import uvicorn
 
 from .config import settings
@@ -26,6 +25,7 @@ from .checks.framework import CloudProvider
 from . import schemas
 from . import scan_store
 from . import providers
+from open_security_shared.errors import error_response, get_request_id
 from .utils import (
     _estimate_scan_duration, _summarize_compliance, _compliance_findings,
     _count_failed_by_severity,
@@ -860,28 +860,22 @@ async def get_compliance_findings(
 
 
 # Error handlers
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    """Handle HTTP exceptions."""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=schemas.ErrorResponse(
-            error="HTTPException",
-            message=str(exc.detail),
-            details={"status_code": exc.status_code}
-        ).model_dump(mode="json")
-    )
-
-
+#
+# HTTPException is answered by the shared handler installed above, in the
+# canonical body. This module used to register its own handler for it after
+# that one, which replaced it: every error an endpoint raised left in a
+# second shape, {"error": "HTTPException", "message": ..., "details":
+# {"status_code": ...}, "timestamp": ...}, and its message was str(detail),
+# so the gateway authentication errors arrived as a Python dict literal
+# (#655).
 @app.exception_handler(ValueError)
-async def value_error_handler(request, exc):
-    """Handle validation errors."""
-    return JSONResponse(
-        status_code=400,
-        content=schemas.ErrorResponse(
-            error="ValidationError",
-            message="Validation error"
-        ).model_dump(mode="json")
+async def value_error_handler(request: Request, exc: ValueError):
+    """A ValueError no endpoint caught is the caller's input: 400, not 500."""
+    return error_response(
+        code=400,
+        message="Validation error",
+        error_type="ValidationError",
+        request_id=get_request_id(request),
     )
 
 

@@ -310,15 +310,26 @@ route.
 }
 ```
 
-A scan, single or in a batch, that names another provider is refused:
+A scan, single or in a batch, that names another provider is refused with
+400:
 
 ```json
 {
-  "error": "HTTPException",
-  "message": "Unsupported provider: gcp. Supported providers: aws.",
-  "details": { "status_code": 400 }
+  "error": {
+    "code": 400,
+    "message": "Unsupported provider: gcp. Supported providers: aws.",
+    "type": "HTTPException",
+    "request_id": "6f1c2d..."
+  }
 }
 ```
+
+Every error has this body, the one all Wildbox FastAPI services share
+(`open_security_shared.errors`): `error.code` is the HTTP status and
+`error.message` a sentence. A request that did not come through the gateway
+also carries the reason as data, in `error.details.code`
+(`GATEWAY_AUTH_REQUIRED`, `GATEWAY_SECRET_REQUIRED`,
+`INVALID_GATEWAY_HEADERS`).
 
 ## Configuration
 
