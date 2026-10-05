@@ -23,7 +23,11 @@ class HealthCheckView(APIView):
     
     authentication_classes = []
     permission_classes = []
-    
+    # Never throttled: it is what the container health check and monitors
+    # poll, from one address. The anonymous throttle it used to inherit
+    # refused the container's own probe for ten minutes of every hour (#645).
+    throttle_classes = []
+
     def get(self, request):
         """Return system health status."""
         health_data = {

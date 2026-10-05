@@ -21,42 +21,63 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-MAX_WAIT=180  # Maximum wait time in seconds (3 minutes)
-POLL_INTERVAL=5  # Check every 5 seconds
+MAX_WAIT=${MAX_WAIT:-180}  # Maximum wait time in seconds (3 minutes)
+POLL_INTERVAL=${POLL_INTERVAL:-5}  # Check every 5 seconds
 VERBOSE=${VERBOSE:-false}
+
+# The health URLs come from the table `make health` uses, so the two cannot
+# disagree. The default for guardian here used to be port 8003 and /health:
+# nothing listens on 8003, and guardian's route is /health/ on 8013 (#656).
+# shellcheck source=scripts/lib/health_endpoints.sh
+. "$(cd "$(dirname "$0")" && pwd)/lib/health_endpoints.sh"
+
+# name:host:port:path for a service in the shared table.
+table_entry() {
+  local url rest hostport path host port
+  url=$(wb_health_url "$1") || { echo "unknown service: $1" >&2; exit 1; }
+  rest="${url#http://}"
+  hostport="${rest%%/*}"
+  path="/${rest#*/}"
+  host="${hostport%%:*}"
+  port=80
+  case "$hostport" in *:*) port="${hostport##*:}" ;; esac
+  echo "${1}:${host}:${port}:${path}"
+}
 
 # Service definitions: name:host:port:path
 # Can be overridden via SERVICES environment variable (space-separated list)
-if [ -z "$SERVICES" ]; then
+SERVICES_ENV="${SERVICES:-}"
+if [ -z "$SERVICES_ENV" ]; then
   # Default services for full Docker Compose stack
   SERVICES=(
-    "gateway:localhost:80:/health"
-    "identity:localhost:8001:/health"
-    "api:localhost:8000:/health"
-    "data:localhost:8002:/health"
+    "$(table_entry gateway)"
+    "$(table_entry identity)"
+    "$(table_entry api)"
+    "$(table_entry data)"
   )
 else
   # Parse SERVICES env variable into array (space-separated)
-  IFS=' ' read -r -a SERVICES <<< "$SERVICES"
+  IFS=' ' read -r -a SERVICES <<< "$SERVICES_ENV"
 fi
 
 # Optional services (warn but don't fail)
 # Can be overridden via OPTIONAL_SERVICES environment variable
 # Check if variable is set (even if empty) using parameter expansion
+OPTIONAL_ENV="${OPTIONAL_SERVICES-}"
 if [ -z "${OPTIONAL_SERVICES+x}" ]; then
   # Variable is unset - use default optional services for full Docker Compose stack
   OPTIONAL_SERVICES=(
-    "guardian:localhost:8003:/health"
-    "responder:localhost:8018:/health"
-    "agents:localhost:8006:/health"
-    "cspm:localhost:8019:/health"
+    "$(table_entry guardian)"
+    "$(table_entry responder)"
+    "$(table_entry agents)"
+    "$(table_entry cspm)"
   )
-elif [ -z "$OPTIONAL_SERVICES" ]; then
+elif [ -z "$OPTIONAL_ENV" ]; then
   # Variable is set but empty - no optional services
   OPTIONAL_SERVICES=()
 else
   # Variable is set and non-empty - parse into array (space-separated)
-  IFS=' ' read -r -a OPTIONAL_SERVICES <<< "$OPTIONAL_SERVICES"
+  IFS=' ' read -r -a OPTIONAL_SERVICES <<< "$OPTIONAL_ENV"
 fi
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
@@ -79,12 +100,8 @@ check_service() {
     echo -e "${BLUE}   Checking: ${url}${NC}"
   fi
   
-  # Use curl with timeout and suppress output
-  if curl -f -s -o /dev/null --max-time 3 "$url" 2>/dev/null; then
-    return 0
-  else
-    return 1
-  fi
+  # 2xx only, redirects not followed: the same probe `make health` uses.
+  HEALTH_TIMEOUT=3 wb_http_status "$url" >/dev/null
 }
 
 wait_for_service() {
@@ -107,7 +124,7 @@ wait_for_service() {
       echo -e "${YELLOW}⏳ Waiting for $name...${NC} (attempt $attempt/$attempts)"
     fi
     
-    sleep $POLL_INTERVAL
+    sleep "$POLL_INTERVAL"
     ((attempt++))
   done
   

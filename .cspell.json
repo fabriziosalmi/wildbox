@@ -707,6 +707,7 @@
     "unsanitized",
     "unvalidated",
     "urlencode",
+    "urljoin",
     "urlparse",
     "urlsafe",
     "urlvoid",

@@ -92,8 +92,8 @@ docker-compose up -d
 # Wait for initialization (critical for first run)
 sleep 180
 
-# Verify health
-./comprehensive_health_check.sh
+# Verify health (non-zero exit when a service is unhealthy)
+make health
 ```
 
 **First-time setup creates**:
@@ -260,10 +260,11 @@ npx playwright show-report    # View results
 
 Validates:
 
-- All containers running
 - Database connectivity (postgres, redis)
-- Service health endpoints responding
-- Known issues auto-fixed
+- Every service health URL answers 2xx (redirects are not followed)
+
+It exits non-zero when a check fails. Repairs for known issues run only with
+the `fix` argument.
 
 ## 🔧 Project-Specific Conventions
 
@@ -332,8 +333,8 @@ docker-compose down -v      # Stop and remove volumes (destructive)
 ### Infrastructure
 
 - `docker-compose.yml`: Service orchestration & dependencies
-- `scripts/shell-scripts/comprehensive_health_check.sh`: Health validation & auto-fix
-- `scripts/shell-scripts/system_monitor.sh`: Performance & resource monitoring
+- `scripts/shell-scripts/comprehensive_health_check.sh`: Health validation (`make health`)
+- `scripts/lib/health_endpoints.sh`: The table of health URLs the scripts share
 
 ## ⚠️ Security Best Practices
 

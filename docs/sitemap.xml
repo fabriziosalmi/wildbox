@@ -33,12 +33,6 @@ permalink: /sitemap.xml
     <loc>https://www.wildbox.io/tools/jwt-decoder/</loc>
   </url>
   <url>
-    <loc>https://www.wildbox.io/api/agents-api.html</loc>
-  </url>
-  <url>
-    <loc>https://www.wildbox.io/api/responder-api.html</loc>
-  </url>
-  <url>
     <loc>https://www.wildbox.io/privacy.html</loc>
   </url>
 {%- for group in site.data.docs_nav %}

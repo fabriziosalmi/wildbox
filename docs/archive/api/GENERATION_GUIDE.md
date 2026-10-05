@@ -1,6 +1,6 @@
 # API Documentation Generation Guide
 
-> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/docs.html#api-docs>.
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. The generator scripts it describes (`scripts/generate-api-docs*`) and the pages they wrote have been removed (#656). For current information see <https://www.wildbox.io/docs.html#api-docs>.
 
 This guide explains how to automatically generate static OpenAPI documentation for all Wildbox microservices.
 
