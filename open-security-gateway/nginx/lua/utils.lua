@@ -273,6 +273,10 @@ function _M.clean_request_headers()
     ngx.req.clear_header("X-Wildbox-User-ID")
     ngx.req.clear_header("X-Wildbox-Team-ID")
     ngx.req.clear_header("X-Wildbox-Role")
+    -- What the credential is and what it may do (#637): the gateway's to
+    -- say, never the client's.
+    ngx.req.clear_header("X-Wildbox-Auth-Type")
+    ngx.req.clear_header("X-Wildbox-Scopes")
 end
 
 return _M

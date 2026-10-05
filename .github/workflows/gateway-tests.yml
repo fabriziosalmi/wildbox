@@ -103,6 +103,18 @@ jobs:
       - name: Run gateway auth tests
         run: bash open-security-gateway/test/ci_auth_tests.sh
 
+      # What the gateway tells a service about the credential: its type and
+      # an API key's scopes, and never a client's own headers (#637). Before
+      # the revocation tests, which flush the auth cache this script counts
+      # on for its cached cases.
+      - name: Run gateway scope forwarding tests
+        run: bash open-security-gateway/test/scope_forwarding_tests.sh
+
+      # The scope hierarchy, row by row, against the table the shared
+      # package's tests use: the gateway and the services decide alike.
+      - name: Run gateway scope vector tests
+        run: bash open-security-gateway/test/scope_vector_tests.sh
+
       # The scope every authenticated route of wildbox_gateway.conf
       # requires, per method, and a pin for each location (#647).
       - name: Run gateway route scope tests

@@ -28,6 +28,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Dict, Iterator, Mapping, Optional
 
+from open_security_shared.scopes import AUTH_TYPE_HEADER, AUTH_TYPE_SERVICE
+
 from .config import settings
 
 VALID_ROLES = ("owner", "admin", "member", "viewer")
@@ -132,6 +134,11 @@ def gateway_headers() -> Dict[str, str]:
         "X-Wildbox-User-ID": caller["user_id"],
         "X-Wildbox-Team-ID": caller["team_id"],
         "X-Wildbox-Role": caller["role"],
+        # What this call is (#637): a Wildbox service acting for the run's
+        # caller, whose own credential the gateway checked when the run was
+        # started. The services refuse a request that needs a scope and does
+        # not say what its credential is.
+        AUTH_TYPE_HEADER: AUTH_TYPE_SERVICE,
         "X-Gateway-Secret": secret,
         # As the gateway sends it (nginx/includes/proxy_params.conf): the
         # run was started over HTTPS, and TLS ends at the gateway, which

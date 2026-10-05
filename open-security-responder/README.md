@@ -163,7 +163,11 @@ that user's gateway identity (`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
 `X-Wildbox-Role`), `X-Gateway-Secret` and `X-Forwarded-Proto: https`, the
 headers the gateway itself puts on a request it forwards for that user.
 The last one matters to Guardian, which redirects a plain-HTTP request
-without it to `https://`.
+without it to `https://`. It also states `X-Wildbox-Auth-Type: service`:
+tools, data and guardian check API-key scopes themselves and refuse a
+request that does not say what its credential is. The scopes of the key
+that started the run do not travel with it; the gateway checked `write`
+when the run was started (#637).
 
 - **The services authorize each call for that user.** The tools a run
   starts, the AI analysis tasks it queues and the vulnerabilities it

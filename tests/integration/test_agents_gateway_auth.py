@@ -65,6 +65,21 @@ def test_a_session_submits_an_analysis_and_reads_it_back():
     assert read.status_code == 200, read.text[:300]
     assert read.json()["task_id"] == task_id
 
+    # result_url is that same gateway path: appended to the address the
+    # client called, and nothing else, it is the task (#716). It was the
+    # service's own /v1/analyze/{id}, which the gateway does not route there.
+    result_url = submitted.json()["result_url"]
+    assert result_url == f"/api/v1/agents/analyze/{task_id}"
+    followed = requests.get(
+        f"{GATEWAY_URL}{result_url}",
+        headers=_bearer(token),
+        timeout=TIMEOUT,
+        allow_redirects=False,
+    )
+    assert followed.status_code == 200, followed.text[:300]
+    assert followed.json()["task_id"] == task_id
+    assert followed.json()["result_url"] == result_url
+
     other = requests.get(
         f"{GATEWAY_URL}/api/v1/agents/analyze/{task_id}",
         headers=_bearer(_session_token()),

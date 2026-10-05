@@ -15,7 +15,9 @@
 #     the gateway's map gives it;
 #   * each pin is checked on the wire, per method: a key with no scope is
 #     refused and told the pinned scope, and a key holding exactly that scope
-#     is let through to the upstream path the location maps to;
+#     is let through to the upstream path the location maps to, and the
+#     service is told the credential: X-Wildbox-Auth-Type api_key and
+#     the key's scopes in X-Wildbox-Scopes (#637);
 #   * the paths around the locations (no trailing slash, asset-like
 #     extensions, unknown services) reach no service.
 #
@@ -75,6 +77,14 @@ requires() {
         pass "$method $path with $scope reaches $upstream"
     else
         fail "$method $path with $scope: HTTP $STATUS, upstream '$(field .method) $(field .path)', expected '$method $upstream' — $(head -c 200 "$WORK/body")"
+    fi
+    # Every location of the production configuration forwards what the
+    # gateway decided on, so the service can check the scope again (#637).
+    if [ "$(field '.headers["x-wildbox-auth-type"]')" = api_key ] \
+            && [ "$(field '.headers["x-wildbox-scopes"]')" = "$scope" ]; then
+        pass "$method $path tells the service the key holds $scope"
+    else
+        fail "$method $path: the service was told auth type '$(field '.headers["x-wildbox-auth-type"]')', scopes '$(field '.headers["x-wildbox-scopes"]')', expected api_key and '$scope'"
     fi
 }
 

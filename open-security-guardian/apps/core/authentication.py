@@ -20,10 +20,19 @@ class GatewayHeaderAuthentication(authentication.BaseAuthentication):
     enforcement — there is no browser session, requests are gateway-authed, so
     DRF's SessionAuthentication (which enforces CSRF) wrongly rejected every
     write with "CSRF Failed: CSRF cookie not set".
+
+    ``request.auth`` is the middleware's GatewayUser: the role, and how the
+    caller authenticated (``auth_type``: "session", "api_key" or "service")
+    with an API key's ``scopes`` and ``has_scope()`` (#637).
     """
 
     def authenticate(self, request):
         user = getattr(request._request, "user", None)
         if user is not None and user.is_authenticated:
-            return (user, None)
+            # request.auth: the gateway's description of the caller, with
+            # the credential's type and scopes (#637). The middleware has
+            # already required the scope of the request's method; a view or
+            # a permission class that needs a narrower rule asks
+            # request.auth.has_scope("data:delete").
+            return (user, getattr(request._request, "gateway_user", None))
         return None

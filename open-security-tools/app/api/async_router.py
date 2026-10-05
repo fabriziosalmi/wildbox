@@ -20,7 +20,7 @@ from kombu.exceptions import OperationalError
 from open_security_shared.gateway_auth import GatewayUser
 from redis.exceptions import RedisError
 
-from app.auth import verify_api_key
+from app.auth import require_tools_execute, verify_api_key
 from app.celery_app import celery_app
 from app.logging_config import get_logger
 from app.task_ownership import (
@@ -200,7 +200,8 @@ def submit_tool_async(
     tool_name: str,
     request: Request,
     input_data: dict = Body(...),
-    caller: GatewayUser = Depends(verify_api_key),
+    # Running a tool: tools:execute, checked here as at the gateway (#637).
+    caller: GatewayUser = Depends(require_tools_execute),
 ) -> Dict[str, Any]:
     """
     Submit a tool for asynchronous execution.
@@ -362,7 +363,8 @@ def get_task_status(
 def cancel_task(
     task_id: str,
     request: Request,
-    caller: GatewayUser = Depends(verify_api_key),
+    # Cancelling is tools:execute, as running the tool was (#637).
+    caller: GatewayUser = Depends(require_tools_execute),
 ) -> Dict[str, Any]:
     """
     Cancel one of the caller's pending or running tasks.

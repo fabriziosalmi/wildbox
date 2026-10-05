@@ -294,7 +294,7 @@ def client(monkeypatch):
     app = FastAPI()
     app.include_router(router_module.router)
     app.dependency_overrides[verify_api_key] = lambda: GatewayUser(
-        user_id=CALLER, team_id=str(uuid.uuid4()), role="member"
+        user_id=CALLER, team_id=str(uuid.uuid4()), role="member", auth_type="session"
     )
     return TestClient(app)
 
@@ -460,7 +460,7 @@ def async_client(task_ownership):
     app = FastAPI()
     app.include_router(async_router.router)
     app.dependency_overrides[verify_api_key] = lambda: GatewayUser(
-        user_id=CALLER, team_id=str(uuid.uuid4()), role="member"
+        user_id=CALLER, team_id=str(uuid.uuid4()), role="member", auth_type="session"
     )
     return TestClient(app), async_router
 

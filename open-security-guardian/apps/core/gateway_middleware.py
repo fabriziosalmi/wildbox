@@ -4,6 +4,15 @@ Gateway Authentication Middleware for Guardian (Django)
 This middleware trusts X-Wildbox-* headers injected by the API gateway
 after successful authentication. In production, all traffic MUST go through
 the gateway which validates credentials and injects these trusted headers.
+
+API-key scopes (#637). The gateway requires a scope of every request it
+forwards to guardian: data:read to read, data:write to change, data:delete
+to delete. It used to be the only check. The gateway now forwards what the
+credential is (X-Wildbox-Auth-Type) and an API key's scopes
+(X-Wildbox-Scopes), and this middleware, the one way into the API, checks
+the same scope again with the rules every other service uses
+(open_security_shared.scopes). A session is not limited by scopes; a
+request that does not say what its credential is is refused.
 """
 
 import hmac
@@ -17,8 +26,26 @@ from django.utils.deprecation import MiddlewareMixin
 from django.http import JsonResponse
 from django.conf import settings
 
+from open_security_shared.scopes import (
+    credential_allows,
+    parse_auth_type,
+    parse_scopes,
+    scope_for_method,
+)
+
 
 logger = logging.getLogger(__name__)
+
+# What the gateway requires on /api/v1/guardian/, by method (ROUTE_SCOPES /
+# required_scope_for_request in the gateway's auth_handler.lua).
+SCOPE_READ = "data:read"
+SCOPE_WRITE = "data:write"
+SCOPE_DELETE = "data:delete"
+
+
+def required_scope(method):
+    """The scope a guardian request needs: read, write, or delete."""
+    return scope_for_method(method, SCOPE_READ, SCOPE_WRITE, SCOPE_DELETE)
 
 
 def _mirror_db_user(user_id, role):
@@ -79,12 +106,18 @@ class GatewayUser:
     in views and serializers, populated from gateway authentication headers.
     """
     
-    def __init__(self, user_id, team_id, role="member"):
+    def __init__(self, user_id, team_id, role="member", auth_type=None, scopes=None):
         self.id = user_id
         self.pk = user_id  # Django REST framework compatibility
         self.user_id = user_id
         self.team_id = team_id
         self.role = role
+        # How the caller authenticated at the gateway (#637): "session",
+        # "api_key" or "service", or None when the request did not say.
+        self.auth_type = auth_type
+        # The scopes of an API key, or None when the gateway forwarded none
+        # (a session or a service, which are not limited by scopes).
+        self.scopes = scopes
         self.is_authenticated = True
         self.is_active = True
         self.is_anonymous = False
@@ -118,6 +151,15 @@ class GatewayUser:
     def has_module_perms(self, app_label):
         """Check if user has module permissions."""
         return self.role in ["owner", "admin", "member"]
+
+    def has_scope(self, required):
+        """Whether the caller's credential may do what needs ``required``.
+
+        The middleware already requires the scope of the request's method.
+        This is for a view that needs a narrower rule of its own; DRF views
+        reach the same object as ``request.auth``.
+        """
+        return credential_allows(self.auth_type, self.scopes, required)
 
 
 class GatewayAuthMiddleware(MiddlewareMixin):
@@ -183,11 +225,26 @@ class GatewayAuthMiddleware(MiddlewareMixin):
                 # Extract role
                 role = request.META.get('HTTP_X_WILDBOX_ROLE', 'member')
 
+                # What the credential is and what it may do (#637). Read
+                # strictly: a value the gateway never writes raises, and is
+                # answered 400 below, not taken for "no limit".
+                auth_type = parse_auth_type(request.META.get('HTTP_X_WILDBOX_AUTH_TYPE'))
+                scopes = parse_scopes(request.META.get('HTTP_X_WILDBOX_SCOPES'))
+
+                # The scope the gateway required of this request, checked
+                # again before anything is read or written, the user's
+                # mirror row included.
+                needed = required_scope(request.method)
+                if not credential_allows(auth_type, scopes, needed):
+                    return self._refuse_scope(request, auth_type, needed)
+
                 # Create GatewayUser object
                 request.gateway_user = GatewayUser(
                     user_id=str(user_id),
                     team_id=str(team_id),
-                    role=role
+                    role=role,
+                    auth_type=auth_type,
+                    scopes=scopes,
                 )
 
                 # request.user must be a real auth.User so that created_by /
@@ -232,6 +289,39 @@ class GatewayAuthMiddleware(MiddlewareMixin):
                 'Direct access is not permitted.'
             ),
             'code': 'GATEWAY_AUTH_REQUIRED',
+        }, status=403)
+
+    @staticmethod
+    def _refuse_scope(request, auth_type, needed):
+        """403 for a credential that may not do what needs ``needed``."""
+        if auth_type is None:
+            # Not a key without the scope: nothing says what the credential
+            # is. A gateway from before #637 does not send the header.
+            logger.warning(
+                "[GATEWAY-AUTH] Refused %s %s: the gateway did not state the auth type",
+                request.method,
+                request.path,
+            )
+            return JsonResponse({
+                'error': 'Gateway authentication required',
+                'message': (
+                    'The gateway did not say how the caller authenticated '
+                    '(X-Wildbox-Auth-Type). Upgrade the gateway together with this service.'
+                ),
+                'code': 'GATEWAY_AUTH_TYPE_REQUIRED',
+                'required_scope': needed,
+            }, status=403)
+        logger.warning(
+            "[GATEWAY-AUTH] Refused %s %s: the API key lacks scope %s",
+            request.method,
+            request.path,
+            needed,
+        )
+        return JsonResponse({
+            'error': 'insufficient_scope',
+            'message': 'This API key is not authorized for this operation.',
+            'code': 'INSUFFICIENT_SCOPE',
+            'required_scope': needed,
         }, status=403)
 
     def process_response(self, request, response):

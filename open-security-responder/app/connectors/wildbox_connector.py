@@ -182,7 +182,8 @@ class WildboxConnector(BaseConnector):
 
         The agents service answers 202 with a task, not a verdict: the
         analysis runs in the background, and its report is read later from
-        the task's ``result_url`` (``GET /v1/analyze/{task_id}``) by the user
+        the task's ``result_url`` (its path on the gateway,
+        ``/api/v1/agents/analyze/{task_id}``) by the user
         the run acts for, who owns the task. A step cannot wait for it.
 
         Args:
