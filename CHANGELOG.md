@@ -154,6 +154,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
   which `monitoring/prometheus.yml` scrapes; it is now registered by the
   shared package, as in the other services (#646).
+- **The API-doc generators and the two pages they left behind.**
+  `scripts/generate-api-docs.py`, `generate-api-docs.sh` and
+  `generate-api-docs-redoc.sh` could not produce current documentation:
+  they knew six services and no cspm, fetched schemas that are served in
+  development only, asked guardian for a path it does not have, wrote
+  pages that load the moving `redoc@next` tag from a CDN, and overwrote
+  `docs/api/swagger-index.html`. The published
+  `agents-api.html` and `responder-api.html` each held a schema exported
+  once; nothing regenerated them and they listed every route without its
+  authentication. Both are now redirects to the hand-written endpoint
+  references, which are the API documentation, and the Redoc bundle and
+  fonts vendored for them are removed. A running service in development
+  serves its own schema (#656).
+- **`scripts/shell-scripts/system_monitor.sh`.** Its report counted the
+  word `healthy` in the concatenated bodies of eight URLs, so a body
+  saying `unhealthy` counted, and printed `"status": "operational"`,
+  `"tools_available": 55` and `"encryption": "tls"` as constants. Its
+  other checks called the tools service and Redis without credentials
+  and reported the refusals as problems. `make health` is the health
+  check (#656).
 
 ### Fixed
 
@@ -199,47 +219,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validator raised `ValueError`, the field errors could not be rendered
   as JSON and the request ended in an internal error: an IOC value of
   the wrong format sent to `POST /api/v1/agents/analyze`, for one.
-
-- **A guardian webhook endpoint path is unique per team, not across
-  guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642
-  left unique across every team: a team could not use a path another team
-  had taken, such as the conventional `/webhooks/jira`, and the `400` it
-  got told it that the path existed in a team it cannot see. The path is
-  a stored record, not a routing key: guardian serves no inbound webhook
-  route and nothing looks a request up by it, so it does not need to be
-  generated. The database now keeps it unique within the external system
-  the endpoint belongs to, and the API refuses a path that any endpoint of
-  the caller's own team already uses, looking at that team's rows only. A
-  path another team uses is answered exactly as a free one. Migration
-  `integrations.0003` replaces the constraint; existing rows already
-  satisfy the new one. Unit tests cover both teams, a second system of the
-  same team, updates and the database constraint; six mutations of the
-  fix each fail a test.
-- **`make backup` and `make restore-drill` work on the default stack.**
-  They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
-  environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
-  client tools installed, none of which the default stack provides. They
-  now run the tools inside the stack's own containers with
-  `docker compose exec`, honoring `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`
-  and `ENV_FILE`; a host mode (`BACKUP_MODE=host`, or setting
-  `POSTGRES_HOST`) remains for an external database. `make backup` writes
-  to `./backups` (#681).
-- **A backup that is missing a part now fails.** The script printed a
-  warning, skipped Redis and exited 0 when `redis-cli` or `REDIS_PASSWORD`
-  was missing. Redis holds state that exists nowhere else (CSPM scans,
-  playbook runs, revoked tokens, queued work), so it is part of every
-  backup unless `SKIP_REDIS=true` says otherwise. If any database or Redis
-  fails, the run exits non-zero and removes the files it wrote, so a
-  timestamp in the backup directory is always a complete set; retention
-  runs only after a complete backup (#681).
-- **Backup files are written with mode `600`** in a mode `700` directory,
-  no password file is written, and the Redis password is no longer passed
-  to `redis-cli` on its command line (#681).
-- **The restore drill compares exact row counts and only reads the live
-  databases.** It used estimated counts and ran `ANALYZE` on the live
-  databases, and it left its archives in `/tmp`. It now restores into
-  `<db>_restore_drill`, compares every table with the source, and removes
-  its archives (#681).
+- **`make health` fails when the stack is unhealthy.** It probed each
+  service with `curl -s`, which exits 0 on any HTTP status, and always
+  exited 0 itself. It asked guardian for `/health`, which answers a 301
+  to `/health/`, so guardian counted as healthy while its real health
+  route answered 503. A service is now healthy only when its health URL
+  answers 2xx; a redirect is not followed and is not healthy, nor is any
+  4xx, 5xx or silence. The check also fails when PostgreSQL is down or
+  lacks one of the three databases, or when Redis does not answer, and
+  it exits non-zero in every one of those cases (#656).
+- **`scripts/wait-for-services.sh` waits for guardian where it listens.**
+  Its default was port 8003 and `/health`; guardian is on 8013 at
+  `/health/`, so the script waited out its three minutes and went on.
+  The health scripts now read one table,
+  `scripts/lib/health_endpoints.sh`, which a test keeps equal to
+  `docker-compose.yml` and to the Service ports guide (#656).
 - **The AI analysis's tools reach the services they name** (#652). Of
   the nine tools the agent offers its model, six could only fail.
   `threat_intel_query_tool` and `vulnerability_search_tool` called
@@ -289,6 +283,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   today** (#652). They were two Redis counters that nothing reset, so
   they counted since the Redis data was last cleared. Each UTC date now
   has its own counter, which expires two days later.
+
+### Changed
+
+- **`make health` only reads.** On every run it created the `data`
+  database if it was missing and restarted the gateway if its log had
+  ever contained `host not found in upstream`. Those repairs now run
+  only when asked for:
+  `./scripts/shell-scripts/comprehensive_health_check.sh fix` (#656).
+
+- **A guardian webhook endpoint path is unique per team, not across
+  guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642
+  left unique across every team: a team could not use a path another team
+  had taken, such as the conventional `/webhooks/jira`, and the `400` it
+  got told it that the path existed in a team it cannot see. The path is
+  a stored record, not a routing key: guardian serves no inbound webhook
+  route and nothing looks a request up by it, so it does not need to be
+  generated. The database now keeps it unique within the external system
+  the endpoint belongs to, and the API refuses a path that any endpoint of
+  the caller's own team already uses, looking at that team's rows only. A
+  path another team uses is answered exactly as a free one. Migration
+  `integrations.0003` replaces the constraint; existing rows already
+  satisfy the new one. Unit tests cover both teams, a second system of the
+  same team, updates and the database constraint; six mutations of the
+  fix each fail a test.
+- **Rotating `POSTGRES_PASSWORD` no longer locks every service out.**
+  `scripts/rotate_secrets.sh` rewrote only the `POSTGRES_PASSWORD=` line
+  of `.env`. The services connect with `DATABASE_URL`,
+  `DATA_DATABASE_URL`, `GUARDIAN_DATABASE_URL` and
+  `RESPONDER_DATABASE_URL`, which embed the password, and the password
+  itself lives in the running server, so the next restart failed with
+  `password authentication failed` while the script reported success. The
+  rotation now changes the server and every connection string in `.env`
+  that points at the stack's PostgreSQL, checks that the server accepts
+  the new password, and names the services to recreate. It refuses to
+  run when the stack is not running, and if a step fails it restores
+  `.env` and the server's previous password and says so. The password is
+  sent to the server as a SCRAM-SHA-256 verifier over standard input: it
+  is in no command line and in no statement the server could log (#649).
+- **A rotated `API_KEY` is accepted by the stack again.** The script
+  drew every secret as a 64-character URL-safe token. `API_KEY` must be
+  `wsk_<prefix>.<64 hex characters>` for `make validate-secrets`, which
+  `make start` runs first, and the tools service rejects a key that
+  contains a weak pattern such as `abc`. Each secret is now drawn by the
+  generator `make generate-secrets` uses for it (#649).
+- **The rotation script says what reads each secret.** It described
+  `NEXTAUTH_SECRET` as invalidating dashboard sessions, although nothing
+  reads it, and named two of the three containers that require
+  `API_KEY`. After a rotation it ended with advice about
+  `GATEWAY_INTERNAL_SECRET` and `docker compose up -d --force-recreate`
+  whatever the secret. It now prints the services that receive the
+  rotated secret, read from `docker compose config`, and the command
+  that recreates only those (#649).
+- **`make backup` and `make restore-drill` work on the default stack.**
+  They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
+  environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
+  client tools installed, none of which the default stack provides. They
+  now run the tools inside the stack's own containers with
+  `docker compose exec`, honoring `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`
+  and `ENV_FILE`; a host mode (`BACKUP_MODE=host`, or setting
+  `POSTGRES_HOST`) remains for an external database. `make backup` writes
+  to `./backups` (#681).
+- **A backup that is missing a part now fails.** The script printed a
+  warning, skipped Redis and exited 0 when `redis-cli` or `REDIS_PASSWORD`
+  was missing. Redis holds state that exists nowhere else (CSPM scans,
+  playbook runs, revoked tokens, queued work), so it is part of every
+  backup unless `SKIP_REDIS=true` says otherwise. If any database or Redis
+  fails, the run exits non-zero and removes the files it wrote, so a
+  timestamp in the backup directory is always a complete set; retention
+  runs only after a complete backup (#681).
+- **Backup files are written with mode `600`** in a mode `700` directory,
+  no password file is written, and the Redis password is no longer passed
+  to `redis-cli` on its command line (#681).
+- **The restore drill compares exact row counts and only reads the live
+  databases.** It used estimated counts and ran `ANALYZE` on the live
+  databases, and it left its archives in `/tmp`. It now restores into
+  `<db>_restore_drill`, compares every table with the source, and removes
+  its archives (#681).
 
 ### Added
 

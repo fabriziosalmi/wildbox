@@ -144,10 +144,10 @@ check-missing-modules:
 	@echo ""
 
 health-detailed:
-	@../comprehensive_health_check.sh check
+	@../scripts/shell-scripts/comprehensive_health_check.sh check
 
 health-fix:
-	@../comprehensive_health_check.sh fix
+	@../scripts/shell-scripts/comprehensive_health_check.sh fix
 
 fix-db:
 	@../fix_database_issues.sh
