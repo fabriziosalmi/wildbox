@@ -382,7 +382,11 @@ route), so the list was always empty, and the `file` of an attachment would have
 been a `/media/` URL that nothing serves. Record the location of evidence in the
 vulnerability's `evidence` or `references` fields.
 
-A vulnerability needs `title`, `description` and `asset` (an asset ID). `severity`
+A vulnerability needs `title`, `description` and `asset` (an asset ID); `cve_id`
+is optional (before #724 a request without it answered `400`, so send `"cve_id":
+""` to an older guardian). Guardian keeps one finding for an asset, a CVE and a
+port: a second one answers `400`. The answer to the creation carries the new
+record's `id` (since #724). `severity`
 is one of `critical`, `high`, `medium`, `low`, `info`; `status` is one of `open`,
 `in_progress`, `resolved`, `accepted`, `false_positive`, `duplicate`; `priority` is
 one of `p1` to `p4`. `cvss_v3_score` must be between 0.0 and 10.0.

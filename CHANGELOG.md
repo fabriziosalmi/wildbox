@@ -510,6 +510,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads `error.message` before `detail`, so neither changes; a client
   that read `detail` from an identity 404, 500 or 503 must read
   `error.message`.
+- **guardian: a vulnerability can be recorded without a CVE, its
+  creation answers with its `id`, and its record is served when its
+  asset has an environment** (#724). `POST vulnerabilities/` answered
+  400 without `cve_id`, which the model and the reference call optional;
+  the answer to a creation carried no `id`, so the responder's
+  `create_vulnerability` action returned none to its playbook; and
+  `GET vulnerabilities/{id}/` answered 500 when the asset had an
+  environment, because `asset_details.environment` was a database row
+  and not a value. It is the environment's name, or null.
 - **guardian: a discovery rule that never runs cannot be enabled**
   (#724). A rule of a type guardian does not implement (cloud API, CMDB
   import, agent report, DNS zone), stored before the API refused those

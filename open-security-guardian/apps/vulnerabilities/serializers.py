@@ -46,13 +46,17 @@ class VulnerabilityDetailSerializer(TeamScopedModelSerializer):
     
     def get_asset_details(self, obj):
         """Get basic asset information"""
+        environment = obj.asset.environment
         return {
             'id': obj.asset.id,
             'name': obj.asset.name,
             'asset_type': obj.asset.asset_type,
             'criticality': obj.asset.criticality,
             'ip_address': obj.asset.ip_address,
-            'environment': obj.asset.environment
+            # Its name. This was the Environment row itself, which is not
+            # JSON: the record of a vulnerability whose asset has an
+            # environment answered 500 (#724).
+            'environment': environment.name if environment else None,
         }
 
 
@@ -61,8 +65,10 @@ class VulnerabilityCreateSerializer(TeamScopedModelSerializer):
     
     class Meta:
         model = Vulnerability
+        # With the id: the answer to a creation did not say what had been
+        # created, so a client had to search the list for it (#724).
         fields = [
-            'title', 'description', 'cve_id', 'asset', 'severity',
+            'id', 'title', 'description', 'cve_id', 'asset', 'severity',
             'cvss_v3_score', 'cvss_v3_vector', 'threat_level',
             'exploitability_score', 'business_impact_score',
             'port', 'protocol', 'service', 'plugin_id',
@@ -70,7 +76,12 @@ class VulnerabilityCreateSerializer(TeamScopedModelSerializer):
             'scan_id', 'assigned_to', 'assignee_group', 'priority',
             'tags', 'metadata'
         ]
-    
+        # A finding does not have to be a CVE. The model says so
+        # (blank=True); DRF made the field required all the same, because it
+        # is part of the unique set (asset, cve_id, port), and a request
+        # without it answered 400 (#724).
+        extra_kwargs = {'cve_id': {'required': False, 'default': ''}}
+
     def validate_cvss_v3_score(self, value):
         """Validate CVSS score is within valid range"""
         if value is not None and (value < 0.0 or value > 10.0):
