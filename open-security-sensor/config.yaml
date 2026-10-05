@@ -11,8 +11,16 @@ data_lake:
   batch_size: 50
   flush_interval: 30
   timeout: 30
-  retry_attempts: 3
+  # A batch the gateway does not take for a reason that may pass (a network
+  # error, HTTP 429, a 5xx answer) is kept and sent again: after retry_delay
+  # seconds, then twice as long each time, up to retry_max_delay.
   retry_delay: 5
+  retry_max_delay: 300
+  # What may wait for the gateway: this many events and this many bytes of
+  # serialized events. When either is reached the sensor stops collecting
+  # until a batch is accepted; it drops nothing to make room.
+  buffer_max_events: 5000
+  buffer_max_bytes: 16777216  # 16 MiB
 
 # Telemetry Collection
 collection:

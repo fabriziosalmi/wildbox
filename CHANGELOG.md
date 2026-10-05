@@ -410,6 +410,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Guardian were checked: the gateway sends the header, and identity's
   membership notice goes to a route Guardian exempts from the redirect;
   a unit test keeps both true.
+- **The sensor keeps its events while the gateway takes none** (#725).
+  A batch that failed for a reason that may pass (a network error, 429,
+  5xx) came back as its first 100 events, and after that one more event
+  was lost with every attempt: 300 events collected during an outage
+  left 100. The batch now stays in the sender's buffer, whole and in its
+  place, and is sent again after `data_lake.retry_delay` seconds, then
+  twice as long after each failure up to the new
+  `data_lake.retry_max_delay` (300), for as long as it takes; a 429's
+  `Retry-After` is honored. The buffer is bounded by the new
+  `data_lake.buffer_max_events` (5,000) and `data_lake.buffer_max_bytes`
+  (16 MiB of serialized events), and a batch by 8 MiB as well as by
+  `batch_size`, under the gateway's request limit. The sensor drops
+  nothing to make room: when the buffer is full it stops taking events
+  and the collectors wait, which it logs and reports as
+  `data_forwarder.buffer.full`. What it does drop is counted by reason
+  in `events_dropped_*` under `data_forwarder` in
+  `GET /api/v1/components` and logged: the events of a batch the gateway
+  refuses with a 4xx, an event JSON cannot carry (it used to fail its
+  batch at every attempt) or larger than a batch may be, everything
+  while no API key is set, and what is still buffered when the sensor
+  stops, after up to 10 seconds spent sending it. Stopping no longer
+  cancels a request the gateway is answering, which would have sent its
+  batch twice. `events_failed` and `current_batch_size` are gone from
+  that status, and `data_lake.retry_attempts` is no longer read: no
+  number of attempts gives a batch up.
 
 ### Changed
 

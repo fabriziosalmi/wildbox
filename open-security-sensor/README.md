@@ -143,6 +143,10 @@ data_lake:
   ca_bundle: ""      # PEM file, if no public CA signed the gateway's certificate
   batch_size: 100
   flush_interval: 30
+  retry_delay: 5             # seconds before a failed batch is sent again
+  retry_max_delay: 300       # the delay doubles up to this
+  buffer_max_events: 5000    # what may wait for the gateway
+  buffer_max_bytes: 16777216
 
 # Telemetry Collection
 collection:
@@ -312,13 +316,10 @@ The sources, the files each one is reading and its current problems are in
   time and warns when its pattern matches more.
 - **When Wildbox is unreachable.** The forwarder reads 64 KiB at a time and
   waits for the event queue (`performance.max_queue_size`) to take each line.
-  When batches cannot be sent the queues fill, the forwarder stops reading,
-  and the file is the buffer: it continues from the same place. Memory stays
-  bounded by the queues. The sender retries with the oldest 100 events and
-  gives up on what it takes from the queue beyond them, one event per failed
-  batch with the default `batch_size`; `events_failed` under
-  `data_forwarder` in `GET /api/v1/components` counts the events of every
-  batch that failed.
+  When batches cannot be sent the sender's buffer and then the queues fill,
+  the forwarder stops reading, and the file is the buffer: it continues from
+  the same place, and no line is given up. See
+  [When the gateway takes nothing](#when-the-gateway-takes-nothing).
 - **Restarts.** Positions are kept in memory only. After a restart a
   `read_from: end` source continues from the file's end, so lines written
   while the sensor was down are not sent, and a `read_from: beginning` source
@@ -468,8 +469,55 @@ answered: 200 means the URL, the TLS trust, the key and its scope are right;
 `data:ingest` scope.
 
 The sensor sends the key in the `X-API-Key` header only, does not follow
-redirects with it, and never logs it. A batch the gateway refuses with 401 or
-403 is not retried; network errors, 429 and 5xx answers are, with backoff.
+redirects with it, and never logs it.
+
+### When the gateway takes nothing
+
+Processed events wait in the sender's buffer, serialized, until the gateway
+answers for them. A batch is the oldest events: at most `batch_size` of them
+and 8 MiB, which the gateway's 10 MiB request limit admits. It is sent when
+it is full, or `flush_interval` seconds after its first event.
+
+| The gateway answers | What happens to the batch |
+| :--- | :--- |
+| 200 or 201 | It leaves the buffer; `events_forwarded` counts its events |
+| A network error, 429 or 5xx | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). After a 429 the delay is at least the answer's `Retry-After`, or 10 seconds. No number of attempts gives it up |
+| Any other 4xx, or a redirect | It is dropped, and `events_dropped_refused` counts its events: sent again it would get the same answer, and hold back everything collected after it |
+
+The buffer holds at most `buffer_max_events` events and `buffer_max_bytes`
+bytes of serialized events (5,000 and 16 MiB by default), and each of the two
+queues before it at most `performance.max_queue_size` events. The sensor
+drops nothing to make room: when the buffer is full it stops taking events,
+the queues fill, and the collectors wait. It logs a warning when that
+happens and when it ends, and `data_forwarder.buffer.full` says so
+meanwhile. What waiting means for each collector:
+
+- a log source goes on, later, from where it stopped: nothing is lost unless
+  the log is rotated away meanwhile;
+- the file monitor compares with what it last saw when it scans again, so a
+  change is reported late, and a change undone meanwhile is not reported;
+- osquery's periodic queries are not run meanwhile: what they would have
+  shown is not collected.
+
+An event leaves the sensor unsent, and is counted, in these cases only:
+
+| Counter | When |
+| :--- | :--- |
+| `events_dropped_refused` | The gateway refused its batch, as above |
+| `events_dropped_oversize` | Serialized, it is larger than a batch may be (8 MiB, or `buffer_max_bytes` if that is less) |
+| `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN) |
+| `events_dropped_unconfigured` | No API key is set: everything collected is discarded |
+| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds |
+
+`events_dropped` is their sum, and `events_received` equals
+`events_forwarded` plus `events_dropped` plus the events in the buffer. The
+counters, the buffer's fill and bounds and the time of the next attempt are
+under `data_forwarder` in `GET /api/v1/components`. The sensor logs each
+refused batch, each oversize or unserializable event, and once a minute the
+number of events dropped since the last such line, by reason.
+
+`data_lake.retry_attempts` is no longer read: the sensor says so at start-up
+when the configuration still sets it.
 
 ### In the Wildbox stack
 

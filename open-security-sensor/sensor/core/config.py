@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 # an identity API key, and the gateway forwards the batch with the key's team.
 INGEST_PATH = "/api/v1/data/ingest"
 
+# The most a batch's events may weigh, serialized. The gateway refuses a
+# request body over 10 MiB (client_max_body_size); this leaves room for the
+# envelope and for a proxy that counts differently.
+MAX_BATCH_BYTES = 8 * 1024 * 1024
+# The smallest buffer that still holds one event of any size a batch takes
+# would be MAX_BATCH_BYTES; a smaller one is allowed, down to this, and then
+# bounds the size of an event too.
+MIN_BUFFER_BYTES = 64 * 1024
+
 # Values that mean "no key yet". The shipped configuration carried the first
 # one, which nothing could ever have accepted.
 _UNSET_API_KEYS = {"", "CONFIGURE_VIA_ENV", "your-api-key-here"}
@@ -43,8 +52,18 @@ class DataLakeConfig:
     batch_size: int = 100
     flush_interval: int = 30
     timeout: int = 30
-    retry_attempts: int = 3
+    # A batch the gateway does not take for a reason that may pass is kept
+    # and sent again: first after retry_delay seconds, then after twice as
+    # long each time, up to retry_max_delay. No number of attempts gives it
+    # up. What waits meanwhile is bounded by buffer_max_events and
+    # buffer_max_bytes (of serialized events); see
+    # sensor.pipeline.data_forwarder.
     retry_delay: int = 5
+    retry_max_delay: int = 300
+    buffer_max_events: int = 5000
+    buffer_max_bytes: int = 16 * 1024 * 1024
+    # data_lake keys the file sets that no longer mean anything.
+    obsolete_keys: List[str] = field(default_factory=list, repr=False)
 
     @property
     def forwarding_enabled(self) -> bool:
@@ -123,11 +142,42 @@ class DataLakeConfig:
                     f"data_lake.ca_bundle {self.ca_bundle!r} is not readable"
                 )
 
-        for name in ("batch_size", "flush_interval", "timeout", "retry_attempts"):
+        numbers = (
+            "batch_size",
+            "flush_interval",
+            "timeout",
+            "retry_delay",
+            "retry_max_delay",
+            "buffer_max_events",
+            "buffer_max_bytes",
+        )
+        for name in numbers:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                errors.append(f"data_lake.{name} must be a whole number, got {value!r}")
+        if errors:
+            return errors
+
+        for name in ("batch_size", "flush_interval", "timeout"):
             if getattr(self, name) < 1:
                 errors.append(f"data_lake.{name} must be at least 1")
         if self.retry_delay < 0:
             errors.append("data_lake.retry_delay must not be negative")
+        if self.retry_max_delay < self.retry_delay:
+            errors.append(
+                "data_lake.retry_max_delay must not be less than "
+                "data_lake.retry_delay"
+            )
+        if self.buffer_max_events < self.batch_size:
+            errors.append(
+                f"data_lake.buffer_max_events ({self.buffer_max_events}) must "
+                f"be at least data_lake.batch_size ({self.batch_size}): the "
+                f"buffer holds the batch being sent"
+            )
+        if self.buffer_max_bytes < MIN_BUFFER_BYTES:
+            errors.append(
+                f"data_lake.buffer_max_bytes must be at least {MIN_BUFFER_BYTES}"
+            )
         return errors
 
 @dataclass
@@ -575,8 +625,13 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
         batch_size=data_lake_data.get('batch_size', 100),
         flush_interval=data_lake_data.get('flush_interval', 30),
         timeout=data_lake_data.get('timeout', 30),
-        retry_attempts=data_lake_data.get('retry_attempts', 3),
-        retry_delay=data_lake_data.get('retry_delay', 5)
+        retry_delay=data_lake_data.get('retry_delay', 5),
+        retry_max_delay=data_lake_data.get('retry_max_delay', 300),
+        buffer_max_events=data_lake_data.get('buffer_max_events', 5000),
+        buffer_max_bytes=data_lake_data.get('buffer_max_bytes', 16 * 1024 * 1024),
+        # Read by nothing since #725: a batch is no longer given up after a
+        # number of attempts. Said at start-up rather than silently ignored.
+        obsolete_keys=[key for key in ('retry_attempts',) if key in data_lake_data],
     )
     
     # Collection configuration

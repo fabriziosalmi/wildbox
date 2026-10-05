@@ -59,12 +59,13 @@ from sensor.pipeline.data_forwarder import DataForwarder
 async def main():
     config = load_config("/etc/security-sensor/config.yaml")
     config.data_lake.sensor_id = request["sensor_id"]
-    config.data_lake.retry_attempts = 1
     forwarder = DataForwarder(config, asyncio.Queue())
     forwarder.min_request_interval = 0
     await forwarder._init_session()
     try:
-        forwarder.batch_buffer.extend(request["events"])
+        for event in request["events"]:
+            forwarder.accept(event)
+        # One attempt: a batch the gateway does not take stays in the buffer.
         await forwarder._flush_batch()
     finally:
         await forwarder.session.close()
@@ -123,7 +124,6 @@ async def main():
 
     config = load_config(config_path)
     config.data_lake.sensor_id = request["sensor_id"]
-    config.data_lake.retry_attempts = 1
 
     collected = asyncio.Queue()
     forwarder = LogForwarder(config, collected)
@@ -149,7 +149,7 @@ async def main():
     await sender._init_session()
     try:
         for event in events:
-            sender.batch_buffer.append(await processor._process_single_event(event))
+            sender.accept(await processor._process_single_event(event))
         await sender._flush_batch()
     finally:
         await sender.session.close()
