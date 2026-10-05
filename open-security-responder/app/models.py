@@ -216,6 +216,23 @@ class PlaybookExecutionRequest(BaseModel):
     )
 
 
+class PlaybookExecutionAccepted(BaseModel):
+    """What the execute endpoint answers (202) when a run is started."""
+
+    run_id: str = Field(description="The run's id")
+    playbook_id: str = Field(description="The playbook the run executes")
+    playbook_name: str = Field(description="The playbook's name")
+    status: str = Field(description="Always 'accepted': the run is queued")
+    status_url: str = Field(
+        description=(
+            "Where to read the run back: its path on the gateway, "
+            "/api/v1/responder/runs/{run_id}, to resolve against the "
+            "address the client called"
+        )
+    )
+    message: str = Field(description="Human-readable confirmation")
+
+
 class PlaybookListResponse(BaseModel):
     """Response model for listing playbooks"""
     
