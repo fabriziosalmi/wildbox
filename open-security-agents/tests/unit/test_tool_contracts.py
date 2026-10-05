@@ -164,14 +164,25 @@ def test_the_data_search_sends_the_parameters_the_route_takes(services):
     assert 1 <= int(request.url.params["limit"]) <= 10000
 
 
-def test_the_vulnerability_search_sends_the_parameter_guardian_filters_by(services):
+def test_the_vulnerability_search_sends_the_parameter_guardian_searches_by(services):
+    """``search`` is the list's text search, and a CVE is one of its fields.
+
+    guardian's filter set had a ``search`` of its own beside DRF's
+    ``SearchFilter`` until #724; the parameter is the viewset's now.
+    """
     invoke("vulnerability_search_tool", {"query": "CVE-2024-3094"})
 
     [request] = services.requests
     filters = contracts.filterset_names(
         contracts.GUARDIAN_VULN_FILTERS, "VulnerabilityFilter"
     )
-    assert set(request.url.params) <= filters
+    searched = contracts.search_fields(
+        contracts.GUARDIAN_VULN_VIEWS, "VulnerabilityViewSet"
+    )
+    # A CVE is found by the search; the filter set has no second "search".
+    assert "cve_id" in searched
+    assert "search" not in filters
+    assert set(request.url.params) <= filters | {"search"}
     assert request.url.params["search"] == "CVE-2024-3094"
     # The list route, with its trailing slash: without it Guardian redirects.
     assert request.url.path.endswith("/vulnerabilities/")
