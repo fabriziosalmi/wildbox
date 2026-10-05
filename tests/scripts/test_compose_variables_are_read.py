@@ -72,10 +72,13 @@ KNOWN_UNREAD = {
             "NEXTAUTH_URL",
         },
         "guardian": {"LOG_FILE"},
-        "sensor": {"DEBUG", "LOG_LEVEL"},
+        "sensor": {"LOG_LEVEL"},
     },
     "docker-compose.prod.yml": {
         "gateway": {"ENVIRONMENT", "LOG_LEVEL"},
+        # The overlay sets production on every service the base file gives
+        # the variable to (#736); the dashboard is one, and reads none.
+        "dashboard": {"ENVIRONMENT"},
         # The origins guardian allows are a list written in its settings: the
         # overlay's value changes nothing.
         "guardian": {"CORS_ALLOWED_ORIGINS"},
