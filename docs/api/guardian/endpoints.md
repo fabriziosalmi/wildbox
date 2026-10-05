@@ -423,6 +423,33 @@ Removed in #644, because they answered `success` without contacting a scanner:
 | `POST scanners/scans/{id}/start/`, `stop/`, `pause/`, `resume/` | `404` | A scan's `status` is a field of the record: `PATCH scanners/scans/{id}/` with `{"status": "running"}` (`pending`, `running`, `completed`, `failed`, `cancelled` or `paused`). `stop/` stored `stopped`, which is not one of them |
 | `POST scanners/scans/import_results/` | `405` | Record the findings yourself: `POST scanners/scan-results/` for a scan's results, `POST vulnerabilities/` for vulnerabilities |
 
+### A scanner has no stored credential
+
+A scanner record says where the scanner is (`base_url`, `username`,
+`verify_ssl`), not how to log in to it. `api_key` and `password` were fields of
+the record until
+[issue #728](https://github.com/fabriziosalmi/wildbox/issues/728): guardian
+accepted them, kept them in its database as plain text and never returned them,
+and nothing used them, because guardian does not connect to a scanner. Both
+fields are gone, with the values that were stored.
+
+A `POST`, `PUT` or `PATCH` to `scanners/scanners/` that sends a value in either
+field answers `400` on that field and stores nothing, so a client never
+believes guardian holds a credential it discarded:
+
+```json
+{
+  "api_key": [
+    "guardian does not store scanner credentials: it has no code that connects to a scanner, so nothing would use one. Leave this field out."
+  ]
+}
+```
+
+An empty value (`""`, `null`) is ignored, like a field guardian does not know.
+Do not put a credential in a free-form field instead (`metadata`, `tags`,
+`description`, a profile's `advanced_settings`, a scan's `scan_settings`):
+those are stored as sent and returned to every member of the team.
+
 ### Scan schedules are not supported
 
 Because guardian cannot start a scan on an external scanner, a scan schedule would
@@ -567,6 +594,37 @@ record and without contacting anything; all now answer `404`:
 | `POST integrations/webhooks/{id}/test_webhook/`, `trigger_webhook/` | `"Webhook test completed"`, `"Webhook triggered"` | Nothing: guardian sends no webhooks |
 | `GET integrations/logs/error_summary/` | Zeros | `GET integrations/logs/?level=error` and read `count` |
 | `POST integrations/notifications/{id}/test_notification/`, `send_notification/` | `"Test notification sent"`, `"Notification sent"` | Nothing: guardian delivers nothing through a channel |
+
+### An integration has no stored credential
+
+Three fields took secrets, kept them in guardian's database as plain text and
+never returned them. Nothing used them, for the reasons above, so they were
+removed with the values that were stored
+([issue #728](https://github.com/fabriziosalmi/wildbox/issues/728)):
+
+| Resource | Removed field | It held |
+| --- | --- | --- |
+| External systems | `auth_config` | API keys, bearer tokens, basic-auth passwords |
+| Webhook endpoints | `secret_token` | The secret of a signature check nothing performs |
+| Notification channels | `config` | Slack and Teams webhook URLs, SMTP passwords, push tokens |
+
+A `POST`, `PUT` or `PATCH` that sends a value in one of them answers `400` on
+that field and stores nothing:
+
+```json
+{
+  "auth_config": [
+    "guardian does not store the credentials of an external system: it contacts none, so nothing would use them. Leave this field out."
+  ]
+}
+```
+
+An empty value (`""`, `null`, `{}`, `[]`) is ignored. `auth_type` and
+`verify_signature` stay: they say how the system authenticates and what the team
+wants checked, which are not secrets. Do not put a credential in a free-form
+field instead (`metadata`, `tags`, `description`, `field_mappings`,
+`sync_filters`, a webhook's `filters`): those are stored as sent and returned to
+every member of the team.
 
 ---
 
