@@ -32,6 +32,13 @@ tests/reports/*.json
 *.p12
 *.jks
 secrets/
+# The directory Alertmanager's secret files go in exists in the tree, so that
+# Docker does not create it as root; monitoring/secrets/.gitignore ignores
+# everything in it but itself.
+!monitoring/secrets/
+# An operator's own Alertmanager configuration (ALERTMANAGER_CONFIG_FILE):
+# mail server, addresses, routes.
+monitoring/local/
 credentials/
 private_keys/
 certificates/

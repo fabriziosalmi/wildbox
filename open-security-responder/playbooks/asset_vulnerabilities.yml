@@ -1,0 +1,44 @@
+playbook_id: "asset_vulnerabilities"
+name: "Asset Vulnerability Summary"
+description: "Read an asset from Guardian and list the vulnerabilities recorded on it, for the user who runs the playbook"
+version: "1.0"
+author: "Wildbox Security"
+tags: ["guardian", "asset", "vulnerability"]
+
+trigger:
+  type: "api"
+  description: "Manual execution via API with the asset's Guardian id"
+  required_parameters:
+    - asset_id
+
+# Answers "what is known about this asset?" from Guardian alone: the asset's
+# record, then the vulnerabilities Guardian holds on it. Both steps call
+# Guardian as the user who ran the playbook, so they answer what that user
+# may see: an asset of another team is not found and the run fails at the
+# first step, and a member gets the vulnerabilities assigned to or created
+# by them, an owner or admin all of the asset's.
+#
+# It reads and changes nothing, and reaches no service but Guardian, so its
+# result depends on Guardian's records alone. A run without `asset_id`, or
+# with one that is not a UUID, fails before any request is sent.
+steps:
+  - name: "read_asset"
+    action: "wildbox.get_asset_info"
+    input:
+      asset_id: "{{ trigger.asset_id }}"
+
+  - name: "list_vulnerabilities"
+    action: "wildbox.get_vulnerabilities"
+    input:
+      asset_id: "{{ trigger.asset_id }}"
+
+  - name: "report"
+    action: "system.create_report"
+    input:
+      template: "asset_vulnerabilities"
+      data:
+        run_id: "{{ run.id }}"
+        asset_id: "{{ steps.read_asset.output.id }}"
+        asset_name: "{{ steps.read_asset.output.name }}"
+        vulnerabilities: "{{ steps.list_vulnerabilities.output.count }}"
+        titles: "{{ steps.list_vulnerabilities.output.results | map(attribute='title') | join('; ') }}"

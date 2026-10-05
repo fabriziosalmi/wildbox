@@ -1,4 +1,24 @@
-# Alerts for the failures the audit found produce no signal today.
+# Alert rules for the Wildbox stack.
+#
+# Prometheus evaluates these and sends what fires to Alertmanager
+# (monitoring/prometheus.yml, `alerting:`). Whether anybody is then notified
+# depends on the Alertmanager configuration: the one shipped notifies nobody
+# (monitoring/alertmanager.yml).
+#
+# Every expression reads a metric a scraped target really exports, with labels
+# it really has:
+#
+#   up                                     Prometheus itself, per scrape target
+#   wildbox_http_requests_total            open-security-shared/observability.py
+#                                          {service, method, path, status}
+#   wildbox_tool_executions_total          open-security-tools/app/execution_manager.py
+#                                          {tool, outcome}
+#   alertmanager_notifications_failed_total  Alertmanager {integration, reason}
+#
+# open-security-tools/tests/unit/test_alert_rule_metrics.py fails if a
+# wildbox_* selector here names a metric or a label the code does not export.
+# monitoring/alert_rules.test.yml holds the unit tests (`promtool test
+# rules`); scripts/check_monitoring_config.py runs them in CI.
 groups:
   - name: wildbox-availability
     rules:
@@ -8,7 +28,12 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "{{ $labels.instance }} is not responding to scrapes"
+          summary: "{{ $labels.instance }} is not answering Prometheus scrapes"
+          description: >-
+            Prometheus has not been able to scrape /metrics on
+            {{ $labels.instance }} for two minutes: the service is stopped,
+            restarting, or unreachable on the Compose network. Check
+            `docker compose ps` and the service's logs.
 
       - alert: WildboxHighErrorRate
         expr: |
@@ -19,22 +44,34 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.service }} is serving over 5% 5xx"
+          summary: "{{ $labels.service }} answers more than 5% of its requests with a 5xx"
+          description: >-
+            Over the last five minutes {{ $value | humanizePercentage }} of the
+            HTTP requests the {{ $labels.service }} service handled ended in a
+            5xx status, and it has stayed above 5% for ten minutes. The count
+            includes health checks and Prometheus scrapes, and every request
+            is counted by the service itself, so requests the gateway refused
+            or could not forward are not in it.
 
   - name: wildbox-outcomes
     rules:
-      # "We have collected nothing for three days" used to look exactly like
-      # "nothing needed collecting" (WILDBO-OBS-01).
-      - alert: WildboxNoToolExecutions
-        expr: |
-          sum(increase(wildbox_tool_executions_total[6h])) == 0
-        for: 6h
-        labels:
-          severity: warning
-        annotations:
-          summary: "No tool has executed in six hours"
-
-      - alert: WildboxToolFailureRate
+      # Synchronous runs only. wildbox_tool_executions_total is incremented by
+      # the api process for POST /api/v1/tools/{tool}; runs submitted to
+      # /api/v1/tools/{tool}/async execute in tools-worker, a Celery prefork
+      # worker that exports no metrics, and are not counted anywhere
+      # Prometheus can read. The alert is named and described for what it
+      # measures; it says nothing about asynchronous runs.
+      #
+      # outcome="failed" is a tool that raised an error it does not handle
+      # (the caller gets a 500). A tool that reports an unreachable target or
+      # a bad answer in its result (`success: false`) is "completed", a run
+      # that exceeded its time limit is "timeout", and one the caller may not
+      # start is "refused": none of the three is a failure here.
+      #
+      # rate() cannot see the first run of a tool with a given outcome after
+      # the api process starts: the series is created at 1, with no earlier
+      # sample to compare with.
+      - alert: WildboxSyncToolFailureRate
         expr: |
           sum(rate(wildbox_tool_executions_total{outcome="failed"}[15m]))
           /
@@ -43,4 +80,55 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Over a quarter of tool executions are failing"
+          summary: "Over a quarter of synchronous tool runs are failing"
+          description: >-
+            Over the last fifteen minutes {{ $value | humanizePercentage }} of
+            the synchronous tool runs (POST /api/v1/tools/<tool>) raised an
+            error the tool does not handle, and the share has stayed above 25%
+            for fifteen minutes. Asynchronous runs (the tools-worker) are not
+            measured: this alert neither fires for them nor clears because
+            of them. Timeouts, refused runs and failures a tool reports in its
+            result count as runs, not as failures.
+
+  - name: wildbox-alerting
+    rules:
+      # The two alerts below are about the path every other alert takes. When
+      # they fire, that path is broken, so do not expect them to arrive: they
+      # are for whoever opens Prometheus's /alerts page or the Alertmanager UI
+      # to find out why nothing arrived.
+      - alert: WildboxAlertmanagerDown
+        expr: up{job="alertmanager"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager is not answering Prometheus scrapes"
+          description: >-
+            Prometheus has not been able to scrape Alertmanager at
+            {{ $labels.instance }} for five minutes. While it is down no alert
+            is delivered, this one included: it is visible on Prometheus's
+            /alerts page only. Check `docker compose ps alertmanager` and its
+            logs; an invalid configuration file keeps it restarting.
+
+      # The counter is of notifications Alertmanager gave up on, not of
+      # attempts: it moves at once when the error cannot be retried (a secret
+      # file it cannot read) and after the route's group_interval of retries
+      # otherwise (a wrong password, an unreachable server). Counting
+      # attempts instead would fire for a notification that was delivered at
+      # the second try.
+      - alert: WildboxAlertNotificationsFailing
+        expr: |
+          sum by (integration) (increase(alertmanager_notifications_failed_total[15m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager cannot deliver notifications by {{ $labels.integration }}"
+          description: >-
+            Alertmanager failed to send notifications through its
+            {{ $labels.integration }} integration in the last fifteen minutes.
+            If that is the only receiver, this alert cannot be delivered
+            either: it is visible in the Alertmanager UI and on Prometheus's
+            /alerts page. The reason is in the Alertmanager logs; a secret
+            file that is missing or not readable by UID 65534, a wrong
+            password and an unreachable server are the usual ones.

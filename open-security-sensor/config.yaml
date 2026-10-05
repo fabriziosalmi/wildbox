@@ -23,6 +23,16 @@ collection:
   system_inventory: true
   log_forwarding: false
 
+# Log sources: what the log forwarder reads when log_forwarding is true.
+# Without this section, the platform's defaults (on Linux /var/log/syslog,
+# /var/log/auth.log and the systemd journal). See config.yaml.example and
+# README.md, "Log forwarding".
+#
+# log_sources:
+#   - name: nginx_access
+#     path: /var/log/nginx/access.log
+#     format: nginx
+
 # File Integrity Monitoring (Docker-optimized paths)
 fim:
   enabled: true

@@ -22,6 +22,12 @@ markers, the must-change-password refusal, the rate limit and the retry of
 a closed connection; the agents route had its own copy that carried none of
 them (#630).
 
+And it fails when a configuration file authenticates without declaring
+``set $wildbox_route_uri $uri;``. auth_handler maps a request to the
+API-key scope it requires by that variable, the path as it was before any
+location rewrote it; without the declaration the map knows no path and
+requires ``admin`` of every scope-limited key (#647).
+
 Usage:
   scripts/check_gateway_config.py [--gateway-dir DIR]
 """
@@ -37,6 +43,8 @@ DEFAULT_GATEWAY_DIR = ROOT / "open-security-gateway" / "nginx"
 _ENV_DIRECTIVE = re.compile(r"^\s*env\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=[^;]*)?;")
 _GETENV = re.compile(r"os\.getenv\s*\(\s*(?:([\"'])([^\"']*)\1\s*\))?")
 _AUTHORIZE = "/internal/authorize"
+_AUTHENTICATE = re.compile(r"\bauthenticate\s*\(")
+_ROUTE_URI = re.compile(r"^\s*set\s+\$wildbox_route_uri\s+\$uri\s*;")
 
 
 def strip_comment(line: str, suffix: str) -> str:
@@ -95,7 +103,25 @@ def check(gateway_dir: Path) -> list:
                 )
         if path.suffix == ".conf":
             failures.extend(inline_authorizations(path, gateway_dir))
+            failures.extend(missing_route_uri(path, gateway_dir))
     return failures
+
+
+def missing_route_uri(path: Path, gateway_dir: Path) -> list:
+    """A configuration that authenticates without the path the scope map reads."""
+    lines = [
+        strip_comment(line, path.suffix)
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    if not any(_AUTHENTICATE.search(line) for line in lines):
+        return []
+    if any(_ROUTE_URI.match(line) for line in lines):
+        return []
+    return [
+        f"{path.relative_to(gateway_dir.parent)}: calls authenticate() but does not "
+        "declare `set $wildbox_route_uri $uri;` in its server block; the scope map "
+        "reads the request path from it"
+    ]
 
 
 def inline_authorizations(path: Path, gateway_dir: Path) -> list:
@@ -121,8 +147,9 @@ def main(argv=None) -> int:
             print(f"  - {failure}")
         return 1
     print(
-        "Every variable the gateway reads is declared in nginx.conf, and every "
-        "authorization goes through auth_handler."
+        "Every variable the gateway reads is declared in nginx.conf, every "
+        "authorization goes through auth_handler, and every configuration that "
+        "authenticates declares the path the scope map reads."
     )
     return 0
 

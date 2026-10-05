@@ -131,7 +131,7 @@ Optional services:
 
 ```bash
 docker compose --profile automations up -d   # n8n workflows
-docker compose --profile monitoring up -d    # Prometheus with monitoring/alert_rules.yml
+docker compose --profile monitoring up -d    # Prometheus and Alertmanager (section 7)
 docker compose --profile backup up -d        # scheduled PostgreSQL backups
 ```
 
@@ -745,13 +745,152 @@ snapshot into the volume by hand gives an empty Redis.
 
 ## 7. Monitoring
 
-The `monitoring` profile starts Prometheus on `127.0.0.1:9090` with the
-scrape configuration in `monitoring/prometheus.yml` and the alert rules in
-`monitoring/alert_rules.yml`. There is no Grafana in `docker-compose.yml`;
-connect your own if you want dashboards.
+The `monitoring` profile starts two services:
 
-Container logs are rotated by the production overlay; read them with
-`docker compose logs <service>`.
+```bash
+docker compose --profile monitoring up -d
+```
+
+With the production overlay, give every `docker compose` command in this
+section the same `-f docker-compose.yml -f docker-compose.prod.yml` you
+started the stack with; without them Compose recreates the two services on
+the development network.
+
+| Service | Address | What it does |
+| --- | --- | --- |
+| `prometheus` | `127.0.0.1:9090` | Scrapes the services (`monitoring/prometheus.yml`), evaluates the alert rules (`monitoring/alert_rules.yml`) and sends what fires to Alertmanager |
+| `alertmanager` | `127.0.0.1:9093` | Groups the alerts it receives, shows them, lets you silence them, and notifies the receiver its configuration names |
+
+Neither has authentication, so both are bound to localhost; reach them from
+another machine through an SSH tunnel
+(`ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 <host>`). There is no
+Grafana in `docker-compose.yml`; connect your own if you want dashboards.
+
+### Out of the box, nobody is notified
+
+The configuration that ships, `monitoring/alertmanager.yml`, sends every alert
+to a receiver named `no-notifications`, which has no integration. A firing
+alert is then visible in two places and nowhere else:
+
+- the Alertmanager UI, `http://127.0.0.1:9093`;
+- the Prometheus alerts page, `http://127.0.0.1:9090/alerts`.
+
+No e-mail, webhook or chat message is sent until you configure a receiver.
+This is deliberate: the repository cannot know your mail server, and a default
+that tried one would fail every notification instead of saying that none is
+configured.
+
+### The alerts
+
+| Alert | Fires when | What it does not see |
+| --- | --- | --- |
+| `WildboxServiceDown` | Prometheus cannot scrape `/metrics` on identity, tools, data, responder, CSPM or agents for 2 minutes | guardian, the gateway, the dashboard, the workers, PostgreSQL and Redis are not scraped |
+| `WildboxHighErrorRate` | more than 5% of the HTTP requests one of those services handled ended in a 5xx, for 10 minutes | requests the gateway refused or could not forward: each service counts its own |
+| `WildboxSyncToolFailureRate` | more than 25% of the synchronous tool runs (`POST /api/v1/tools/{tool}`) raised an error the tool does not handle, for 15 minutes | asynchronous runs (`.../async`): they execute in `tools-worker`, which exports no metrics. Timeouts, refused runs and a failure the tool reports in its result (`success: false`) are not counted as failures |
+| `WildboxAlertmanagerDown` | Prometheus cannot scrape Alertmanager for 5 minutes | it cannot be delivered: it is shown on the Prometheus alerts page only |
+| `WildboxAlertNotificationsFailing` | Alertmanager failed to send a notification in the last 15 minutes | if the failing receiver is the only one it cannot be delivered either: it is shown in both UIs |
+
+There is no alert on asynchronous tool runs, on the threat-feed collection,
+on scans or on backups: none of them exports a metric Prometheus can read.
+
+### Being notified
+
+Alertmanager does not read environment variables, and a password on its
+command line would be visible to anyone who can list processes. A receiver is
+therefore configured with two things you mount: a configuration file, which
+holds no secret, and a directory of secret files that the configuration names.
+
+| Variable in `.env` | Default | What it is |
+| --- | --- | --- |
+| `ALERTMANAGER_CONFIG_FILE` | `./monitoring/alertmanager.yml` | The configuration file, mounted read-only |
+| `ALERTMANAGER_SECRETS_DIR` | `./monitoring/secrets` | Mounted read-only at `/etc/alertmanager/secrets`. Git ignores everything in the default directory |
+| `ALERTMANAGER_EXTERNAL_URL` | `http://127.0.0.1:9093` | The address notifications link to. Not a secret |
+| `PROMETHEUS_EXTERNAL_URL` | `http://127.0.0.1:9090` | The address an alert's "source" link points to. Not a secret |
+
+Two examples are provided; CI validates both with `amtool check-config`.
+
+**E-mail.** Copy the example, replace the `example.com` values (mail server,
+sender, user name, recipient), and put the SMTP password in a file:
+
+```bash
+mkdir -p monitoring/local
+cp monitoring/examples/alertmanager-email.yml monitoring/local/alertmanager.yml
+$EDITOR monitoring/local/alertmanager.yml
+
+touch monitoring/secrets/smtp_password
+chmod 600 monitoring/secrets/smtp_password
+$EDITOR monitoring/secrets/smtp_password            # the password, one line
+sudo chown 65534 monitoring/secrets/smtp_password   # Linux hosts
+```
+
+**Generic webhook.** Alertmanager sends an HTTP POST with a JSON body to a URL
+of yours ([format](https://prometheus.io/docs/alerting/latest/configuration/#webhook_config)).
+The URL usually carries a token, so it goes in a file too; the example needs
+no other change:
+
+```bash
+mkdir -p monitoring/local
+cp monitoring/examples/alertmanager-webhook.yml monitoring/local/alertmanager.yml
+
+touch monitoring/secrets/webhook_url
+chmod 600 monitoring/secrets/webhook_url
+$EDITOR monitoring/secrets/webhook_url              # the URL, one line
+sudo chown 65534 monitoring/secrets/webhook_url     # Linux hosts
+```
+
+The example also shows, commented out, how to send a bearer token read from
+`monitoring/secrets/webhook_token`.
+
+Alertmanager runs as UID 65534 (`nobody`) and reads a secret file each time it
+notifies, which is why the file is given to that user on a Linux host. Docker
+Desktop on macOS presents a mounted file as owned by the container's user, so
+the `chown` is not needed there. `monitoring/local/` and `monitoring/secrets/`
+are ignored by Git.
+
+Then, for either example, set the configuration file in `.env`, check it and
+recreate the container (also after every later change to the file):
+
+```bash
+echo 'ALERTMANAGER_CONFIG_FILE=./monitoring/local/alertmanager.yml' >> .env
+
+docker compose --profile monitoring run --rm --no-deps --entrypoint amtool \
+  alertmanager check-config /etc/alertmanager/alertmanager.yml
+docker compose --profile monitoring up -d --force-recreate alertmanager
+```
+
+`amtool check-config` checks the syntax only: it does not open the secret
+files or contact the mail server. Send a test alert to see a notification
+arrive (after `group_wait`, 30 seconds in the examples):
+
+```bash
+docker compose --profile monitoring exec alertmanager amtool alert add \
+  WildboxTestNotification severity=info \
+  '--annotation=summary="Test notification sent by hand"' \
+  --alertmanager.url=http://127.0.0.1:9093
+```
+
+If nothing arrives, `docker compose logs alertmanager` gives the reason at
+once. The usual causes are a secret file that UID 65534 cannot read, a wrong
+password, and a server the container cannot reach.
+`WildboxAlertNotificationsFailing` follows, but not at once: Alertmanager
+counts a notification as failed when it stops retrying, which is immediately
+for a secret file it cannot read and after `group_interval` (5 minutes in the
+examples) for a wrong password or an unreachable server, and the alert fires
+5 to 6 minutes after that: about 11 minutes after the first failed attempt in
+the second case. An invalid configuration file keeps Alertmanager restarting;
+`WildboxAlertmanagerDown` then fires in Prometheus.
+
+In the production overlay Alertmanager is on the `backend` network with
+Prometheus. That network has a route out, so a mail server or webhook outside
+the stack is reachable; PostgreSQL and Redis are not.
+
+To use an Alertmanager you already run instead, change the `alerting:` target
+in `monitoring/prometheus.yml` to its address.
+
+### Logs
+
+Container logs are rotated by the production overlay for the services it
+configures; read them with `docker compose logs <service>`.
 
 ---
 

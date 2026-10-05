@@ -125,8 +125,11 @@ curl -s --cacert "$CA" "$BASE/playbooks" \
 ```
 
 The response lists every playbook the service loaded. The repository ships
-`simple_notification`, `triage_ip`, `triage_url`, `hash_evidence` and
-`all_star_e2e` in `open-security-responder/playbooks/`.
+`simple_notification`, `triage_ip`, `triage_url`, `hash_evidence`,
+`asset_vulnerabilities` and `all_star_e2e` in
+`open-security-responder/playbooks/`. `asset_vulnerabilities` takes an
+`asset_id` and reads that asset and the vulnerabilities recorded on it from
+Guardian, as the user who runs it; it reaches no other service.
 
 ---
 
@@ -287,8 +290,8 @@ Reloads the playbook files from disk and returns what was loaded:
 ```json
 {
   "message": "Playbooks reloaded successfully",
-  "total_loaded": 4,
-  "playbooks": ["simple_notification", "triage_ip", "triage_url", "all_star_e2e"]
+  "total_loaded": 6,
+  "playbooks": ["simple_notification", "triage_ip", "triage_url", "hash_evidence", "asset_vulnerabilities", "all_star_e2e"]
 }
 ```
 
@@ -336,8 +339,10 @@ A run acts for the user who started it. The execute endpoint records the user th
 gateway authenticated (user, team and role), the run is owned by that user's team,
 and every request a connector makes for the run carries that user's
 `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role` headers with
-`X-Gateway-Secret`: the headers the gateway itself puts on a request it forwards for
-that user (`open-security-responder/app/caller.py`).
+`X-Gateway-Secret`, and `X-Forwarded-Proto: https`: the headers the gateway itself
+puts on a request it forwards for that user (`open-security-responder/app/caller.py`).
+Guardian redirects a plain-HTTP request without the last one to `https://`, so a
+Guardian action sent without it is answered `301`.
 
 - **The services authorize each call for that user.** The tool tasks a run starts,
   the AI analysis tasks it queues and the vulnerabilities it records belong to that
