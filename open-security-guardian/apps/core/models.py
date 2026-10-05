@@ -192,6 +192,29 @@ class TeamMembership(models.Model):
         return f"{self.user.username} in {self.team_id}"
 
 
+class TeamMembershipRevocation(models.Model):
+    """identity said a membership ended, and when guardian heard it (#724).
+
+    A request the gateway authenticated just before the member was removed
+    can reach guardian just after the notice: it would record the
+    membership the notice deleted, and the former member would be one of
+    the team's users again for a whole window. For REVOCATION_GRACE after a
+    notice (apps.core.memberships), no request records that membership.
+
+    Keyed by identity's user id, as auth.User.username mirrors it, and not
+    by the mirror row: the notice may be about a user guardian has not seen
+    yet, whose first request is the one in flight. ``team_id`` is null when
+    the account itself is gone: no team, then.
+    """
+
+    username = models.CharField(max_length=150, db_index=True)
+    team_id = models.UUIDField(null=True, blank=True, db_index=True)
+    revoked_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    def __str__(self):
+        return f"{self.username} left {self.team_id or 'every team'}"
+
+
 class TeamTask(models.Model):
     """The team that dispatched a Celery task, for its status route (#642).
 

@@ -27,10 +27,6 @@ def _quiet():
     """Leave out the Celery work row creation queues from signals."""
     patches = [
         mock.patch("apps.assets.signals.scan_asset_ports"),
-        mock.patch(
-            "apps.vulnerabilities.signals.enrich_vulnerability_with_threat_intel"
-        ),
-        mock.patch("apps.vulnerabilities.signals.notify_vulnerability_assignment"),
         mock.patch("apps.reporting.signals.check_alert_rule"),
         mock.patch("apps.compliance.signals.send_compliance_notification"),
         mock.patch("apps.compliance.signals.calculate_compliance_metrics"),

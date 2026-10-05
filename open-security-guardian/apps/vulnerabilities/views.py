@@ -19,17 +19,18 @@ from datetime import timedelta, datetime
 
 from .models import (
     Vulnerability, VulnerabilityTemplate, VulnerabilityAssessment,
-    VulnerabilityHistory, VulnerabilityAttachment, VulnerabilityStatus
+    VulnerabilityHistory, VulnerabilityStatus
 )
 from .serializers import (
     VulnerabilityListSerializer, VulnerabilityDetailSerializer,
     VulnerabilityCreateSerializer, VulnerabilityUpdateSerializer,
     VulnerabilityTemplateSerializer, VulnerabilityAssessmentSerializer,
-    VulnerabilityHistorySerializer, VulnerabilityAttachmentSerializer,
+    VulnerabilityHistorySerializer,
     VulnerabilityBulkActionSerializer, VulnerabilityStatsSerializer,
     VulnerabilityTrendSerializer
 )
 from .filters import VulnerabilityFilter
+from .trends import open_by_day
 from .tasks import (
     update_vulnerability_risk_scores, notify_vulnerability_assignment,
 )
@@ -81,7 +82,27 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Set created_by when creating vulnerability"""
         serializer.save(created_by=self.request.user)
-    
+
+    def perform_update(self, serializer):
+        """Save, and tell a new assignee.
+
+        A PUT or PATCH that changes ``assigned_to`` assigns the
+        vulnerability as ``assign/`` does, and told nobody: the notice was
+        to come from a post_save handler that never ran (#724).
+        """
+        before = serializer.instance.assigned_to_id
+        vulnerability = serializer.save()
+        if vulnerability.assigned_to_id not in (None, before):
+            self._notify_assignment(vulnerability)
+
+    def _notify_assignment(self, vulnerability):
+        """Queue the assignment e-mail for the vulnerability's assignee.
+
+        Who is told, and whether, is the task's to decide
+        (apps.vulnerabilities.tasks.notify_vulnerability_assignment).
+        """
+        notify_vulnerability_assignment.delay(vulnerability.id, self.request.user.id)
+
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
         """Assign vulnerability to user or group"""
@@ -113,9 +134,8 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         
         vulnerability.save()
         
-        # Trigger notification task
-        notify_vulnerability_assignment.delay(vulnerability.id, request.user.id)
-        
+        self._notify_assignment(vulnerability)
+
         return Response({
             'message': 'Vulnerability assigned successfully',
             'assigned_to': vulnerability.assigned_to.get_full_name() if vulnerability.assigned_to else None,
@@ -231,24 +251,24 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
             vulnerability=vulnerability
         ).order_by('-timestamp')
         
-        serializer = VulnerabilityHistorySerializer(history, many=True)
+        serializer = VulnerabilityHistorySerializer(
+            history, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
     
-    @action(detail=True, methods=['get'])
-    def attachments(self, request, pk=None):
-        """Get vulnerability attachments"""
-        vulnerability = self.get_object()
-        attachments = VulnerabilityAttachment.objects.filter(
-            vulnerability=vulnerability
-        ).order_by('-uploaded_at')
-        
-        serializer = VulnerabilityAttachmentSerializer(attachments, many=True)
-        return Response(serializer.data)
-    
+    # There is no ``attachments`` action. It listed VulnerabilityAttachment
+    # rows, and guardian has never had a route, a task or a command that
+    # creates one; each row's ``file`` would have been a /media/ URL that
+    # nothing serves (#642 stopped serving media: it is outside /api/, so
+    # neither the gateway's authentication nor the team check applied). The
+    # route always answered an empty list, and was removed (#724).
+
     @action(detail=False, methods=['post'])
     def bulk_action(self, request):
         """Perform bulk actions on vulnerabilities"""
-        serializer = VulnerabilityBulkActionSerializer(data=request.data)
+        serializer = VulnerabilityBulkActionSerializer(
+            data=request.data, context=self.get_serializer_context()
+        )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
@@ -288,6 +308,10 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
                 if data.get('assignee_group'):
                     vuln.assignee_group = data['assignee_group']
                 vuln.save()
+                # As assign/ does for one: a bulk assignment to a user told
+                # them nothing (#724).
+                if assigned_to is not None:
+                    self._notify_assignment(vuln)
                 updated_count += 1
 
         elif action_type == 'close':
@@ -402,10 +426,13 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         else:
             stats['avg_resolution_time_days'] = 0
         
-        serializer = VulnerabilityStatsSerializer(stats)
+        serializer = VulnerabilityStatsSerializer(
+            stats, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
     
-    #: The longest window ``trends`` computes: it runs four queries per day.
+    #: The longest window ``trends`` computes: it runs two queries per day,
+    #: and guardian keeps a year of the history the open count is read from.
     MAX_TREND_DAYS = 366
 
     @action(detail=False, methods=['get'])
@@ -428,42 +455,40 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         # caller's team's findings (#642) and, for a member, those assigned
         # to or created by them (get_queryset).
         vulnerabilities = self.get_queryset()
+        # Open at the end of each day, and their risk then, read from the
+        # history of changes: not the vulnerabilities that are open today
+        # (#724; apps/vulnerabilities/trends.py).
+        open_then = iter(open_by_day(vulnerabilities, start_date, end_date))
         trends = []
         current_date = start_date
-        
+
         while current_date <= end_date:
             day_start = timezone.make_aware(datetime.combine(current_date, datetime.min.time()))
             day_end = timezone.make_aware(datetime.combine(current_date, datetime.max.time()))
-            
+
             discovered_count = vulnerabilities.filter(
                 first_discovered__range=(day_start, day_end)
             ).count()
-            
+
             resolved_count = vulnerabilities.filter(
                 resolved_at__range=(day_start, day_end)
             ).count()
-            
-            total_open = vulnerabilities.filter(
-                first_discovered__lte=day_end,
-                status='open'
-            ).count()
-            
-            avg_risk = vulnerabilities.filter(
-                first_discovered__lte=day_end,
-                status='open'
-            ).aggregate(avg_risk=Avg('risk_score'))['avg_risk'] or 0
-            
+
+            total_open, avg_risk = next(open_then)
+
             trends.append({
                 'date': current_date,
                 'discovered_count': discovered_count,
                 'resolved_count': resolved_count,
                 'total_open': total_open,
-                'avg_risk_score': round(avg_risk, 2)
+                'avg_risk_score': avg_risk
             })
-            
+
             current_date += timedelta(days=1)
-        
-        serializer = VulnerabilityTrendSerializer(trends, many=True)
+
+        serializer = VulnerabilityTrendSerializer(
+            trends, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
 

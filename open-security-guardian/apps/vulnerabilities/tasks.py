@@ -8,7 +8,6 @@ from celery import shared_task
 from django.utils import timezone
 from django.conf import settings
 import logging
-import requests
 from datetime import timedelta
 
 from apps.core.locks import single_instance
@@ -263,72 +262,15 @@ def check_sla_violations():
         raise
 
 
-@shared_task(bind=True, max_retries=3)
-def enrich_vulnerability_with_threat_intel(self, vulnerability_id):
-    """
-    Enrich vulnerability with threat intelligence data
-    
-    Args:
-        vulnerability_id: ID of vulnerability to enrich
-    """
-    try:
-        vulnerability = Vulnerability.objects.get(id=vulnerability_id)
-        
-        if not vulnerability.cve_id:
-            logger.warning(f"No CVE ID for vulnerability {vulnerability_id}")
-            return {'error': 'No CVE ID'}
-        
-        # Integration with threat intelligence feeds
-        threat_intel_urls = getattr(settings, 'THREAT_INTEL_URLS', [])
-        
-        for intel_url in threat_intel_urls:
-            try:
-                response = requests.get(
-                    f"{intel_url}/cve/{vulnerability.cve_id}",
-                    timeout=30,
-                    headers={'User-Agent': 'Open-Security-Guardian/1.0'}
-                )
-                
-                if response.status_code == 200:
-                    threat_data = response.json()
-                    
-                    # Update threat level based on intelligence
-                    if threat_data.get('active_exploitation'):
-                        vulnerability.threat_level = 'active'
-                    elif threat_data.get('exploit_available'):
-                        vulnerability.threat_level = 'emerging'
-                    
-                    # Update exploitability score
-                    if 'exploitability_score' in threat_data:
-                        vulnerability.exploitability_score = threat_data['exploitability_score']
-                    
-                    # Store threat intelligence in metadata
-                    if 'threat_intelligence' not in vulnerability.metadata:
-                        vulnerability.metadata['threat_intelligence'] = {}
-                    
-                    vulnerability.metadata['threat_intelligence'].update({
-                        'source': intel_url,
-                        'updated_at': timezone.now().isoformat(),
-                        'data': threat_data
-                    })
-                    
-                    vulnerability.save()
-                    
-                    logger.info(f"Enriched vulnerability {vulnerability_id} with threat intelligence")
-                    return {'enrichment_successful': True}
-                    
-            except requests.RequestException as e:
-                logger.warning(f"Failed to fetch threat intel from {intel_url}: {e}")
-                continue
-        
-        return {'enrichment_successful': False, 'reason': 'No threat intelligence sources available'}
-        
-    except Vulnerability.DoesNotExist:
-        logger.error(f"Vulnerability {vulnerability_id} not found")
-        return {'error': 'Vulnerability not found'}
-    except Exception as exc:
-        logger.error(f"Error enriching vulnerability with threat intel: {exc}")
-        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+# There is no threat-intelligence enrichment task.
+# ``enrich_vulnerability_with_threat_intel`` was queued for every new
+# vulnerability with a CVE and asked each URL of a ``THREAT_INTEL_URLS``
+# setting for it. No such setting was ever defined, so every run answered
+# "No threat intelligence sources available" and changed nothing; had it been
+# defined, guardian would have sent its CVE list to whatever it named. It was
+# removed (#724). The platform's indicators are the data service's, read as a
+# team (the agents service does, #702); a Celery task has no caller to read
+# them as, and a platform-wide read from a worker is not something to add.
 
 
 @shared_task

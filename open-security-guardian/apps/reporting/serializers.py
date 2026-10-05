@@ -85,12 +85,17 @@ class ReportSerializer(TeamScopedModelSerializer):
     
     class Meta:
         model = Report
-        fields = '__all__'
-        # Where the file is, and what generating it recorded, is guardian's
-        # to write: a file_path from a request would let the download serve
-        # any file the process can read (#642).
+        # Not file_path: where the file is on the server is guardian's own
+        # business. It was in every answer that carried a report, read-only:
+        # "/app/media/reports/<team id>/<id>.json" (#724). A client needs
+        # neither to read it (the file is reports/{id}/download/, once
+        # status is "completed") nor to write it: a file_path from a
+        # request would let the download serve any file the process can
+        # read (#642).
+        exclude = ('file_path',)
+        # What generating the report recorded is guardian's to write.
         read_only_fields = (
-            'id', 'generated_at', 'generated_by', 'file_path', 'file_size',
+            'id', 'generated_at', 'generated_by', 'file_size',
             'file_hash', 'generation_time', 'error_message', 'expires_at',
         )
     
