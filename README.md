@@ -142,16 +142,16 @@ Change the initial password after the first login.
 | Logs | `docker compose logs -f <service>` |
 | Full health check | `make health` |
 | Production overlay | `make start-prod` (adds `docker-compose.prod.yml`) |
-| Back up PostgreSQL | `make backup` |
+| Back up PostgreSQL and Redis | `make backup` |
 | Rehearse a restore | `make restore-drill` |
 | List rotatable secrets | `make rotate-secrets` |
 | Stop | `docker compose down` |
 
-`make backup` and `make restore-drill` run on the host and need a database
-they can reach, which the default stack does not publish; the
+`make backup` and `make restore-drill` run the database tools inside the
+stack's own containers, so they need only Docker on the host. The
 [deployment guide](https://www.wildbox.io/guides/deployment/#6-backups-and-restore)
-lists what they need. On a default stack, the `backup` profile runs the
-backups on the Compose network instead.
+covers what a backup contains, scheduled backups, restoring, and an external
+database.
 
 Ports, service names and bindings are listed in one place:
 [ports reference](https://www.wildbox.io/guides/ports/). Production guidance is in the

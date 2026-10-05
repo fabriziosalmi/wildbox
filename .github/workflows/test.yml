@@ -132,6 +132,12 @@ jobs:
         # read them back will accept. It did not: 2.89% of generated API keys
         # tripped the tools service's weak-pattern check and killed it at
         # start-up. tests/scripts had no CI step at all; this is where it runs.
+        #
+        # test_backup_restore.py also starts a throwaway PostgreSQL and Redis
+        # with the runner's Docker, under its own Compose project name, and
+        # skips those tests where Docker is missing. Here they must run.
+        env:
+          WILDBOX_REQUIRE_DOCKER_TESTS: "1"
         run: pytest tests/scripts -v -p no:cacheprovider -o addopts=""
 
   e2e-tests:
