@@ -18,7 +18,7 @@ services:
         shared: ../open-security-shared
     container_name: wildbox-security-api-main
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - API_KEY=${API_KEY:-your-secure-api-key-here-change-this}
       - HOST=0.0.0.0
@@ -48,7 +48,7 @@ services:
     image: redis:7-alpine
     container_name: wildbox-redis-api
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
@@ -63,7 +63,7 @@ services:
 
   # Nginx reverse proxy (optional)
   nginx:
-    image: nginx:alpine
+    image: nginx:1.30-alpine
     container_name: wildbox-nginx-api
     ports:
       - "80:80"

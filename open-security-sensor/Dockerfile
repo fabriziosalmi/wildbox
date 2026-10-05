@@ -26,16 +26,24 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install osquery - detect architecture and install accordingly
+# Install osquery - detect architecture and install accordingly.
+# The package is checked against the SHA-256 recorded here before dpkg runs
+# it: the URL names a version, and nothing else said that the bytes behind it
+# were the ones this image was built with last time (#657). The hashes are
+# those of the 5.10.2 release; pkg.osquery.io and the GitHub release
+# (github.com/osquery/osquery/releases/tag/5.10.2) serve the same files.
+# Change them together with the version.
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
-        curl -L https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_amd64.deb -o osquery.deb; \
+        OSQUERY_SHA256=5a7e6a8bb5dd666a22afff092bd8b9e25a92a37f62e9f3cb6991ea3ea93efb08; \
     elif [ "$ARCH" = "arm64" ]; then \
-        curl -L https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_arm64.deb -o osquery.deb; \
+        OSQUERY_SHA256=837470e7e24807f57359a79fad38c9c4e1cdfad9525fa090c999821cc77bce48; \
     else \
         echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
-    dpkg -i osquery.deb || apt-get install -f -y && \
+    curl -fsSL "https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_${ARCH}.deb" -o osquery.deb && \
+    echo "${OSQUERY_SHA256}  osquery.deb" | sha256sum -c - && \
+    { dpkg -i osquery.deb || apt-get install -f -y; } && \
     rm osquery.deb && \
     # Create symlinks to make osqueryd available in PATH
     if [ -f /opt/osquery/bin/osqueryd ]; then \
@@ -53,19 +61,31 @@ COPY requirements.txt .
 # --require-hashes: refuse to install an artefact whose hash does not match the
 # lockfile. Version pinning alone stops a NEW release entering the build; it
 # does not stop the same version's bytes from changing (WILDBO-DEP-04).
-RUN pip install --no-cache-dir --require-hashes -r requirements.txt
+# pip is the one in the digest-pinned base image (24.0): no `--upgrade pip`,
+# which installed whatever PyPI served that day, unhashed, and then ran it
+# (#657). --no-build-isolation: a source distribution in the lockfile is built
+# with the base image's setuptools instead of one downloaded for the build,
+# so nothing is fetched that the lockfile does not name with a hash.
+RUN pip install --no-cache-dir --require-hashes --no-build-isolation -r requirements.txt
 
 # Install the shared package, provided via the `shared` additional build
 # context (see docker-compose.yml / CI). --no-deps: its deps already come from
-# this service's requirements.txt.
+# this service's requirements.txt. --no-index --no-build-isolation: build it
+# with the setuptools already in the image (the digest-pinned base image's,
+# or the one a lockfile pins by hash). Without them pip made an isolated
+# build environment and downloaded the latest setuptools from PyPI, unhashed,
+# at every build (#657).
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-deps /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
 
 # Copy application code
 COPY . .
 
-# Install the sensor package
-RUN pip install -e .
+# Install the sensor package. --no-index --no-deps --no-build-isolation: as
+# for the shared package above. A plain `pip install -e .` resolved setup.py's
+# install_requires against PyPI, outside the lockfile, for anything the
+# hash-checked install had not already satisfied.
+RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation -e .
 
 # Create directories
 RUN mkdir -p /etc/security-sensor /var/log/security-sensor /var/lib/security-sensor
