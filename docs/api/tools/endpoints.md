@@ -533,10 +533,16 @@ The gateway applies two limits to tools and task requests:
 - **Per client IP**: the server-wide nginx `limit_req` zone `global`,
   100 requests per second with a burst of 10, answered with 429.
 
-The tools service reads `RATE_LIMIT_REQUESTS` (500) and `RATE_LIMIT_WINDOW`
-(60 seconds) from `docker-compose.yml` and reports them in
-`/api/system/info`, but no code on main enforces them: the service applies
-no rate limit of its own.
+The tools service applies no request rate limit of its own: every request
+reaches it through the gateway, already counted against the caller's team.
+`RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW`, which the service read and
+never enforced, no longer exist
+([#646](https://github.com/fabriziosalmi/wildbox/issues/646)); setting them
+in `.env` has no effect. What the service does limit is the cost of a call:
+`MAX_CONCURRENT_TOOLS` synchronous runs at a time (10), `TOOL_TIMEOUT`
+seconds per run (300), and, for the tools that act for a caller, a number
+of runs per caller per hour (one for a destructive test), counted in each
+process's memory.
 
 ## Errors
 

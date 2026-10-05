@@ -360,8 +360,6 @@ root stack, `docker-compose.yml` sets them for each container.
 | `CORS_ORIGINS`            | `http://localhost:3000` | Comma-separated                                              |
 | `TOOL_TIMEOUT`            | `300`                   | Default synchronous execution timeout, seconds               |
 | `MAX_CONCURRENT_TOOLS`    | `10`                    | Concurrent synchronous executions in the `api` process        |
-| `RATE_LIMIT_REQUESTS`     | `500`                   | Reported by `/api/system/info`; not enforced by the service  |
-| `RATE_LIMIT_WINDOW`       | `60`                    | As above                                                     |
 | `TOOLS_ALLOWED_INTERNAL_TARGETS` | empty | Internal ranges, addresses and host names the network tools may scan; see [Network targets](#network-targets) |
 | `USER_PERMISSIONS_FILE`, `AUTHORIZED_TARGETS_FILE` | `/etc/security/...json` | Policy for tools that act for a caller; see [Tools that act for a caller](#tools-that-act-for-a-caller) |
 | `HOST`, `PORT`            | `127.0.0.1`, `8000`     | Used only by `python -m app.main`; the image runs `uvicorn` on `0.0.0.0:8000` |
@@ -372,6 +370,17 @@ distinct characters, or containing a weak pattern (`key`, `secret`, `test`,
 `123`, `abc`, `wildbox` and others). Clients never send it; tool and task
 routes accept only gateway-forwarded requests. In the root stack,
 `make generate-secrets` writes it to `.env`.
+
+There is no rate-limit setting. Requests are limited per team by the
+gateway (`RATE_LIMIT_PER_HOUR` in the root `.env`), which every request
+passes through; the service bounds the cost of a call with
+`MAX_CONCURRENT_TOOLS`, `TOOL_TIMEOUT` and the hourly limits of the
+[tools that act for a caller](#tools-that-act-for-a-caller).
+`RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW` were read and never enforced,
+and were removed (#646). An environment variable the service does not
+declare is ignored, but a key it does not declare in a `.env` file in the
+working directory stops it at start-up (`Extra inputs are not permitted`):
+delete those two lines from a `.env` copied from an older `.env.example`.
 
 The Celery limits are fixed in `app/celery_app.py` (10-minute hard limit,
 9-minute soft limit, results kept for one hour) and the worker command line in

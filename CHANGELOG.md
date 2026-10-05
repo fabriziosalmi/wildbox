@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
+  `ENABLE_RATE_LIMITING`, settings that no code enforced.**
+  `docker-compose.yml` set the first two and operators could tune them,
+  but the service never applied a limit. They are removed, not enforced:
+  every request reaches tools through the gateway, which already limits
+  each team (`RATE_LIMIT_PER_HOUR`, 166 requests a minute at the
+  default, well under the 500 these named), so a second counter of the
+  same thing would have refused nothing. The lines are gone from
+  `docker-compose.yml` and both `.env.example` files; in the Compose
+  stack, leftover lines in `.env` are ignored (#646).
 - **tools: `GET /api/system/metrics`, which answered 500 to every
   request.** It imported a name that `app/middleware.py` never defined.
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
