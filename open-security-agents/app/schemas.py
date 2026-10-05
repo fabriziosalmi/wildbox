@@ -2,12 +2,18 @@
 Pydantic models for Open Security Agents API
 
 Defines the data structures for IOC analysis requests and responses.
+
+The examples are declared the pydantic v2 way, ``model_config`` with
+``json_schema_extra``. They were ``class Config: schema_extra``, the v1 key,
+which v2 ignores with a warning: no example reached the OpenAPI schema
+(#727). tests/unit/test_schema_examples.py keeps each example valid for its
+own model, so that what the schema shows is something the API can answer.
 """
 
 from datetime import datetime
 from enum import Enum
 from typing import Dict, Any, Optional, List
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 import re
 
 
@@ -40,22 +46,27 @@ class IOCInput(BaseModel):
     type: IOCType = Field(..., description="Type of IOC")
     value: str = Field(..., description="IOC value to analyze")
     
-    @validator('value')
-    def validate_ioc_value(cls, v, values):
-        ioc_type = values.get('type')
+    @field_validator('value')
+    @classmethod
+    def validate_ioc_value(cls, v: str, info: ValidationInfo) -> str:
+        # ``type`` is declared first, so it is validated first: it is in
+        # ``info.data`` unless it was itself invalid, and then the request
+        # is refused for that.
+        ioc_type = info.data.get('type')
         if ioc_type and ioc_type in IOC_REGEX_PATTERNS:
             pattern = IOC_REGEX_PATTERNS[ioc_type]
             if not re.match(pattern, v):
                 raise ValueError(f"Invalid format for {ioc_type.value} IOC: '{v}'")
         return v
-    
-    class Config:
-        schema_extra = {
+
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "type": "ipv4",
-                "value": "192.168.1.100"
+                "value": "203.0.113.10"
             }
         }
+    )
 
 
 class TaskPriority(str, Enum):
@@ -70,16 +81,17 @@ class AnalysisTaskRequest(BaseModel):
     ioc: IOCInput = Field(..., description="IOC to analyze")
     priority: TaskPriority = Field(default=TaskPriority.NORMAL, description="Task priority")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "ioc": {
                     "type": "domain",
-                    "value": "suspicious-domain.com"
+                    "value": "suspicious.example.com"
                 },
                 "priority": "high"
             }
         }
+    )
 
 
 class TaskStatus(str, Enum):
@@ -109,17 +121,18 @@ class AnalysisTaskStatus(BaseModel):
         ),
     )
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
-                "task_id": "abc-123-def",
+                "task_id": "550e8400-e29b-41d4-a716-446655440000",
                 "status": "running",
-                "created_at": "2025-06-25T10:00:00Z",
-                "started_at": "2025-06-25T10:00:05Z",
-                "progress": "Performing WHOIS lookup...",
-                "result_url": "/api/v1/agents/analyze/abc-123-def"
+                "created_at": "2026-10-03T10:00:00Z",
+                "started_at": "2026-10-03T10:00:05Z",
+                "progress": "Running AI analysis...",
+                "result_url": "/api/v1/agents/analyze/550e8400-e29b-41d4-a716-446655440000"
             }
         }
+    )
 
 
 class ThreatVerdict(str, Enum):
@@ -151,17 +164,17 @@ class AnalysisResult(BaseModel):
     analysis_duration: Optional[float] = Field(None, description="Analysis duration in seconds")
     tools_used: List[str] = Field(default_factory=list, description="List of tools used")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
-                "task_id": "abc-123-def",
-                "ioc": {"type": "ipv4", "value": "192.168.1.100"},
+                "task_id": "550e8400-e29b-41d4-a716-446655440000",
+                "ioc": {"type": "ipv4", "value": "203.0.113.10"},
                 "verdict": "Suspicious",
                 "confidence": 0.75,
                 "executive_summary": "IP shows signs of malicious activity with open ports and suspicious services.",
                 "evidence": [
                     {
-                        "source": "port_scanner",
+                        "source": "port_scan_tool",
                         "finding": "Multiple open ports detected including FTP and Telnet",
                         "severity": "medium"
                     }
@@ -172,9 +185,10 @@ class AnalysisResult(BaseModel):
                 ],
                 "full_report": "# Threat Analysis Report\n\n## Executive Summary\n...",
                 "analysis_duration": 45.2,
-                "tools_used": ["port_scanner", "whois_lookup", "reputation_check"]
+                "tools_used": ["port_scan_tool", "whois_lookup_tool", "reputation_check_tool"]
             }
         }
+    )
 
 
 class HealthResponse(BaseModel):

@@ -533,6 +533,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `completed_at` were the time of the request. `started_at` is now
   when the worker started the task, and `completed_at` when Celery
   recorded its end.
+- **The agents service's OpenAPI schema has its examples** (#727). The
+  four models declared them with `class Config: schema_extra`, the
+  pydantic v1 key, which pydantic v2 ignores: no example reached the
+  schema, and the analysis result was not in it at all, since the read
+  declared no response model. They are now `json_schema_extra` in
+  `model_config`, the read declares both of its answers, and a unit test
+  validates each example against its own model: the task example had an
+  ID the route refuses and tool names no tool has. The other v1 forms in
+  the service are gone too (`@validator`, `Field(env=...)` in the
+  settings, `.dict()`, `Path(regex=...)`); they worked, with deprecation
+  warnings, so nothing else changes for a client or an operator.
 
 ### Changed
 

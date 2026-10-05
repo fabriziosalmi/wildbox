@@ -9,7 +9,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status, Header, Depends, Path
@@ -351,7 +351,7 @@ async def analyze_ioc(
         # Create task metadata
         task_metadata = {
             "task_id": task_id,
-            "ioc": analysis.ioc.dict(),
+            "ioc": analysis.ioc.model_dump(),
             "priority": analysis.priority,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "status": TaskStatus.PENDING
@@ -385,7 +385,7 @@ async def analyze_ioc(
         try:
             celery_task = run_threat_enrichment_task.delay(
                 task_id=task_id,
-                ioc=analysis.ioc.dict(),
+                ioc=analysis.ioc.model_dump(),
                 caller=caller,
             )
         except Exception:
@@ -528,9 +528,14 @@ def _authorize_task(task_id: str, user: GatewayUser) -> bytes:
     return celery_task_id
 
 
-@app.get("/v1/analyze/{task_id}")
+# Both answers are declared, so that both are in the OpenAPI schema, with
+# their examples: the result had none there, the route declared no model.
+@app.get(
+    "/v1/analyze/{task_id}",
+    response_model=Union[AnalysisResult, AnalysisTaskStatus],
+)
 async def get_analysis_result(
-    task_id: str = Path(..., regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    task_id: str = Path(..., pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
     user: GatewayUser = Depends(get_current_user)
 ):
     """
@@ -634,7 +639,7 @@ async def get_analysis_result(
 
 @app.delete("/v1/analyze/{task_id}")
 async def cancel_analysis(
-    task_id: str = Path(..., regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    task_id: str = Path(..., pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
     user: GatewayUser = Depends(get_current_user)
 ):
     """Cancel a pending or running analysis task. Requires authentication."""

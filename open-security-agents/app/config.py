@@ -9,8 +9,8 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 from limits import parse_many
-from pydantic import Field, ValidationInfo, field_validator
-from pydantic_settings import BaseSettings
+from pydantic import ValidationInfo, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The tools that return data Wildbox holds for the caller's team, as opposed
 # to what a lookup of the IOC finds outside: the team's threat indicators in
@@ -31,8 +31,17 @@ MIN_TASK_TIMEOUT_SECONDS = 2 * SOFT_LIMIT_MARGIN_SECONDS
 
 
 class Settings(BaseSettings):
-    """Application settings"""
-    
+    """Application settings.
+
+    Each field is read from the environment variable of its own name, in any
+    case (``redis_url`` from ``REDIS_URL``). Some fields used to say so with
+    ``Field(env="REDIS_URL")``, the pydantic v1 form, which v2 ignores: it
+    worked because the names were the same, and would have stopped working,
+    silently, for a field renamed without its variable (#727).
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
     # Application
     debug: bool = False
     log_level: str = "INFO"
@@ -45,11 +54,11 @@ class Settings(BaseSettings):
     anthropic_max_tokens: int = 4096
     
     # Redis Configuration
-    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
+    redis_url: str = "redis://localhost:6379/0"
     
     # Celery Configuration
-    celery_broker_url: str = Field(default="redis://localhost:6379/0", env="CELERY_BROKER_URL")
-    celery_result_backend: str = Field(default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND")
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/0"
     
     # Wildbox services. The agent's tools call them directly, on the internal
     # network, as the user who submitted the analysis
@@ -91,11 +100,11 @@ class Settings(BaseSettings):
     # No longer read (#567): the client sent it as X-API-Key when it had no
     # caller identity, and the tools service stopped accepting that in #566.
     # Kept only so that a .env file which still sets INTERNAL_API_KEY loads.
-    internal_api_key: str = Field(default="", env="INTERNAL_API_KEY")
+    internal_api_key: str = ""
     # REQUIRED. Proof-of-origin secret sent with the caller's gateway identity
     # (X-Wildbox-* headers) on every internal call (#175); without it internal
     # tool calls fail.
-    gateway_internal_secret: str = Field(default="", env="GATEWAY_INTERNAL_SECRET")
+    gateway_internal_secret: str = ""
     
     # The team-data tools the model is given: a comma-separated list of names
     # from TEAM_DATA_TOOLS above. Empty, the default, gives it neither: an
@@ -210,10 +219,6 @@ class Settings(BaseSettings):
         if not items or any(item.amount < 1 for item in items):
             raise ValueError(f"invalid rate limit {value!r}: amounts must be 1 or more")
         return value
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 # Global settings instance
