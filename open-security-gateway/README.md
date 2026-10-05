@@ -186,7 +186,10 @@ Notes:
 
 - `/api/v1/guardian/*` presents `Host: open-security-guardian` to the Django
   service and forwards the caller's host as `X-Forwarded-Host`; redirects are
-  rewritten back to `/api/v1/guardian/`.
+  rewritten back to `/api/v1/guardian/`. It also sends
+  `X-Forwarded-Prefix: /api/v1/guardian`, a literal that replaces any value
+  the client sent: guardian writes its pagination links under that path, as
+  relative references without a host (#643).
 - `/api/v1/automations/*` reaches n8n, which runs only with the `automations`
   Compose profile; the upstream is resolved at request time, so the route
   answers `502` while n8n is not running. The gateway replaces the

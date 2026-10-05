@@ -24,6 +24,8 @@ help:
 	@echo "  make health   - Run health checks"
 	@echo "  make test     - Run integration tests"
 	@echo "  make clean    - Remove temp files and caches"
+	@echo "  make backup   - Back up PostgreSQL and Redis into ./backups"
+	@echo "  make restore-drill - Prove the backup restores (scratch databases)"
 	@echo ""
 	@echo "$(YELLOW)Advanced:$(NC)"
 	@echo "  docker compose build          - Rebuild images"
@@ -88,12 +90,17 @@ start-prod: validate-secrets
 	@echo "$(GREEN)✓ Services started with docker-compose.prod.yml$(NC)"
 	@echo "Check status: make health"
 
+# Both run the database tools inside the stack's own containers with
+# `docker compose exec`, so they work on the default stack with nothing but
+# Docker on the host. Set COMPOSE_FILE (and COMPOSE_PROJECT_NAME, if you use
+# one) the way you start the stack. For an external database, see
+# BACKUP_MODE=host in scripts/backup_postgres.sh.
 backup:
-	@echo "$(BLUE)Backing up PostgreSQL and Redis...$(NC)"
+	@echo "$(BLUE)Backing up PostgreSQL (identity, data, guardian) and Redis...$(NC)"
 	@./scripts/backup_postgres.sh
 
 restore-drill:
-	@echo "$(BLUE)Running the restore drill (backup -> restore -> verify)...$(NC)"
+	@echo "$(BLUE)Running the restore drill (backup -> restore into scratch databases -> compare)...$(NC)"
 	@./scripts/verify_restore.sh
 
 rotate-secrets:

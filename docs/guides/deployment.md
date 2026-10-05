@@ -172,6 +172,19 @@ figure (at least one request a minute), and reports it on every response in
 `RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start. Restart
 the gateway after changing it (`docker compose up -d gateway`).
 
+### Guardian's per-user rate limit
+
+Under the gateway's limit, guardian allows each user
+`GUARDIAN_RATE_LIMIT_USER` requests to its own API: `1000/hour` unless `.env`
+sets it. The value is `<count>/<period>` with a period of `second`, `minute`,
+`hour` or `day` (for example `20/minute`), or `off` to rely on the gateway's
+limit alone. The count is kept per user, as the gateway identifies the user,
+so one member of a team cannot use up guardian for the others. With any other
+value guardian logs `GUARDIAN_RATE_LIMIT_USER=...: expected <count>/<period>
+...` and does not start. Restart guardian after changing it
+(`docker compose up -d guardian`). Guardian's health check is not rate
+limited.
+
 ### Redis memory
 
 Redis is not a cache here. It holds the token blacklist, failed-login lockout
@@ -563,32 +576,107 @@ backend from the server itself.
 
 ## 6. Backups and Restore
 
-`scripts/backup_postgres.sh` writes `pg_dump` archives of every database,
-with optional GPG encryption (`GPG_RECIPIENT`) and S3 upload (`--upload-s3`,
-`S3_BUCKET`). `scripts/restore_postgres.sh` restores them, and
-`scripts/verify_restore.sh` is a drill: back up, restore into scratch
-databases, check the data, clean up.
+```bash
+make backup          # PostgreSQL and Redis, into ./backups
+make restore-drill   # prove the PostgreSQL backup restores
+```
 
-The `backup` Compose profile runs the backup script in a container on the
-Compose network every `BACKUP_INTERVAL_SECONDS` (one day by default) and keeps
-`BACKUP_RETENTION` days of archives in the `wildbox_backups` volume:
+Both work on the default stack with nothing but Docker on the host. They run
+`pg_dump`, `pg_restore`, `psql` and `redis-cli` inside the stack's own
+containers with `docker compose exec`, so the database port stays
+unpublished, no client tools are installed, and no password is passed on a
+command line. Set `COMPOSE_FILE` (and `COMPOSE_PROJECT_NAME`, if you use one)
+the way you start the stack; `ENV_FILE` names the env file when it is not
+`.env`.
+
+### What a backup contains
+
+`scripts/backup_postgres.sh` writes one set of files per run, named by the
+run's timestamp:
+
+| File | Contents |
+| :--- | :--- |
+| `identity_<stamp>.sql.gz`, `data_<stamp>.sql.gz`, `guardian_<stamp>.sql.gz` | A `pg_dump` custom-format archive of each database. |
+| `redis_<stamp>.rdb.gz` | An RDB snapshot of every Redis database. |
+
+Redis is in the backup because it is not a cache here. It holds the only
+copy of CSPM scan metadata and reports, responder playbook run state, agents
+analysis results, tools task ownership, identity's revoked-token list and
+account lockouts, and the Celery queues.
+
+A run either completes or keeps nothing: if any database or Redis fails, the
+script exits non-zero and removes the files it wrote, so every timestamp in
+the directory is a complete set. Leaving Redis out is something you ask for
+with `SKIP_REDIS=true`, and the output says so. Files are written with mode
+`600` in a mode `700` directory, since they hold every password hash and
+stored credential. Archives older than `BACKUP_RETENTION` days (30 by
+default) are removed after a successful run.
+
+| Variable | Default | Meaning |
+| :--- | :--- | :--- |
+| `BACKUP_DIR` | `./backups` (`/backups/postgres` in host mode) | Where the files go. |
+| `BACKUP_RETENTION` | `30` | Days of archives to keep. |
+| `DATABASES` | `identity,data,guardian` | Databases to dump; also `--databases`. |
+| `SKIP_REDIS` | unset | `true` leaves Redis out. |
+| `GPG_RECIPIENT` | unset | Encrypts every file for this recipient. |
+| `S3_BUCKET` | unset | Target of `--upload-s3`. |
+
+Copy the archives off the server: a backup on the same disk is not a backup.
+
+### Scheduled backups
+
+The `backup` Compose profile runs the same script in a container on the
+Compose network every `BACKUP_INTERVAL_SECONDS` (one day by default) and
+keeps the archives in the `wildbox_backups` volume:
 
 ```bash
 docker compose --profile backup up -d backup
 docker compose logs backup
 ```
 
-`make backup` and `make restore-drill` run the same scripts from the host,
-and do not work there on a default stack. They connect to `POSTGRES_HOST`
-(default `wildbox-postgres`), which the default Compose file does not publish
-to the host; they need `POSTGRES_PASSWORD` in the environment, since the
-Makefile does not read `.env`; and they call `pg_dump` and `psql`, so the
-PostgreSQL client tools must be installed. Run them from a machine or
-container that can reach the database, with those set.
+A failed run logs `[backup] FAILED` and keeps nothing; alert on it.
 
-Copy the archives off the server: a backup on the same disk is not a backup.
-Run the restore drill on a schedule; a restore that has never been tested is
-not one either.
+### An external database
+
+For a PostgreSQL the stack does not run (a managed database, another host),
+use host mode: the script connects from the machine it runs on. It needs
+`pg_dump`, `pg_restore` and `psql` of the server's major version on `PATH`,
+and `redis-cli` unless `SKIP_REDIS=true`.
+
+```bash
+BACKUP_MODE=host POSTGRES_HOST=db.internal POSTGRES_USER=postgres \
+  POSTGRES_PASSWORD=... REDIS_HOST=redis.internal REDIS_PASSWORD=... \
+  BACKUP_DIR=/var/backups/wildbox ./scripts/backup_postgres.sh
+```
+
+Setting `POSTGRES_HOST` selects host mode by itself. The passwords are read
+from the environment and handed to the client tools through their
+environment; no password file is written.
+
+### Restoring
+
+`make restore-drill` (`scripts/verify_restore.sh`) takes a backup, restores
+it into scratch databases named `<db>_restore_drill`, compares every table's
+row count with the source, and drops the scratch databases. The live
+databases are only read. Run it on a schedule: a restore that has never been
+tested is not one.
+
+To restore for real, stop the services first, then:
+
+```bash
+docker compose stop
+docker compose start postgres
+./scripts/restore_postgres.sh --timestamp 20261005_120000   # or --latest
+./scripts/restore_redis.sh --timestamp 20261005_120000
+docker compose up -d
+```
+
+`restore_postgres.sh` restores over the live databases; `--into-suffix
+_check` restores into `<db>_check` instead, and `--dry-run` only reads the
+archives. `restore_redis.sh` replaces the Redis data volume and refuses to
+run while Redis is running. It exists because Redis runs with the
+append-only file enabled and then ignores a `dump.rdb` at start: copying the
+snapshot into the volume by hand gives an empty Redis.
 
 ---
 
