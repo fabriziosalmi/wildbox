@@ -497,6 +497,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The visibility timeout of the tools task queue is a setting of the
+  service, and the documentation states what happens to a task whose
+  worker is killed** (#743). `open-security-tools/app/celery_app.py`
+  set no `broker_transport_options`, so the timeout was the Redis
+  transport's default, 3600 seconds, and the alert rule's comment and
+  the deployment guide said "an hour" for a value nothing set and
+  nobody had measured. It is now set, to the same value, and a test
+  fails if it stops outlasting the longest a live worker can hold a
+  task. Measured with a worker killed whole by `SIGKILL` while it ran a
+  task: the task is not returned to the queue and goes on reading
+  `running`; nothing returns it while no worker runs; a worker looks
+  for such tasks when it starts and every hundred seconds after that,
+  and returns those it finds taken longer ago than the timeout, so a
+  worker restarted at once leaves the task for a later look. The rule
+  comment, the guide and the endpoint reference say so.
 - **A tool task whose worker process keeps dying is failed, not put
   back on the queue without end** (#743). When the process running a task
   dies, Celery returns the task to the queue, which is right for a

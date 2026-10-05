@@ -125,3 +125,69 @@ def test_a_task_whose_process_dies_every_time_is_failed_after_three_starts(
     after = stack.probe("return")
     assert stack.state(after, FINAL)["status"] == "SUCCESS"
     stack.settled(before, {(PROBE, "failed"): 1, (PROBE, "completed"): 1})
+
+
+# --- a worker killed whole: what becomes of the task it held --------------------------
+
+
+def test_a_task_held_by_a_worker_killed_whole_comes_back_after_the_visibility_timeout(
+    stack, tmp_path
+):
+    """What `docker kill`, or the kernel on the container, does to a running task.
+
+    The whole worker is killed by SIGKILL, main process and child, while it
+    runs a task. Nobody acknowledged the task and nobody put it back: the
+    broker keeps it for the dead worker until its visibility timeout has
+    passed, and then only a worker that is running returns it to the queue.
+    The service sets that timeout to an hour (app/celery_app.py); here it is
+    three seconds, so that the wait fits in a test.
+    """
+    queue = stack.new_queue()
+    short = {"TOOLS_TEST_VISIBILITY_TIMEOUT": "3"}
+    started = tmp_path / "started"
+    before = stack.outcomes()
+    consumed = stack.consumed()
+
+    first = stack.start_worker(queue, env=short)
+    result = stack.send(
+        input_data={
+            "behaviour": "sleep_once",
+            "seconds": 120,
+            "marker": str(started),
+        },
+        queue=queue,
+    )
+    deadline = time.monotonic() + 30
+    while not started.exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert started.exists(), first.log_since()[-2000:]
+    taken = time.monotonic()
+
+    first.kill()
+
+    # Not in the queue, so the queue length the API exports does not see it,
+    # and still "running" to whoever reads the task.
+    assert stack.queued(queue) == 0
+    assert stack.meta(result)["status"] in {"STARTED", "RUNNING"}
+    # Past the timeout, with no worker running, nothing has returned it.
+    time.sleep(5)
+    assert stack.queued(queue) == 0
+    assert stack.meta(result)["status"] in {"STARTED", "RUNNING"}
+    assert stack.outcomes() == before
+
+    second = stack.start_worker(queue, env=short)
+    try:
+        meta = stack.state(result, FINAL, seconds=90)
+        waited = time.monotonic() - taken
+
+        assert meta["status"] == "SUCCESS", meta
+        assert meta["result"]["status"] == "completed"
+        # Longer than the timeout, and not much: a worker looks for such
+        # tasks when it starts (and every hundred seconds after that).
+        assert 3 < waited < 60, waited
+        # One task, started twice, ended once; the start that was killed
+        # counts as one lost start, far from the bound.
+        stack.settled(before, {(PROBE, "completed"): 1})
+        assert stack.consumed() == consumed + 2
+    finally:
+        second.stop()

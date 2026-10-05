@@ -341,6 +341,17 @@ started again`
 ([#743](https://github.com/fabriziosalmi/wildbox/issues/743)). Such a task
 used to come back without end.
 
+When the whole worker is killed while it runs a task (`docker kill`, the
+kernel's out-of-memory killer on the container, a host that goes down), the
+task is neither finished nor back in the queue: the broker keeps it for the
+worker that took it, and it goes on reading `running`. A running worker
+returns it to the queue once it was taken longer ago than the visibility
+timeout, 3600 seconds (`broker_transport_options` in
+`open-security-tools/app/celery_app.py`), and it looks for such tasks when
+it starts and every hundred seconds after that. So the task starts again
+from one hour to one hour and a hundred seconds after it was first taken,
+if a worker is running then; that start counts as one of the three above.
+
 ### Task Visibility
 
 A task belongs to the user who submitted it. Only that user can read,
