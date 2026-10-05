@@ -37,6 +37,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gateway's check stands alone for reading tools and tasks and for the
   agents, responder and CSPM services.
 
+- **A validation error no longer returns what was sent** (#722). The
+  field errors of a 422 carried FastAPI's `input`, the value that was
+  refused, and for a missing field that is the whole object the field is
+  missing from: a JSON body posted without its email came back with the
+  password in it, and a new password shorter than 12 characters came
+  back as it was typed, to be kept by whatever logs the errors a client
+  receives. tools already left it out for tool input; the handler every
+  FastAPI service shares did not. Each item of `error.details` is now
+  `{"type", "loc", "msg"}` and nothing else, in identity, tools, data,
+  responder, agents and cspm: no `input`, no `ctx`, no `url`. The same
+  holds for a model an endpoint builds from its own data, whose `input`
+  was the server's. `msg` is the validator's sentence, unchanged, except
+  pydantic's message for an unknown tag of a discriminated union, which
+  quoted the tag and now names only the accepted ones. The dashboard
+  reads `loc` and `msg` and is unaffected; a client that read `input` or
+  `ctx` from a 422 no longer finds them.
 - **A service started without `ENVIRONMENT` no longer takes itself for
   a development one** (#722). identity, tools, data, responder, agents
   and cspm read a missing `ENVIRONMENT` as `development`, so a bare

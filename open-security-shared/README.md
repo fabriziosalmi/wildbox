@@ -44,6 +44,13 @@ from its `reason`, `message` or `error` key, in that order, or the status
 phrase when it has none. A list detail goes to `error.details` in the same
 way. The module's docstring has the full rules.
 
+For a validation error (422), `error.details` is the list of field errors,
+each `{"type": ..., "loc": [...], "msg": ...}`. FastAPI's default list also
+holds the `input` that was refused, which for a missing field is the whole
+request body; `field_errors()` drops it, with `ctx` and `url`, so a secret in
+a rejected request is not sent back. A validator's own message is returned
+as written: do not put the value in it when the value can be a secret.
+
 Install (from the repo root, per service): `pip install ./open-security-shared`.
 
 Optional extras: `observability` (OpenTelemetry), `events` (Redis/SQLAlchemy/httpx).

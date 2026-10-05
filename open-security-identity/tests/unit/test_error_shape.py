@@ -187,6 +187,49 @@ def test_a_lost_database_connection_answers_the_canonical_503(identity):
     assert "connection refused" not in response.text
 
 
+CHANGE_PASSWORD = "/api/v1/admin/me/change-password"
+
+
+def test_a_new_password_that_is_too_short_is_not_sent_back(identity):
+    """FastAPI's field errors carry the refused ``input``: here, the password."""
+    client, headers, _ = identity
+    response = client.post(
+        CHANGE_PASSWORD,
+        headers=headers,
+        json={"current_password": "the-old-password-1", "new_password": "pw-2short"},
+    )
+    error = canonical(response, 422)
+    assert error["type"] == "ValidationError"
+    assert error["details"] == [
+        {
+            "type": "string_too_short",
+            "loc": ["body", "new_password"],
+            "msg": "String should have at least 12 characters",
+        }
+    ]
+    assert "pw-2short" not in response.text
+    assert "the-old-password-1" not in response.text
+
+
+def test_a_missing_field_does_not_send_the_other_password_back(identity):
+    """``input`` of a missing field is the whole body it is missing from."""
+    client, headers, _ = identity
+    response = client.post(
+        CHANGE_PASSWORD,
+        headers=headers,
+        json={"new_password": "a-new-password-long-enough"},
+    )
+    error = canonical(response, 422)
+    assert error["details"] == [
+        {
+            "type": "missing",
+            "loc": ["body", "current_password"],
+            "msg": "Field required",
+        }
+    ]
+    assert "a-new-password-long-enough" not in response.text
+
+
 def test_no_handler_is_registered_for_a_status_code():
     """The canonical handlers are per exception class; a handler registered
     for a status code (``@app.exception_handler(404)``) runs before them."""

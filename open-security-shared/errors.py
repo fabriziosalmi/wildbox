@@ -27,6 +27,10 @@ The fields:
     JSON: the list of field errors of a validation error, or the ``detail`` an
     endpoint raised when it is a dict or a list.
 
+A field error is ``{"type": ..., "loc": [...], "msg": ...}``: where the error
+is, what is wrong, and pydantic's name for it. The value that was refused is
+not in it (see ``field_errors``).
+
 What ``HTTPException(detail=...)`` becomes:
 
 - a string: ``message`` is the string, and there is no ``details``;
@@ -61,7 +65,7 @@ import json
 import logging
 from enum import Enum
 from http import HTTPStatus
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -204,6 +208,60 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
+# What a field error keeps of pydantic's report: where, what is wrong, and
+# pydantic's name for the kind of error.
+_FIELD_ERROR_KEYS = ("type", "loc", "msg")
+
+# pydantic's sentence for a discriminated union quotes the tag it was given
+# ("Input tag 'x' found using 'kind' does not match ..."): the one stock
+# message that repeats the input.
+_UNION_TAG_INVALID = "union_tag_invalid"
+
+
+def _union_tag_message(context: Any) -> str:
+    """The message for an unknown union tag, without the tag."""
+    if isinstance(context, Mapping):
+        discriminator = context.get("discriminator")
+        expected = context.get("expected_tags")
+        if isinstance(discriminator, str) and isinstance(expected, str):
+            return (
+                f"Input tag found using {discriminator} does not match any of "
+                f"the expected tags: {expected}"
+            )
+    return "Input tag does not match any of the expected tags"
+
+
+def field_errors(errors: Any) -> List[Dict[str, Any]]:
+    """The location, message and type of each validation error, nothing else.
+
+    pydantic reports more for each error: ``input``, the value it refused,
+    ``ctx``, the parameters of the rule, and ``url``. They used to go to the
+    client as they were, so a 422 handed the request back. For a missing
+    field ``input`` is the whole object the field is missing from: a login
+    body posted without its email came back with the password in it, to be
+    kept by whatever logs the errors a client receives (#722). ``ctx`` can
+    repeat the input as well (the tag of a discriminated union), and holds an
+    exception object, which is not JSON, when a validator raises.
+
+    This is an allow-list on purpose: a key pydantic adds later is not
+    returned until someone decides it should be. ``msg`` is the validator's
+    own sentence and is returned as written, except pydantic's message for an
+    unknown union tag, which quotes the tag. A validator the services write
+    must not put the value in its message if the value can be a secret.
+    """
+    cleaned: List[Dict[str, Any]] = []
+    for item in errors or ():
+        if not isinstance(item, Mapping):
+            continue
+        entry = {key: item[key] for key in _FIELD_ERROR_KEYS if key in item}
+        if "loc" in entry:
+            entry["loc"] = list(entry["loc"])
+        if entry.get("type") == _UNION_TAG_INVALID:
+            entry["msg"] = _union_tag_message(item.get("ctx"))
+        cleaned.append(entry)
+    return cleaned
+
+
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
@@ -212,15 +270,12 @@ async def validation_exception_handler(
         "Validation error",
         extra={"request_id": request_id, "path": str(request.url.path)},
     )
-    # exc.errors() is not JSON as it stands: when a validator raises
-    # ValueError, pydantic keeps the exception object under ctx.error, and
-    # the response could not be rendered, so invalid input answered 500.
     return error_response(
         code=422,
         message="Request validation failed",
         error_type="ValidationError",
         request_id=request_id,
-        details=_as_json(exc.errors()),
+        details=_as_json(field_errors(exc.errors())),
     )
 
 
@@ -233,7 +288,9 @@ async def pydantic_validation_exception_handler(
         message="Data validation failed",
         error_type="ValidationError",
         request_id=request_id,
-        details=_as_json(exc.errors()),
+        # Here the input is the server's own data, a row an endpoint builds
+        # a model from for instance: no more the client's to read.
+        details=_as_json(field_errors(exc.errors())),
     )
 
 
