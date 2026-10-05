@@ -50,6 +50,8 @@ EXPECTED_NETWORKS = {
     "sensor": {"frontend"},
     "automations": {"backend"},
     "prometheus": {"backend"},
+    # Receives prometheus's alerts and is scraped by it (#658).
+    "alertmanager": {"backend"},
     "tools-worker": {"data", "egress"},
     "tools-flower": {"data", "egress"},
     "guardian-worker": {"data", "egress"},

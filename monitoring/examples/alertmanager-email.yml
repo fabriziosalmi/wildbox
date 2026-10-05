@@ -1,0 +1,44 @@
+# Alertmanager: notify by e-mail.
+#
+# Copy this file outside the tracked tree, replace the example.com values and
+# set ALERTMANAGER_CONFIG_FILE to the copy in .env:
+#
+#   mkdir -p monitoring/local
+#   cp monitoring/examples/alertmanager-email.yml monitoring/local/alertmanager.yml
+#   # .env: ALERTMANAGER_CONFIG_FILE=./monitoring/local/alertmanager.yml
+#
+# The SMTP password is not written here. Alertmanager reads it, at every
+# notification, from a file in ALERTMANAGER_SECRETS_DIR (./monitoring/secrets
+# unless you set it), which the container mounts read-only at
+# /etc/alertmanager/secrets and runs as UID 65534 to read:
+#
+#   touch monitoring/secrets/smtp_password
+#   chmod 600 monitoring/secrets/smtp_password
+#   $EDITOR monitoring/secrets/smtp_password     # the password, one line
+#   sudo chown 65534 monitoring/secrets/smtp_password   # Linux hosts
+#
+# Then validate and restart (docs/guides/deployment.md, section 7).
+
+global:
+  # host:port of the mail server. 587 is the submission port (STARTTLS).
+  smtp_smarthost: smtp.example.com:587
+  smtp_from: wildbox-alerts@example.com
+  smtp_auth_username: wildbox-alerts@example.com
+  smtp_auth_password_file: /etc/alertmanager/secrets/smtp_password
+  # The default. Leave it on: without TLS the password crosses the network
+  # in clear, and Alertmanager refuses to send it that way.
+  smtp_require_tls: true
+
+route:
+  receiver: email
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: email
+    email_configs:
+      - to: oncall@example.com
+        # Also say when the alert stops firing.
+        send_resolved: true

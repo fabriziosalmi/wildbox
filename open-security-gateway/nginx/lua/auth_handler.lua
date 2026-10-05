@@ -741,38 +741,91 @@ local function apply_rate_limiting(auth_data)
     end
 end
 
--- Map a request (path + method) to the API-key scope it requires.
--- Reads are cheaper than writes; deletes/automation management are privileged.
-local function required_scope_for_request(uri, method)
-    local is_read = (method == "GET" or method == "HEAD" or method == "OPTIONS")
-
-    -- Security tools and AI agents: running them is "execute".
-    if uri:find("^/api/v1/tools/") or uri:find("^/api/v1/agents/") then
-        return is_read and "tools:read" or "tools:execute"
-    end
-    -- Asynchronous tool tasks (#567): reading and listing them is tools:read,
-    -- cancelling one is tools:execute, as running the tool was.
-    if uri == "/api/v1/tasks" or uri:find("^/api/v1/tasks/") then
-        return is_read and "tools:read" or "tools:execute"
-    end
+-- The API-key scope each authenticated route requires (#647).
+--
+-- One row per route the gateway authenticates, first match wins. A row
+-- covers its path and everything under it -- "/api/v1/tools" and
+-- "/api/v1/tools/..." alike -- unless it is `exact`. The patterns this
+-- replaces each spelled the prefix out, and the ones written with a trailing
+-- slash missed the collection itself: GET /api/v1/tools, the list of tools,
+-- fell through to the generic "read", so a tools:read key was refused there
+-- and a data key holding "read" could list the tools.
+--
+-- `read` is required for GET, HEAD and OPTIONS, `delete` for DELETE where
+-- the row names one, `write` for every other method.
+--
+-- A path with no row requires "admin" (UNMAPPED_ROUTE_SCOPE): a route added
+-- to the configuration without a row here is closed to scope-limited keys
+-- rather than opened to whoever holds a generic "read" or "write". The
+-- harness (test/route_scope_tests.sh) pins the scope of every location that
+-- authenticates and fails for one it has no pin for.
+local ROUTE_SCOPES = {
+    -- Security tools, AI agents and the asynchronous tool tasks (#567):
+    -- reading and listing is tools:read, running or cancelling tools:execute.
+    { path = "/api/v1/tools", read = "tools:read", write = "tools:execute" },
+    { path = "/api/v1/agents", read = "tools:read", write = "tools:execute" },
+    { path = "/api/v1/tasks", read = "tools:read", write = "tools:execute" },
     -- Automation (n8n) workflow management is administrative.
-    if uri:find("^/api/v1/automations/") then
-        return "tools:admin"
-    end
+    { path = "/api/v1/automations", read = "tools:admin", write = "tools:admin" },
+    -- Guardian: vulnerability, asset and compliance data.
+    { path = "/api/v1/guardian", read = "data:read", write = "data:write", delete = "data:delete" },
     -- Sensor telemetry ingest (#628): its own scope, so that a sensor's key
     -- can be limited to sending telemetry. data:ingest satisfies nothing
-    -- else, and "write" and "data:write" keep satisfying this route.
-    if uri == "/api/v1/data/ingest" then
-        return is_read and "read" or "data:ingest"
+    -- else, and "write" and "data:write" keep satisfying this route. Exact:
+    -- nothing under it is the ingest route.
+    { path = "/api/v1/data/ingest", exact = true, read = "read", write = "data:ingest" },
+    -- The data, CSPM and responder services, and identity's health probe:
+    -- generic read and write.
+    { path = "/api/v1/data", read = "read", write = "write" },
+    { path = "/api/v1/cspm", read = "read", write = "write" },
+    { path = "/api/v1/responder", read = "read", write = "write" },
+    { path = "/api/v1/identity/health", exact = true, read = "read", write = "write" },
+}
+
+local UNMAPPED_ROUTE_SCOPE = "admin"
+
+local function route_covers(route, uri)
+    if uri == route.path then
+        return true
     end
-    -- Guardian: vulnerability/asset/compliance data.
-    if uri:find("^/api/v1/guardian/") then
-        if is_read then return "data:read" end
-        if method == "DELETE" then return "data:delete" end
-        return "data:write"
+    return not route.exact and uri:sub(1, #route.path + 1) == route.path .. "/"
+end
+
+-- Map a request (path + method) to the API-key scope it requires.
+local function required_scope_for_request(uri, method)
+    if type(uri) ~= "string" then
+        return UNMAPPED_ROUTE_SCOPE
     end
-    -- Any other authenticated API path: generic read vs write.
-    return is_read and "read" or "write"
+    for _, route in ipairs(ROUTE_SCOPES) do
+        if route_covers(route, uri) then
+            if method == "GET" or method == "HEAD" or method == "OPTIONS" then
+                return route.read
+            end
+            if method == "DELETE" and route.delete then
+                return route.delete
+            end
+            return route.write
+        end
+    end
+    return UNMAPPED_ROUTE_SCOPE
+end
+
+-- The path a request is mapped by: the one nginx chose the location for.
+--
+-- ngx.var.uri is not that path once the location has rewritten it, and
+-- rewrite directives run before access_by_lua. The automations location
+-- strips its prefix that way, so the map saw "/rest/workflows" instead of
+-- "/api/v1/automations/rest/workflows": it required the generic "read" or
+-- "write" where tools:admin was meant, and mapped whatever followed the
+-- prefix as a path of its own. The server block copies $uri into
+-- $wildbox_route_uri before any location runs; a configuration that does
+-- not declare it leaves every path unmapped, which fails closed.
+local function route_uri()
+    local uri = ngx.var.wildbox_route_uri
+    if type(uri) == "string" and uri ~= "" then
+        return uri
+    end
+    return nil
 end
 
 -- Does the set of granted scopes satisfy the required one?
@@ -827,14 +880,15 @@ local function enforce_scopes(auth_data)
         return  -- unrestricted (bearer/JWT, or legacy key without scopes)
     end
 
-    local required = required_scope_for_request(ngx.var.uri, ngx.var.request_method)
+    local uri = route_uri()
+    local required = required_scope_for_request(uri, ngx.var.request_method)
     if scopes_satisfy(scopes, required) then
         return
     end
 
     utils.log("warn", "API key missing required scope", {
         required = required,
-        path = ngx.var.uri,
+        path = uri or ngx.var.uri,
         method = ngx.var.request_method
     })
     ngx.status = ngx.HTTP_FORBIDDEN
