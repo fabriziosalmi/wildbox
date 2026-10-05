@@ -54,12 +54,17 @@ VULNERABILITIES = f"{GUARDIAN}/api/v1/vulnerabilities/"
 
 
 def as_caller():
-    return {
-        "X-Wildbox-User-ID": CALLER["user_id"],
-        "X-Wildbox-Team-ID": CALLER["team_id"],
-        "X-Wildbox-Role": CALLER["role"],
-        "X-Gateway-Secret": settings.gateway_internal_secret,
-    }
+    """What a connector sends for CALLER, but for X-Forwarded-Proto.
+
+    Taken from the connectors' own helper, not written out here: whatever
+    else the services come to require of an internal call (#637 adds the
+    credential's type) is then in these requests too, and the tests below
+    stay tests of the one header.
+    """
+    with run_as(CALLER):
+        headers = gateway_headers()
+    del headers["X-Forwarded-Proto"]
+    return headers
 
 
 # --- What Guardian does, read from its settings ------------------------------
