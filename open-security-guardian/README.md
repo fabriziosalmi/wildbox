@@ -117,8 +117,24 @@ writes.
 - **A reference to another team's row is refused.** A foreign key or a
   list of ids in a request body (an asset, a framework, a scanner, a
   template, a user) must name a row your team can see, or the request
-  answers 400 with "object does not exist". A user can be named once they
-  have made a request as a member of your team.
+  answers 400 with "object does not exist". A user can be named while
+  they are a member of your team (next point).
+- **A user who left your team is no longer one of its users.** guardian
+  does not own memberships; identity does. guardian records that a user
+  acted in a team each time the gateway authenticates a request of theirs,
+  and counts them as a member for `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS`
+  (30) from the last one. When identity removes a member from a team, or
+  deletes an account, it tells guardian (`POST
+  /internal/team-memberships/revoke/`, on the internal network, with the
+  gateway-internal secret; the gateway does not route it): the user is
+  refused at once wherever the team names a user, and the roles they held
+  in the team are cleared (assignee, owner, technical contact, approver,
+  assessor, dashboard shares). If that notice is lost, the user stops
+  counting when the window runs out, because a user who left can make no
+  request that renews it. What a former member did stays on record: the
+  rows they created, the exceptions they approved, the notes they wrote.
+  The SLA and assignment e-mails go to an assignee only while they are a
+  member of the vulnerability's team.
 - **Shared reference data.** Compliance frameworks, their controls and
   vulnerability templates without a team are shared: every team reads them
   and builds on them (an assessment of a shared framework is the team's
@@ -127,7 +143,9 @@ writes.
 - **Background work stays in the team.** A discovery rule creates assets
   for its team, an alert rule measures its team's data and notifies its
   own recipients, a scheduled report holds its template's team's data and
-  is written under `MEDIA_ROOT/reports/<team id>/`.
+  is written under `MEDIA_ROOT/reports/<team id>/`. No notification has a
+  platform-wide recipient: one without recipients of its own is not sent
+  (see the [deployment guide](../docs/guides/deployment.md#notification-recipients)).
   `GET /api/v1/tasks/<task_id>/` answers for the tasks your team dispatched
   and 404 for any other.
 - **Rows written before guardian kept a team have none.** No team reaches

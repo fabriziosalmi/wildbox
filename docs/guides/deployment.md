@@ -248,14 +248,14 @@ schedule is defined in `open-security-guardian/guardian/schedule.py`; when
 
 | Task | Default | Why | Variable |
 | --- | --- | --- | --- |
-| SLA violation check | every 15 minutes | The shortest SLA is 4 hours (P1), so a breach is reported within 15 minutes of it. Each vulnerability is notified at most once every 24 hours, however often the check runs | `GUARDIAN_SCHEDULE_SLA_CHECK` |
+| SLA violation check | every 15 minutes | The shortest SLA is 4 hours (P1), so a breach is reported within 15 minutes of it. The assignee is e-mailed at most once every 24 hours per vulnerability, however often the check runs (see Notification recipients) | `GUARDIAN_SCHEDULE_SLA_CHECK` |
 | Alert rules | every 15 minutes | A condition is noticed within 15 minutes of becoming true. A rule notifies when it starts firing and when it recovers, not on every evaluation (below), so a shorter interval detects sooner without sending more mail | `GUARDIAN_SCHEDULE_ALERT_RULES` |
 | Risk score recalculation | daily, 02:00 | A full pass over open vulnerabilities, so off-peak. Edits and threat-intel enrichment already recalculate one vulnerability at a time; the pass catches what does not, such as a change to an asset's criticality | `GUARDIAN_SCHEDULE_RISK_SCORES` |
 | Expired report cleanup | daily, 03:00 | Reports expire 30 days after generation; a day's precision is enough | `GUARDIAN_SCHEDULE_REPORT_CLEANUP` |
 | Vulnerability history cleanup | daily, 03:30 | One year of history is kept; running daily keeps each deletion to one day of rows | `GUARDIAN_SCHEDULE_HISTORY_CLEANUP` |
 | Asset inventory | daily, 04:30 | Marks assets not seen for 30 days inactive | `GUARDIAN_SCHEDULE_ASSET_INVENTORY` |
-| Overdue compliance assessments | daily, 08:00 | Sends one reminder per overdue assessment on every run, at the start of the working day | `GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS` |
-| Expiring compliance exceptions | Mondays, 08:00 | Looks 30 days ahead and reminds on every run: weekly gives about four reminders per exception, daily would give thirty | `GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS` |
+| Overdue compliance assessments | daily, 08:00 | Prepares one reminder per overdue assessment on every run, at the start of the working day. Compliance notifications have no recipients yet, so none is e-mailed (see Notification recipients) | `GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS` |
+| Expiring compliance exceptions | Mondays, 08:00 | Looks 30 days ahead and prepares a reminder on every run: weekly gives about four reminders per exception, daily would give thirty. Not e-mailed, like the reminder above | `GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS` |
 | User-defined schedules | every minute | Queues the discovery rules and report schedules that are due (below). Their cron fields have a one-minute resolution, so each starts within a minute of its time; a sweep that finds nothing due is two indexed queries | `GUARDIAN_SCHEDULE_USER_SCHEDULES` |
 
 To change one, set its variable in `.env` and restart the scheduler:
@@ -301,7 +301,7 @@ The dispatcher in the last row runs the schedules users create:
 | Schedule | Defined by | Runs | What can be scheduled |
 | --- | --- | --- | --- |
 | Asset discovery rule (`/api/v1/guardian/assets/discovery-rules/`) | `schedule`: five crontab fields, in `CELERY_TIMEZONE` (UTC unless set), with the same syntax as the variables above | the rule's network scan, on the `scanning` queue | `network_scan` rules only. Cloud API and CMDB discovery are placeholders and agent reports and DNS zone transfers have no code, so the API refuses those types |
-| Report schedule (`/api/v1/guardian/reports/schedules/`) | `next_run` (the first run) and `frequency`: once, daily, weekly, monthly or quarterly | a report, generated on the `reporting` queue and e-mailed to the schedule's `recipients` when it is ready; a schedule without recipients sends no e-mail (see the note on `DEFAULT_NOTIFICATION_RECIPIENTS` under Alert rules) | vulnerability summary, asset inventory, compliance status and executive dashboard reports, as JSON or HTML. The other report types have no data behind them and the other formats are not written yet, so the API refuses them |
+| Report schedule (`/api/v1/guardian/reports/schedules/`) | `next_run` (the first run) and `frequency`: once, daily, weekly, monthly or quarterly | a report, generated on the `reporting` queue and e-mailed to the schedule's `recipients` when it is ready; a schedule without recipients sends no e-mail (see Notification recipients) | vulnerability summary, asset inventory, compliance status and executive dashboard reports, as JSON or HTML. The other report types have no data behind them and the other formats are not written yet, so the API refuses them |
 | Scan schedule (`/api/v1/guardian/scanners/scan-schedules/`) | `cron_expression` | nothing | nothing: guardian cannot start a scan on an external scanner yet, so creating, changing, triggering or enabling one answers 400. Existing ones can still be listed, disabled and deleted |
 
 - Each due time runs once. The dispatcher claims a run by moving `next_run`
@@ -345,14 +345,84 @@ For example, "more than 5 unresolved critical vulnerabilities":
   true after a day is a backlog to be reminded of, like the SLA check's daily
   reminder, and not news every 15 minutes.
 - Notifications are e-mailed to `notification_config.recipients`. A rule
-  that names none sends no e-mail: the code falls back to
-  `DEFAULT_NOTIFICATION_RECIPIENTS`, but `guardian/settings.py` does not
-  define that setting and `docker-compose.yml` does not pass it, so the
-  fallback is always empty. Each notification is recorded, delivered or not, and
+  that names none sends no e-mail (see Notification recipients). Each
+  notification is recorded, delivered or not, and
   `GET /api/v1/guardian/reports/alerts/{id}/notifications/` lists them.
 - The rule shows its `state` (`ok` or `firing`), `firing_since`,
   `last_value` and `last_evaluated_at`. `trigger_count` counts the times it
   started firing.
+
+#### Team memberships
+
+guardian lets a team name only its own members: as the assignee of a
+vulnerability, the owner of an asset, the people a dashboard is shared with.
+identity owns memberships, so guardian learns of them in two ways:
+
+- Every request the gateway authenticates tells guardian that the user is
+  in the team now. guardian counts a user as a member for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` from their last request.
+- When a member is removed from a team, or an account is deleted, identity
+  tells guardian at `GUARDIAN_INTERNAL_URL`, after it has made the change.
+  guardian stops accepting the user at once and clears the roles they held
+  in that team.
+
+| Variable | Read by | Default | Meaning |
+| --- | --- | --- | --- |
+| `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` | `guardian`, `guardian-worker`, `guardian-beat` | `30` | Days a user stays one of a team's users without making a request in it, from 1 to 365. Any other value stops the three containers at start-up: there is no way to switch the window off, since that would keep a former member for good. Shorter bounds a lost notice more tightly; a member who has not opened guardian for longer than this cannot be assigned work until their next request |
+| `GUARDIAN_INTERNAL_URL` | `identity` | `http://open-security-guardian:8013/internal/team-memberships/revoke/` | Where identity tells guardian that a membership ended. Set it to an empty value only in a deployment that does not run guardian: identity then sends nothing |
+
+- The notice does not go through the gateway, which proxies guardian's
+  `/api/v1/` only. identity and guardian share a network in both Compose
+  files, and guardian refuses the notice without `GATEWAY_INTERNAL_SECRET`,
+  which both already have.
+- Removing a member does not wait for guardian. If guardian does not
+  confirm the notice (three attempts), the member is removed all the same
+  and identity logs an error that begins `guardian was not told of`. The
+  gateway already refuses the member, and guardian stops counting them when
+  the window runs out. To apply the notice without waiting, run it by hand
+  in guardian's container, with the ids from identity:
+
+  ```bash
+  docker compose exec guardian python manage.py revoke_team_membership \
+    --team <team UUID> --user <user UUID>
+  # an account that was deleted:
+  docker compose exec guardian python manage.py revoke_team_membership \
+    --user <user UUID> --all-teams
+  ```
+
+  `--dry-run` reports what would be cleared and changes nothing. Use it
+  only for a user identity has removed: the roles it clears do not come
+  back.
+- Deactivating an account sends no notice: the account keeps its
+  memberships and can be reactivated. It cannot make requests, so it stops
+  counting in guardian when the window runs out.
+- After the upgrade, an existing membership counts from the day guardian
+  first saw the user, not from the upgrade. A member who has used guardian
+  since is unaffected; one first seen more than 30 days ago is counted
+  again from their next request.
+
+#### Notification recipients
+
+guardian e-mails a notification to the recipients its own team named, and to
+nobody else. There is no platform-wide recipient: the
+`DEFAULT_NOTIFICATION_RECIPIENTS` and `SECURITY_TEAM_EMAIL` settings that
+earlier versions looked for are no longer read, and defining them changes
+nothing. One address for the whole platform would receive every team's asset
+names, vulnerability titles and findings.
+
+| Notification | Sent to | Without a recipient |
+| --- | --- | --- |
+| Alert rule | the rule's `notification_config.recipients` | not sent; the notification is recorded with `delivered: false` and listed by `GET /api/v1/guardian/reports/alerts/{id}/notifications/` |
+| Scheduled report | the schedule's `recipients` | not sent; the report is generated and listed, and `guardian-worker` logs a warning that names the schedule |
+| SLA violation | the vulnerability's assignee, while they are a member of its team and the account has an e-mail address | not sent; the vulnerability's history (`GET /api/v1/guardian/vulnerabilities/{id}/history/`) records the violation once, as `SLA violation notification not sent (no assignee to e-mail)`, and `guardian-worker` logs a warning |
+| Vulnerability assignment | the assignee, while they are a member of the vulnerability's team and the account has an e-mail address | not sent; `guardian-worker` logs a warning |
+| Compliance (high-risk finding, assessment started, completed or overdue, exception expiring) | nobody: an assessment, a result and an exception name no recipients | not sent; `guardian-worker` logs `Notification not sent, it has no recipients (compliance)` with the subject |
+
+- An account has an e-mail address in guardian only if an operator set one
+  on its user in the Django admin: guardian mirrors the identity service's
+  users by id and does not copy their addresses.
+- An SLA violation whose e-mail could not be delivered is recorded as
+  `not sent (delivery failed)` and tried again a day later.
 
 ### cspm's scan worker
 

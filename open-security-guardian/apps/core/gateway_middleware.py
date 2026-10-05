@@ -10,7 +10,9 @@ import hmac
 import logging
 import os
 import uuid
+from datetime import timedelta
 from django.contrib.auth.models import User
+from django.utils import timezone
 from django.utils.deprecation import MiddlewareMixin
 from django.http import JsonResponse
 from django.conf import settings
@@ -44,11 +46,29 @@ def _mirror_db_user(user_id, role):
     return user
 
 
+#: A membership row's last_seen is rewritten at most this often: a request
+#: every second is not a database write every second. It only has to be far
+#: below settings.TEAM_MEMBERSHIP_MAX_AGE (a day at the least), so that a
+#: member who keeps using guardian never looks stale.
+MEMBERSHIP_REFRESH_INTERVAL = timedelta(minutes=5)
+
+
 def _record_membership(user, team_id):
-    """Record that ``user`` acts as a member of ``team_id`` (#642)."""
+    """Record that ``user`` acts as a member of ``team_id``, now (#642, #676).
+
+    The gateway authenticated this request, so identity says the user is in
+    the team at this moment. That is what a membership row is worth, and
+    why it expires (apps.core.tenancy.current_memberships): a user identity
+    has removed from the team no longer gets here to refresh it.
+    """
     from apps.core.models import TeamMembership
 
-    TeamMembership.objects.get_or_create(team_id=team_id, user=user)
+    now = timezone.now()
+    membership, created = TeamMembership.objects.get_or_create(
+        team_id=team_id, user=user, defaults={'last_seen': now}
+    )
+    if not created and membership.last_seen < now - MEMBERSHIP_REFRESH_INTERVAL:
+        TeamMembership.objects.filter(pk=membership.pk).update(last_seen=now)
 
 
 class GatewayUser:

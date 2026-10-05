@@ -6,6 +6,7 @@ The Guardian: Proactive Vulnerability Management
 
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 import uuid
 
 
@@ -163,6 +164,16 @@ class TeamMembership(models.Model):
     a vulnerability to, share a dashboard with -- only the users recorded
     for it. Without this, any integer user id was accepted, and the
     response named that user to a team they are not in.
+
+    A row is evidence, not the membership itself: identity owns that. It
+    says the gateway authenticated this user in this team at ``last_seen``,
+    and it counts for settings.TEAM_MEMBERSHIP_MAX_AGE from then
+    (apps.core.tenancy.current_memberships). Nothing used to remove a row,
+    so a member who left a team stayed one of its users here for good
+    (#676). Now identity tells guardian when a membership ends, and the row
+    is deleted with the roles the member held (apps.core.memberships); a
+    row whose notice never came stops counting on its own, because a user
+    who left can no longer make the requests that refresh it.
     """
 
     team_id = models.UUIDField(db_index=True)
@@ -170,6 +181,9 @@ class TeamMembership(models.Model):
         User, on_delete=models.CASCADE, related_name='guardian_team_memberships'
     )
     first_seen = models.DateTimeField(auto_now_add=True)
+    # Not auto_now: the middleware refreshes it, at most once per
+    # MEMBERSHIP_REFRESH_INTERVAL, and tests and the migration set it.
+    last_seen = models.DateTimeField(default=timezone.now, db_index=True)
 
     class Meta:
         unique_together = [('team_id', 'user')]
