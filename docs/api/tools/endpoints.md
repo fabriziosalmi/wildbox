@@ -493,13 +493,49 @@ gateway, not on this service.
 
 | Path | Content |
 | --- | --- |
-| `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`) and synchronous tool executions by tool and outcome (`wildbox_tool_executions_total`; asynchronous runs happen in the worker, which is not scraped). `monitoring/prometheus.yml` scrapes it |
+| `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`), synchronous tool executions by tool and outcome (`wildbox_tool_executions_total`) and the [asynchronous run metrics](#asynchronous-run-metrics). `monitoring/prometheus.yml` scrapes it |
 | `/openapi.json` | The service's OpenAPI document, only when `ENVIRONMENT` is `development` |
 | `/api` | Service name, version and tool names |
 
 None of them is part of the public API, and `/health` and these three are
 the only routes that answer without the gateway's identity: every other
 route under `/api/` answers 401 to a request that does not carry it.
+
+### Asynchronous Run Metrics
+
+An asynchronous run executes in `tools-worker`, which Prometheus does not
+scrape. The worker counts in Redis how each task ended, and `/metrics` of
+this service reads the counts on every scrape:
+
+| Metric | Type | What it is |
+| --- | --- | --- |
+| `wildbox_tool_async_executions_total{tool, outcome}` | counter | Tasks by tool and final outcome, one count per task |
+| `wildbox_tool_async_queue_length` | gauge | Tasks in the queue that no worker has taken |
+| `wildbox_tool_async_tasks_consumed_total` | counter | Times a worker took a task off the queue: every start (a retried task starts again) and every task it dropped because it was canceled while it waited |
+| `wildbox_tool_async_metrics_up` | gauge | 1 when the three above could be read from Redis; 0, and no value for them, when not |
+
+`outcome` is one of:
+
+| Outcome | The task |
+| --- | --- |
+| `completed` | ran its tool, which returned (a result with `success: false` included) |
+| `failed` | ran its tool, which raised; or failed in the worker after its retries |
+| `timeout` | was stopped at the soft time limit (9 minutes) or killed at the hard one (10 minutes) |
+| `cancelled` | was canceled with `DELETE /api/v1/tasks/{task_id}`, while it waited or while it ran |
+| `refused` | ended before its tool was started: the caller may not run the tool, the target is not allowed, the input does not validate or no tool has that name |
+
+The status a client reads from `GET /api/v1/tasks/{task_id}` is unchanged
+and differs in two places: a task that ended before its tool started
+because of its input, its target or its tool name reads `failed` there,
+and one killed at the hard time limit reads `failed`
+(`Task execution failed (TimeLimitExceeded)`). A tool name that is not a
+tool is counted under `tool="unknown"`.
+
+The counters are kept in Redis (`wildbox:tools:async-outcomes`,
+`wildbox:tools:async-consumed`), so they survive a restart of the API and
+of the worker and are reset only with the Redis data. A count the worker
+cannot write, because Redis does not answer it, is lost: the counters can
+be short, never long.
 
 The service has no `/api/system/` routes. `info`, `metrics`,
 `operational-metrics` and `health-aggregate` existed there, without

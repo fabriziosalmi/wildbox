@@ -18,9 +18,10 @@ from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, CacheControlMiddleware
 from open_security_shared.api_docs import api_docs_urls
 from open_security_shared.errors import install_error_handlers
-from open_security_shared.observability import install_observability
+from open_security_shared.observability import install_observability, register_collector
 from app.api.router import router as api_router, DISCOVERED_TOOLS, register_tool_endpoint
 from app.api.async_router import router as async_router
+from app.async_metrics import AsyncRunsCollector
 from app.execution_manager import execution_manager
 from app.tool_loader import discover_tools as _discover_tools
 
@@ -140,7 +141,14 @@ def create_app() -> FastAPI:
     # in every other service and scraped by monitoring/prometheus.yml. It is
     # the service's only metrics endpoint (#646).
     install_observability(app, service_name="tools", service_version="0.1.6")
-    
+
+    # The asynchronous runs execute in the worker, which Prometheus cannot
+    # scrape; the worker counts them in Redis and this process exports the
+    # counts from the same /metrics (app/async_metrics.py, #721). Without
+    # REDIS_URL there is no asynchronous execution and nothing to export.
+    if settings.redis_url:
+        register_collector("tools_async_runs", AsyncRunsCollector())
+
     # Discover and register tools
     discovered_tools = discover_tools()
     

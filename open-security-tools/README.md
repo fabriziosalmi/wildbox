@@ -152,9 +152,16 @@ curl -s http://127.0.0.1:8000/health
 ```
 
 `/health` is the route the image's and the compose file's health checks
-probe. `/metrics` carries the request counters and
-`wildbox_tool_executions_total`, the synchronous executions by tool and
-outcome; asynchronous runs happen in the worker, which exposes no metrics.
+probe. `/metrics` carries the request counters,
+`wildbox_tool_executions_total` (the synchronous executions by tool and
+outcome) and the asynchronous ones. Those execute in the worker, which
+Prometheus cannot scrape: the worker counts in Redis how each task ended,
+a task killed at the hard time limit or canceled included, and this
+service exports the counts as `wildbox_tool_async_executions_total`, with
+the length of the task queue (`wildbox_tool_async_queue_length`) and the
+number of tasks the worker has taken
+(`wildbox_tool_async_tasks_consumed_total`). See
+[the endpoint reference](https://www.wildbox.io/api/tools/endpoints/#asynchronous-run-metrics).
 
 There are no `/api/system/` routes: `info`, `metrics`, `operational-metrics`
 and `health-aggregate` answered without authentication and were removed

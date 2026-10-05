@@ -532,6 +532,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   do so, which is a request, not a control. Any value but the two names
   stops the service at start. Neither tool worked before this release,
   so the default takes nothing away from an existing deployment.
+- **Asynchronous tool runs are counted, and three alerts read the
+  counts** (#721). A run submitted to `/api/v1/tools/{tool}/async`
+  executes in `tools-worker`, which Prometheus cannot scrape (it serves
+  no HTTP, and in production it is on other networks), so nothing said
+  that those runs failed or that the worker had stopped. The worker now
+  counts in Redis how each task ended, and the tools API, which is
+  scraped, exports `wildbox_tool_async_executions_total{tool, outcome}`,
+  `wildbox_tool_async_queue_length`,
+  `wildbox_tool_async_tasks_consumed_total` and
+  `wildbox_tool_async_metrics_up`. A task is counted once, when Celery
+  settles its state and by the process that settles it: the child that
+  ran it when it returned or raised, the worker's main process when it
+  was killed at the hard time limit or canceled, which the child never
+  sees. A retry is not counted, nor is a task whose process died and
+  that Celery put back on the queue, until it ends. The counters live as
+  long as the Redis data, not as long as a process. The rule file gains
+  `WildboxAsyncToolFailureRate` (over a quarter of the asynchronous runs
+  failed, for 15 minutes; it is separate from the synchronous alert so
+  that a worker failing every task is not hidden by synchronous runs
+  that succeed), `WildboxAsyncToolTasksNotConsumed` (tasks have been
+  queued for 15 minutes and no worker took any; a backlog that a busy
+  worker is working through does not fire it) and
+  `WildboxAsyncToolMetricsUnreadable` (the API cannot read the counts,
+  so the other two cannot fire). A task that ended before its tool
+  started (input that does not validate, a refused target, an unknown
+  tool) is counted as `refused`, not `failed`, as the synchronous path
+  answers those with a 4xx before a run exists; an unknown tool name is
+  the label `unknown`. Tests start the service's Celery app as a prefork
+  worker against a Redis server, with a child replaced after every task,
+  and end tasks in each way, a kill at the hard time limit included.
+  `scripts/check_monitoring_config.py` now also refuses `tools-worker`
+  as a scrape target, a rule on a tools metric while the tools API is
+  not scraped, and an alert without a unit test in which it stays
+  silent.
 
 ### CI
 

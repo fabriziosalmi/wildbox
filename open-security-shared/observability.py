@@ -52,6 +52,7 @@ _REGISTRY = None
 _HTTP_REQUESTS = None
 _HTTP_LATENCY = None
 _OUTCOME_COUNTERS: dict = {}
+_COLLECTORS: dict = {}
 
 
 def _init_metrics(service_name: str):
@@ -92,6 +93,33 @@ def outcome_counter(name: str, documentation: str, labelnames: tuple = ("outcome
             name, documentation, list(labelnames), registry=_REGISTRY
         )
     return _OUTCOME_COUNTERS[name]
+
+
+def register_collector(name: str, collector) -> bool:
+    """
+    Serve a custom collector's metrics from ``/metrics``.
+
+    For values this process does not hold: a count several processes add to
+    in a shared store, read when Prometheus scrapes (the tools service's
+    asynchronous runs, counted in Redis by its workers). ``collector`` is a
+    prometheus_client collector: an object with ``collect()``.
+
+    ``name`` identifies the collector, so that an application built twice in
+    one process (tests do) registers it once. Returns False when it was
+    already registered, or when prometheus_client is not installed.
+
+    ``collect()`` runs on every scrape, in a worker thread (see
+    ``install_observability``), so it may wait on the network; it must not
+    raise for a store that does not answer, or the whole scrape fails.
+    """
+    if not PROMETHEUS_AVAILABLE:
+        return False
+    _init_metrics("shared")
+    if name in _COLLECTORS:
+        return False
+    _REGISTRY.register(collector)
+    _COLLECTORS[name] = collector
+    return True
 
 
 class _NullMetric:
@@ -197,7 +225,11 @@ def install_observability(
 
     if metrics_path:
 
-        async def _metrics_endpoint() -> Response:
+        # Not a coroutine, so FastAPI runs it in a worker thread: a collector
+        # added with register_collector may read its values from a store,
+        # and a store that is slow to answer must not stall the event loop
+        # and with it every request the service is handling.
+        def _metrics_endpoint() -> Response:
             return metrics_response()
 
         app.add_api_route(

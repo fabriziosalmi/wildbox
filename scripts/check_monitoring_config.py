@@ -19,10 +19,14 @@ static   Read with PyYAML, no Docker needed.
            with ``docker inspect`` and ``ps``).
          - monitoring/prometheus.yml: ``alerting.alertmanagers`` names that
            service, on the port it listens on; the rule files it loads are
-           the ones the container mounts.
+           the ones the container mounts; tools-worker, which serves no HTTP,
+           is not a scrape target (#721).
          - monitoring/alert_rules.yml: every ``job="..."`` an expression
-           selects is a scrape job; every alert has a severity, a summary and
-           a description, and a unit test in which it fires.
+           selects is a scrape job; a metric that only the tools api exports
+           (its own runs and, from Redis, the worker's) is read only while
+           that api is scraped; every alert has a severity, a summary and a
+           description, a unit test in which it fires and one in which it
+           must stay silent.
          - monitoring/alertmanager.yml and monitoring/examples/*.yml: a
            receiver that sends nowhere is named ``no-notifications`` and the
            shipped default has no other; an example has a receiver that does
@@ -134,6 +138,23 @@ PROMQL_WORDS = {
 }
 # Series Prometheus writes itself for every target; they have no metadata.
 SYNTHETIC_METRICS = {"up"}
+# Metrics that one scrape target alone exports, by prefix. The tools api
+# exports the counters of the runs it executes and, read from Redis, of the
+# runs tools-worker executes (#721): the worker itself serves no HTTP and is
+# not on a network Prometheus can reach, so it must never be the target. A
+# rule on one of these fires only while that target is scraped.
+SOLE_EXPORTERS = {"wildbox_tool_": "open-security-tools:8000"}
+# Names that look like a place to scrape and are not one, with the reason:
+# the Compose service and the alias it has on the network.
+_TOOLS_WORKER = (
+    "tools-worker is a Celery worker: it serves no HTTP, and on the production networks "
+    "Prometheus cannot reach it, so the target would be down for ever. Its runs are "
+    "exported by open-security-tools:8000 (wildbox_tool_async_*)"
+)
+NOT_SCRAPE_TARGETS = {
+    "tools-worker": _TOOLS_WORKER,
+    "open-security-tools-worker": _TOOLS_WORKER,
+}
 
 # Settings that hold a secret when written inline. Each has a `*_file`
 # counterpart in Alertmanager, which is the only form the shipped files use.
@@ -251,6 +272,23 @@ def grouping_labels(expr):
     for body in GROUPING.findall(expr):
         labels.update(label.strip() for label in body.split(",") if label.strip())
     return labels
+
+
+def sole_exporter(metric):
+    """The one scrape target that exports ``metric``, if only one does."""
+    for prefix, target in SOLE_EXPORTERS.items():
+        if metric.startswith(prefix):
+            return target
+    return None
+
+
+def scrape_targets(prometheus):
+    """Every ``host:port`` the scrape configuration lists."""
+    targets = set()
+    for job in as_list(prometheus.get("scrape_configs")):
+        for static in as_list(job.get("static_configs")):
+            targets.update(str(target) for target in as_list(static.get("targets")))
+    return targets
 
 
 def alert_rules(rules):
@@ -420,6 +458,13 @@ def check_prometheus_config(prometheus, compose):
                 f"the service listens on {port}"
             )
 
+    for target in sorted(scrape_targets(prometheus)):
+        host = target.rpartition(":")[0] or target
+        if host in NOT_SCRAPE_TARGETS:
+            problems.append(
+                f"{PROMETHEUS_CONFIG}: scrape target {target!r}: {NOT_SCRAPE_TARGETS[host]}"
+            )
+
     rule_files = [str(path) for path in as_list(prometheus.get("rule_files"))]
     if not rule_files:
         problems.append(f"{PROMETHEUS_CONFIG}: no rule_files")
@@ -445,11 +490,16 @@ def check_rules(rules, prometheus, rule_tests):
     if not alerts:
         problems.append(f"{ALERT_RULES}: no alerting rule")
 
+    scraped = scrape_targets(prometheus)
+
     fires_in_a_test = set()
+    silent_in_a_test = set()
     for test in as_list(rule_tests.get("tests")):
         for case in as_list(test.get("alert_rule_test")):
             if case.get("exp_alerts"):
                 fires_in_a_test.add(case.get("alertname"))
+            else:
+                silent_in_a_test.add(case.get("alertname"))
 
     for rule in alerts:
         name = rule["alert"]
@@ -459,6 +509,13 @@ def check_rules(rules, prometheus, rule_tests):
                 problems.append(
                     f"{ALERT_RULES}: {name} selects job={job!r}, which {PROMETHEUS_CONFIG} does not scrape "
                     f"(jobs: {sorted(jobs)}): the alert can never fire"
+                )
+        for metric in sorted(rule_metric_names(expr)):
+            exporter = sole_exporter(metric)
+            if exporter and exporter not in scraped:
+                problems.append(
+                    f"{ALERT_RULES}: {name} reads {metric}, which only {exporter} exports, and "
+                    f"{PROMETHEUS_CONFIG} does not scrape that target: the alert can never fire"
                 )
         if not (rule.get("labels") or {}).get("severity"):
             problems.append(f"{ALERT_RULES}: {name} has no severity label")
@@ -471,6 +528,12 @@ def check_rules(rules, prometheus, rule_tests):
         if name not in fires_in_a_test:
             problems.append(
                 f"{ALERT_RULES}: {name} has no unit test in {RULE_TESTS} in which it fires"
+            )
+        elif name not in silent_in_a_test:
+            # An expression that is always true passes every firing test.
+            problems.append(
+                f"{ALERT_RULES}: {name} has no unit test in {RULE_TESTS} in which it must stay "
+                "silent (`exp_alerts: []`): nothing shows what it does not fire for"
             )
     return problems
 
