@@ -125,12 +125,9 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
-      # Rate limits for the TOOLS service (this block builds ./open-security-tools;
-      # the comment here used to say "AI agent service"). The value is no longer
-      # duplicated: app/config.py declares no competing default, so this file is
-      # the single place the effective limit is set (WILDBO-CONF-03).
-      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-500}
-      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+      # No rate-limit variables: RATE_LIMIT_REQUESTS and RATE_LIMIT_WINDOW were
+      # set here and never enforced by the tools service (#646). Requests are
+      # limited per team by the gateway (RATE_LIMIT_PER_HOUR, on its service).
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       # Internal ranges and hosts the network tools may scan; empty refuses
       # every internal target (#614). The worker must get the same value.

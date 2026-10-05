@@ -3,11 +3,6 @@ from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
 from pydantic import Field
 from typing import Annotated, List, Literal, Optional
-import sys
-import os
-
-# Add app directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 
 from ...standardized_schemas import (
     BaseToolInput, 
@@ -21,7 +16,19 @@ class PortScannerInput(BaseToolInput):
     """Port scanner input schema - inherits from BaseToolInput."""
     # Required here although optional in BaseToolInput: main.py refuses an
     # empty target, so the defaults alone could not run (#611).
-    target: str = Field(..., min_length=1, description="Host name or IP address to scan", examples=["127.0.0.1"])
+    # The example is a host the default target policy accepts, and one whose
+    # owner permits test scans. It was 127.0.0.1, which the service refuses
+    # (#646).
+    target: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Host name or IP address to scan. Loopback, private and other internal "
+            "targets are refused unless the operator allows them "
+            "(TOOLS_ALLOWED_INTERNAL_TARGETS)"
+        ),
+        examples=["scanme.nmap.org"],
+    )
     ports: Optional[List[Annotated[int, Field(ge=1, le=65535)]]] = Field(
         None, description="List of ports to scan. If not provided, scans common ports."
     )

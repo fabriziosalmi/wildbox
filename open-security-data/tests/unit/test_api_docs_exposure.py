@@ -1,11 +1,10 @@
-"""identity serves its API schema and documentation pages in development only.
+"""data serves its API schema and documentation pages in development only.
 
-/docs, /redoc and /openapi.json map every route, admin and internal ones
-included. identity served the two pages unconditionally (#496), then turned
-all three off for the exact value ``production`` only, so ``staging`` still
-published them (#679). The rule is now the one every service shares
-(``open_security_shared.api_docs``): served when ``ENVIRONMENT`` is
-``development``, 404 in any other environment.
+/docs, /redoc and /openapi.json map every route of the service. data turned
+the two pages off outside development but left ``openapi_url`` at FastAPI's
+default, so the schema was served in every environment (#679). The rule is
+now the one every service shares (``open_security_shared.api_docs``): served
+when ``ENVIRONMENT`` is ``development``, 404 in any other environment.
 
 Every FastAPI service has this test, with the same shape. The application is
 built when its module is imported, from the environment of that moment, so
@@ -16,7 +15,6 @@ environment. The probe does not enter the lifespan, so it needs no database.
 
 import json
 import os
-import string
 import subprocess
 import sys
 from pathlib import Path
@@ -26,14 +24,14 @@ import pytest
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 
 # Where the application object lives, as uvicorn names it.
-APP = "app.main:app"
+APP = "app.api.main:app"
 
 # What the settings need before the module can be imported; test-only values.
 SETTINGS = {
+    # Required when ENVIRONMENT=production, which also refuses DEBUG=true.
+    "SECRET_KEY": "x" * 40,
     "DATABASE_URL": "postgresql://test:test@localhost:5432/test",
-    "JWT_SECRET_KEY": "a" * 32,
-    # Required when ENVIRONMENT=production; needs enough distinct characters.
-    "API_KEY_HASH_SECRET": string.ascii_letters[:40],
+    "DEBUG": "false",
 }
 
 DOCS, REDOC, SCHEMA = "/docs", "/redoc", "/openapi.json"

@@ -422,7 +422,7 @@ service routes are not under `/v1/`, so the gateway does not reach them:
 | --- | --- | --- |
 | `GET /health` | none | Redis, Celery and Anthropic key status. Used by the container health check. |
 | `GET /` | none | Service name, version and links. |
-| `/docs`, `/redoc`, `/openapi.json` | none | Disabled when `ENVIRONMENT=production`. |
+| `/docs`, `/redoc`, `/openapi.json` | none | Served only when `ENVIRONMENT` is `development`. |
 
 The service port is bound to `127.0.0.1` on the host. `/health` answers on
 it, from the host or inside the container; `/stats` and the `/v1` routes need

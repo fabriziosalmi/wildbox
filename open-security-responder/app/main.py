@@ -24,6 +24,7 @@ from .workflow_engine import start_execution, workflow_engine
 from .connectors.base import connector_registry
 from .auth import get_current_user, require_role, GatewayUser
 from .caller import CallerIdentityUnavailable
+from open_security_shared.api_docs import api_docs_urls
 
 # Configure logging
 logging.basicConfig(
@@ -78,9 +79,11 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Open Security Responder...")
 
 
-# Determine if running in production
+# /docs, /redoc and /openapi.json are served in development only, by the rule
+# every service shares. They used to be turned off for the exact value
+# "production", so any other environment, "staging" included, published the
+# schema (#679).
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-DISABLE_DOCS = ENVIRONMENT == "production"
 
 # Initialize FastAPI app
 # One version, in one place (WILDBO-API-06): the constructor said 0.1.6 and the
@@ -91,10 +94,8 @@ app = FastAPI(
     title="Open Security Responder API",
     description="SOAR (Security Orchestration, Automation and Response) microservice",
     version=SERVICE_VERSION,
-    docs_url=None if DISABLE_DOCS else "/docs",
-    redoc_url=None if DISABLE_DOCS else "/redoc",
-    openapi_url=None if DISABLE_DOCS else "/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
+    **api_docs_urls(ENVIRONMENT),
 )
 
 # Canonical error contract + correlation id + Prometheus metrics.
