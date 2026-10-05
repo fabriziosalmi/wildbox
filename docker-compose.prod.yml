@@ -364,8 +364,15 @@ services:
         max-file: "3"
 
   # ---------------------------------------------------------------------------
-  # Services with no other production settings: networks only (see the map at
-  # the top of this file).
+  # Services with few or no other production settings: networks (see the map
+  # at the top of this file) and log rotation.
+  #
+  # Every service has a `logging` block. Without one Docker's json-file driver
+  # keeps a container's whole output in a single file that is never rotated,
+  # and ten services had none: Prometheus and Alertmanager, the tools worker
+  # and Flower, the data API and its scheduler, CSPM, the sensor, n8n and the
+  # backup loop (#726). tests/scripts/test_production_logging.py fails when a
+  # service of docker-compose.yml has no rotation here.
   # ---------------------------------------------------------------------------
   tools-worker:
     networks: !override
@@ -373,11 +380,21 @@ services:
         aliases:
           - open-security-tools-worker
       egress: {}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   tools-flower:
     networks: !override
       - data
       - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # The broker and the database are on data; egress for what the tasks
   # reach outside the stack: port scans of asset addresses, threat-intel
@@ -422,11 +439,21 @@ services:
           # The gateway's data_service upstream and prometheus.
           - open-security-data
       data: {}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   data-scheduler:
     networks: !override
       - data
       - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   cspm:
     networks: !override
@@ -435,6 +462,11 @@ services:
           # The gateway's cspm_service upstream and prometheus.
           - open-security-cspm
       data: {}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   # The broker is on data; egress for the cloud provider APIs the scans
   # call (AWS, GCP, Azure). Nothing looks the worker up by name (#601).
@@ -457,19 +489,39 @@ services:
   sensor:
     networks: !override
       - frontend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   automations:
     networks: !override
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   backup:
     networks: !override
       - data
       - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   prometheus:
     networks: !override
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # The same segment as prometheus, which sends it the alerts and scrapes it
   # (#658). backend has a route out, which is how a notification reaches a
@@ -477,6 +529,11 @@ services:
   alertmanager:
     networks: !override
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # Production network segmentation; see the map at the top of this file.
 networks:
