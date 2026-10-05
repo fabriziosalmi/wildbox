@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A missing `ENVIRONMENT` never means development, and the start-up
+  checks for secrets apply to everything that is not development**
+  (#736). `docker-compose.yml` passed
+  `ENVIRONMENT=${ENVIRONMENT:-development}` to eighteen services: a `.env`
+  without the line, written by hand or older than the variable, started
+  the whole stack as a development one, silently, with the API schemas
+  published. The production overlay set `production` itself on five
+  services and left thirteen to `.env`. Compose now requires the variable
+  (`${ENVIRONMENT:?}`) and refuses to start without it, before it touches
+  a container; `docker-compose.prod.yml` sets `production` on all
+  eighteen; `scripts/validate_secrets.py` requires the line, with
+  `production`, `staging` or `development`. The checks the services make
+  at start-up applied to the exact value `production`: identity required
+  `API_KEY_HASH_SECRET`, data `SECRET_KEY`, `DATABASE_URL` and `DEBUG`
+  off, tools a real API key, so `staging`, a `.env` that said
+  `Production` (data and tools compared case-sensitively) or no
+  `ENVIRONMENT` at all ran without them. They now follow one rule,
+  `open_security_shared.environment`: only an environment that says
+  `development` is a development one, and every other is held to the
+  checks. The rule for the API documentation (#679) is the same one,
+  read the other way.
 - **The sensor in the root `docker-compose.yml` drops all capabilities**
   (#725). Its README and `DOCKER.md` said the container runs with
   `cap_drop: ALL`, which only the standalone compose file did; in the
@@ -1095,6 +1116,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **tools no longer logs a configuration error for two variables it does
+  not read** (#736). With `ENVIRONMENT=production`, `app/tool_config.py`
+  required `API_KEY_SECRET` and `DATABASE_URL` and logged
+  `Configuration validation failed` on every start: the service reads
+  neither, and Compose passes it neither. The check is removed.
+- **`make start` no longer leaves `data-scheduler` crash-looping**
+  (#736). The development overlay turns `DEBUG` on for it and left its
+  `ENVIRONMENT` to `.env`, which `make generate-secrets` sets to
+  `production`; the scheduler loads the data service's configuration,
+  which refuses `DEBUG` outside development. The overlay now sets
+  `development` for it, as it did for `data`.
+- **The standalone Compose file of identity says it is a development
+  stack** (#736): it sets `ENVIRONMENT=development`, the only environment
+  in which identity starts without `API_KEY_HASH_SECRET`.
 - **cspm, data and guardian run prometheus-client 0.26.0** (#722), the
   version the other services already locked, up from 0.19.0. The six
   services that call `install_observability` name
@@ -1419,6 +1454,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **Path-filtered workflows follow what they build and run** (#736).
+  Docker Build Validation was triggered by `open-security-*/app/**`, the
+  lock, the Dockerfile, `pyproject.toml` and `manage.py`: a change to
+  guardian's code (`apps/`, `guardian/`), to the dashboard's (`src/`,
+  `package-lock.json`), to the gateway's nginx configuration or to an
+  entrypoint script changed an image and built none. Its filter is now
+  the whole directory of each service and of the shared package, less
+  documentation and tests. Production Stack is also triggered by
+  `scripts/validate_secrets.py` and `tests/integration/**`, which it
+  runs, and Documentation Quality by `.markdown-link-check.json`, on
+  push as on pull requests. `tests/scripts/test_workflow_path_filters.py`
+  derives both rules from the workflows and fails when a file a workflow
+  builds or runs would not start it.
+- **The unit-test job no longer masks a shared package that does not
+  install** (#736): `pip install ../open-security-shared || true` lost
+  its `|| true`, and a test refuses a masked install in any workflow.
+- **The gateway's mock identity answers errors as identity does**
+  (#736). `open-security-gateway/test/mock_identity.py` answered
+  `{"detail": "..."}` for 400, 401 and 403; it now answers the canonical
+  body, with the request id the gateway sent and identity's own words,
+  and 422 for a body that is not JSON. The gateway reads only the
+  status, so no gateway test changes; a test compares the mock's
+  answers with what `open_security_shared.errors` builds.
 - **No script test can be skipped in CI** (#723). The backup, restore
   and rotation tests start a throwaway PostgreSQL or Redis and skip
   where Docker is missing. The step that runs `tests/scripts` already

@@ -25,8 +25,10 @@ services:
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL environment variable is required}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY environment variable is required}
-      # Optional here (no ENVIRONMENT=production): unset, identity keys API-key
+      # This file is a development stack, and says so: only development may
+      # run without API_KEY_HASH_SECRET (#736). Unset, identity keys API-key
       # digests with JWT_SECRET_KEY and logs a warning (#648).
+      - ENVIRONMENT=development
       - API_KEY_HASH_SECRET=${API_KEY_HASH_SECRET:-}
       # Auto-migration settings
       - CREATE_INITIAL_ADMIN=true

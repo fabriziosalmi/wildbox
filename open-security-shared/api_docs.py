@@ -26,7 +26,7 @@ an empty string or None, and both are closed.
 
 from typing import Dict, Optional
 
-DEVELOPMENT = "development"
+from .environment import is_development
 
 _ENABLED: Dict[str, Optional[str]] = {
     "docs_url": "/docs",
@@ -46,8 +46,11 @@ def api_docs_enabled(environment: Optional[str]) -> bool:
     Case and surrounding whitespace are ignored, as the services ignore them
     when they read `ENVIRONMENT`. Anything else is False: `production`,
     `staging`, an empty or missing value, a value that is not a string.
+
+    The rule is `open_security_shared.environment.is_development`, which the
+    start-up checks for secrets follow too, the other way round.
     """
-    return isinstance(environment, str) and environment.strip().lower() == DEVELOPMENT
+    return is_development(environment)
 
 
 def api_docs_urls(environment: Optional[str]) -> Dict[str, Optional[str]]:
