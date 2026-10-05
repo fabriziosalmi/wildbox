@@ -3,9 +3,13 @@ version: '3.8'
 services:
   # Development version with hot reload
   wildbox-api-dev:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.dev
+      # Dockerfile.dev installs the shared package from this named build
+      # context, as Dockerfile does (see docker-compose.yml).
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: wildbox-security-api-dev
     ports:
       - "127.0.0.1:8000:8000"

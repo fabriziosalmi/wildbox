@@ -1,9 +1,11 @@
-"""Tests for check_container_hygiene.py, the guard on Compose files.
+"""Tests for check_container_hygiene.py, the guard on Compose files and Dockerfiles.
 
 The gateway's development Compose file mounted /var/run/docker.sock into an
 unpinned, unmaintained log shipper (#680), and nothing read Compose files
-other than the root one. These feed the checker Compose documents as text,
-then run it on the repository itself.
+other than the root one. Four Dockerfiles upgraded pip from PyPI, unpinned,
+before their hash-checked install, and all eight let pip download setuptools
+to build the shared package (#657). These feed the checker Compose documents
+and Dockerfiles as text, then run it on the repository itself.
 """
 
 import importlib.util
@@ -281,6 +283,447 @@ def test_a_finding_names_the_line():
     )
 
 
+# --- Dockerfiles: parsing ------------------------------------------------------
+
+BASE = "python:3.11-slim@sha256:" + "9" * 64
+GOOD_DOCKERFILE = f"""\
+FROM {BASE}
+COPY requirements.txt .
+RUN pip install --no-cache-dir --require-hashes --no-build-isolation -r requirements.txt
+COPY --from=shared . /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
+"""
+
+
+def dockerfile(body: str) -> str:
+    return f"FROM {BASE}\n" + textwrap.dedent(body)
+
+
+def docker_findings(body: str, path: str = "svc/Dockerfile"):
+    return cch.check_dockerfile(path, dockerfile(body))
+
+
+def docker_rules(body: str) -> list:
+    return [finding.rule for finding in docker_findings(body)]
+
+
+def test_instructions_are_joined_across_continuations_and_comments():
+    text = textwrap.dedent("""\
+        # syntax=docker/dockerfile:1
+        FROM scratch
+        RUN pip install --no-cache-dir --upgrade pip \\
+            # a comment inside the instruction
+
+            && pip install --require-hashes -r requirements.txt
+        CMD ["true"]
+        """)
+    parsed = cch.parse_dockerfile(text)
+    assert [(i.keyword, i.line) for i in parsed] == [
+        ("FROM", 2),
+        ("RUN", 3),
+        ("CMD", 7),
+    ]
+    assert "a comment" not in parsed[1].value
+    assert parsed[1].value.endswith("-r requirements.txt")
+
+
+def test_a_here_document_belongs_to_its_instruction():
+    text = textwrap.dedent("""\
+        FROM scratch
+        RUN <<EOF
+        pip install --upgrade pip
+        EOF
+        RUN echo done
+        """)
+    parsed = cch.parse_dockerfile(text)
+    assert [i.keyword for i in parsed] == ["FROM", "RUN", "RUN"]
+    assert "pip install --upgrade pip" in parsed[1].value
+    assert [f.rule for f in cch.check_dockerfile("Dockerfile", text)] == ["pip"]
+
+
+def test_a_here_string_swallows_nothing():
+    text = "FROM scratch\nRUN cat <<<EOF\nRUN pip install --upgrade pip\n"
+    assert [f.rule for f in cch.check_dockerfile("Dockerfile", text)] == ["pip"]
+    unclosed = "FROM scratch\nRUN cat <<EOF\nRUN pip install --upgrade pip\n"
+    assert [f.rule for f in cch.check_dockerfile("Dockerfile", unclosed)] == ["pip"]
+
+
+def test_shell_commands_are_split_at_operators():
+    script = (
+        'ARCH=$(dpkg --print-architecture) && if [ "$ARCH" = amd64 ]; '
+        'then curl -fsSL "https://x/y z" -o f; fi | cat'
+    )
+    assert cch.shell_commands(script) == [
+        ["dpkg", "--print-architecture"],
+        ["[", "$ARCH", "=", "amd64", "]"],
+        ["curl", "-fsSL", "https://x/y z", "-o", "f"],
+        ["fi"],
+        ["cat"],
+    ]
+
+
+# --- Dockerfiles: base images -----------------------------------------------
+
+
+def test_a_digest_pinned_base_image_passes():
+    assert cch.check_dockerfile("Dockerfile", f"FROM {BASE}\n") == []
+    platform = f"FROM --platform=linux/amd64 {BASE} AS b\n"
+    assert cch.check_dockerfile("Dockerfile", platform) == []
+    assert cch.check_dockerfile("Dockerfile", "FROM scratch\n") == []
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "python:3.11-slim",
+        "python",
+        "python:latest",
+        "node:24-alpine",
+        "python@sha256:abc",
+    ],
+)
+def test_a_base_image_without_a_digest_is_refused(reference):
+    found = cch.check_dockerfile("Dockerfile", f"FROM {reference}\n")
+    assert [(f.rule, f.subject, f.line) for f in found] == [
+        ("base-image", reference, 1)
+    ]
+
+
+def test_a_stage_of_the_same_file_is_not_an_image():
+    text = (
+        f"FROM {BASE} AS Builder\nFROM builder AS runner\nCOPY --from=builder /a /b\n"
+    )
+    assert cch.check_dockerfile("Dockerfile", text) == []
+    # A name that is no earlier stage is an image.
+    found = cch.check_dockerfile("Dockerfile", "FROM builder\n")
+    assert [f.rule for f in found] == ["base-image"]
+
+
+def test_a_base_image_from_a_build_argument():
+    pinned = f"ARG BASE={BASE}\nFROM ${{BASE}}\n"
+    assert cch.check_dockerfile("Dockerfile", pinned) == []
+    floating = "ARG BASE=python:3.11-slim\nFROM $BASE\n"
+    assert [f.rule for f in cch.check_dockerfile("Dockerfile", floating)] == [
+        "base-image"
+    ]
+    unknown = cch.check_dockerfile("Dockerfile", "ARG BASE\nFROM ${BASE}\n")
+    assert [f.rule for f in unknown] == ["base-image"]
+    assert "cannot be verified" in unknown[0].message
+
+
+def test_copy_from_an_image_needs_a_digest():
+    latest = "COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv\n"
+    assert docker_rules(latest) == ["base-image"]
+    tagged = "COPY --from=ghcr.io/astral-sh/uv:0.9.1 /uv /bin/uv\n"
+    assert docker_rules(tagged) == ["base-image"]
+    pinned = "COPY --from=ghcr.io/astral-sh/uv@sha256:" + "a" * 64 + " /uv /bin/uv\n"
+    assert docker_rules(pinned) == []
+    # A named build context or a stage index is not an image reference.
+    assert docker_rules("COPY --from=shared . /tmp/shared\nCOPY --from=0 /a /b\n") == []
+
+
+# --- Dockerfiles: pip -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "pip install --no-cache-dir --require-hashes --no-build-isolation -r requirements.txt",
+        "pip install --require-hashes --no-build-isolation --prefix=/install -r requirements.txt",
+        "pip install --require-hashes --no-build-isolation --prefix /install -r requirements.txt",
+        "pip install --require-hashes --only-binary :all: -r requirements.txt",
+        "pip install --require-hashes --only-binary=:all: --requirement requirements.txt",
+        "pip3 install --require-hashes --no-build-isolation -r a.txt -r b.txt",
+        "python -m pip install --require-hashes --no-build-isolation -r requirements.txt",
+        "pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared",
+        "pip install --no-index --no-deps --no-build-isolation -e .",
+        "pip install --no-index --find-links /wheels ./pkg",
+        "pip --version",
+        "pip check",
+        "pip list",
+    ],
+)
+def test_a_verified_pip_install_passes(run):
+    assert docker_rules(f"RUN {run}\n") == []
+
+
+@pytest.mark.parametrize(
+    "run, says",
+    [
+        # The four images of #657, and the same for the other installers.
+        ("pip install --no-cache-dir --upgrade pip", "installs pip from PyPI unpinned"),
+        ("pip install -U pip setuptools wheel", "installs pip, setuptools, wheel"),
+        ("pip install 'setuptools>=64'", "installs setuptools"),
+        ("python -m pip install --upgrade pip", "installs pip"),
+        ("python3 -m pip install --upgrade pip", "installs pip"),
+        ("/usr/local/bin/pip3.11 install --upgrade pip", "installs pip"),
+        ("pip --no-cache-dir install --upgrade pip", "installs pip"),
+        ("pip --cache-dir /tmp/c install --upgrade pip", "installs pip"),
+        ("uv pip install --system --upgrade pip", "installs pip"),
+        # Not hash-checked at all.
+        ("pip install --no-cache-dir -r requirements.txt", "not hash-checked"),
+        ("pip install --no-cache-dir watchdog", "not hash-checked"),
+        ("pip install watchdog==6.0.0", "not hash-checked"),
+        ("pip install https://example.com/pkg-1.0.tar.gz", "not hash-checked"),
+        ("pip download -d /wheels -r requirements.txt", "not hash-checked"),
+        ("pip wheel -w /wheels -r requirements.txt", "not hash-checked"),
+        # Hash-checked, but something is still fetched without a hash.
+        (
+            "pip install --require-hashes -r requirements.txt",
+            "build dependencies downloaded unhashed",
+        ),
+        (
+            "pip install --require-hashes --only-binary numpy -r requirements.txt",
+            "build dependencies downloaded unhashed",
+        ),
+        (
+            "pip install --require-hashes --no-build-isolation -r requirements.txt watchdog",
+            "names watchdog next to --require-hashes",
+        ),
+        (
+            "pip install --require-hashes --no-build-isolation -r requirements.txt -e .",
+            "names . next to --require-hashes",
+        ),
+        ("pip install --require-hashes --no-build-isolation", "without -r"),
+        # A local path, which is not enough to keep pip off the index.
+        ("pip install --no-deps /tmp/open-security-shared", "without --no-index"),
+        ("pip install -e .", "without --no-index"),
+        ("pip install .", "without --no-index"),
+        # --no-index does not stop a direct URL, a remote wheel directory or a file.
+        ("pip install --no-index https://example.com/pkg.whl", "although --no-index"),
+        (
+            "pip install --no-index git+https://example.com/pkg.git",
+            "although --no-index",
+        ),
+        (
+            "pip install --no-index -f https://example.com/wheels ./pkg",
+            "although --no-index",
+        ),
+        ("pip install --no-index -r requirements.txt", "-r without --require-hashes"),
+        ("pip install --no-index watchdog", "although --no-index"),
+    ],
+)
+def test_an_unverified_pip_install_is_refused(run, says):
+    found = docker_findings(f"RUN {run}\n")
+    assert [f.rule for f in found] == ["pip"], found
+    assert says in found[0].message
+    assert found[0].line == 2
+
+
+def test_the_upgrade_before_the_hashed_install_is_refused():
+    # open-security-cspm/Dockerfile:37 as it stood (#657).
+    found = docker_findings("""\
+        COPY requirements.txt .
+        RUN pip install --no-cache-dir --upgrade pip \\
+            # --require-hashes: refuse an artefact whose hash does not match the lockfile
+            # (WILDBO-DEP-04).
+            && pip install --no-cache-dir --require-hashes --no-build-isolation -r requirements.txt
+        """)
+    assert [(f.rule, f.subject, f.line) for f in found] == [
+        ("pip", "pip install --no-cache-dir --upgrade pip", 3)
+    ]
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "apt-get update && pip install --upgrade pip && rm -rf /tmp/x",
+        "set -eux; pip install --upgrade pip; echo done",
+        "if [ -f requirements.txt ]; then pip install --upgrade pip; fi",
+        "PIP_NO_CACHE_DIR=1 pip install --upgrade pip",
+        "sudo pip install --upgrade pip",
+        "true || pip install --upgrade pip",
+        "(cd /app && pip install --upgrade pip)",
+        "--mount=type=cache,target=/root/.cache/pip pip install --upgrade pip",
+    ],
+)
+def test_pip_is_found_wherever_it_stands_in_the_script(run):
+    assert docker_rules(f"RUN {run}\n") == ["pip"]
+
+
+def test_pip_in_onbuild_and_here_documents_is_found():
+    assert docker_rules("ONBUILD RUN pip install --upgrade pip\n") == ["pip"]
+    assert docker_rules("RUN <<EOF\nset -e\npip install --upgrade pip\nEOF\n") == [
+        "pip"
+    ]
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        # A script handed to a shell is one quoted word of the outer command.
+        'bash -c "pip install --upgrade pip"',
+        "/bin/sh -ec 'set -u; pip install --upgrade pip'",
+        "eval 'pip install --upgrade pip'",
+        # Exec form.
+        '["pip", "install", "--upgrade", "pip"]',
+        '["/bin/sh", "-c", "pip install --upgrade pip"]',
+    ],
+)
+def test_pip_inside_a_nested_shell_or_exec_form_is_found(run):
+    assert docker_rules(f"RUN {run}\n") == ["pip"]
+
+
+def test_exec_form_of_a_verified_install_passes():
+    run = '["pip", "install", "--no-index", "--no-deps", "/tmp/open-security-shared"]'
+    assert docker_rules(f"RUN {run}\n") == []
+    assert docker_rules('RUN ["echo", "[not json"\n') == []
+
+
+def test_pip_outside_run_is_not_an_install():
+    assert docker_rules('CMD ["pip", "install", "--upgrade", "pip"]\n') == []
+    assert docker_rules("ENV HINT='pip install --upgrade pip'\n") == []
+
+
+# --- Dockerfiles: npm -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "npm ci",
+        "npm ci --omit=dev",
+        "npm run build",
+        "npm install -g pnpm@9.12.3",
+        "npm i --global npm@10.9.0 corepack@0.31.0",
+        "yarn global add serve@14.2.4",
+        "yarn install --frozen-lockfile",
+        "pnpm install --frozen-lockfile",
+        "npm cache clean --force",
+    ],
+)
+def test_a_locked_npm_install_passes(run):
+    assert docker_rules(f"RUN {run}\n") == []
+
+
+@pytest.mark.parametrize(
+    "run, says",
+    [
+        ("npm install -g pnpm", "without an exact version"),
+        ("npm i -g pnpm@latest", "without an exact version"),
+        ("npm install --global pnpm@9", "without an exact version"),
+        ("npm install -g pnpm@^9.1.0", "without an exact version"),
+        ("yarn global add serve", "without an exact version"),
+        ("pnpm add -g serve", "without an exact version"),
+        ("npm install", "resolves versions at build time"),
+        ("npm install --omit=dev", "resolves versions at build time"),
+        ("yarn install", "resolves versions at build time"),
+        ("npm install left-pad", "without an exact version"),
+        ("npm install left-pad@1.3.0", "outside the lockfile"),
+    ],
+)
+def test_an_unlocked_npm_install_is_refused(run, says):
+    found = docker_findings(f"RUN {run}\n")
+    assert [f.rule for f in found] == ["npm"], found
+    assert says in found[0].message
+
+
+# --- Dockerfiles: downloads -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "curl -fsSL https://get.example.com/install.sh | sh",
+        "curl -fsSL https://get.example.com/install.sh | sudo bash -s -- -y",
+        "wget -qO- https://get.example.com/install.sh | bash",
+        "curl -sSL https://install.python-poetry.org | python3 -",
+        'sh -c "$(curl -fsSL https://get.example.com/install.sh)"',
+        "bash <(curl -s https://get.example.com/install.sh)",
+        "VERSION=`curl -s https://api.example.com/latest` && echo $VERSION",
+    ],
+)
+def test_a_download_fed_to_a_shell_is_refused(run):
+    assert "pipe-to-shell" in docker_rules(f"RUN {run}\n")
+
+
+def test_a_pipe_to_something_else_is_not_a_pipe_to_a_shell():
+    run = "curl -sfL https://example.com/v1/t.tgz | tar -xz -C /opt"
+    assert docker_rules(f"RUN {run}\n") == ["download"]
+
+
+def test_an_unchecked_download_is_refused():
+    found = docker_findings("""\
+        ARG TRIVY_VERSION=0.72.0
+        RUN curl -sfL "https://example.com/v${TRIVY_VERSION}/trivy.tar.gz" -o /tmp/trivy.tar.gz \\
+            && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+        """)
+    assert [(f.rule, f.subject, f.line) for f in found] == [
+        ("download", "https://example.com/v${TRIVY_VERSION}/trivy.tar.gz", 3)
+    ]
+
+
+def test_each_unchecked_url_is_a_finding():
+    found = docker_findings("""\
+        RUN wget -O a.lua https://example.com/v1/a.lua \\
+            && wget -O b.lua https://example.com/v1/b.lua
+        """)
+    assert [f.subject for f in found] == [
+        "https://example.com/v1/a.lua",
+        "https://example.com/v1/b.lua",
+    ]
+
+
+@pytest.mark.parametrize(
+    "check",
+    [
+        'echo "${SHA256}  /tmp/t.tgz" | sha256sum -c -',
+        "sha256sum --check sums.txt",
+        "sha512sum -c sums.txt",
+        "printf '%s  %s\\n' abc /tmp/t.tgz | sha256sum -c -",
+        "shasum -a 256 -c sums.txt",
+        "gpg --batch --verify t.tgz.asc /tmp/t.tgz",
+        "cosign verify-blob --key k.pub --signature t.sig /tmp/t.tgz",
+    ],
+)
+def test_a_checked_download_passes(check):
+    run = f"curl -sfL https://example.com/v1/t.tgz -o /tmp/t.tgz && {check} && tar -xzf /tmp/t.tgz"
+    assert docker_rules(f"RUN {run}\n") == []
+
+
+@pytest.mark.parametrize(
+    "not_a_check",
+    ["sha256sum /tmp/t.tgz", "md5sum -c sums.txt", "sha1sum -c sums.txt"],
+)
+def test_printing_a_hash_or_checking_a_weak_one_is_not_a_check(not_a_check):
+    run = f"curl -sfL https://example.com/v1/t.tgz -o /tmp/t.tgz && {not_a_check}"
+    assert docker_rules(f"RUN {run}\n") == ["download"]
+
+
+def test_a_check_in_another_instruction_does_not_count():
+    assert docker_rules(
+        "RUN curl -sfL https://example.com/v1/t.tgz -o /tmp/t.tgz\n"
+        "RUN echo 'abc  /tmp/t.tgz' | sha256sum -c -\n"
+    ) == ["download"]
+
+
+def test_a_local_request_is_not_a_download():
+    assert docker_rules("RUN curl -f http://localhost:8000/health\n") == []
+    healthcheck = "HEALTHCHECK CMD curl -f http://example.com/health || exit 1\n"
+    assert docker_rules(healthcheck) == []
+
+
+def test_add_of_a_url_needs_a_checksum():
+    assert docker_rules("ADD https://example.com/v1/t.tgz /tmp/\n") == ["download"]
+    pinned = (
+        "ADD --checksum=sha256:" + "a" * 64 + " https://example.com/v1/t.tgz /tmp/\n"
+    )
+    assert docker_rules(pinned) == []
+    assert docker_rules("ADD ./local.tgz /tmp/\n") == []
+
+
+def test_a_download_can_be_allowlisted_but_pip_cannot():
+    found = docker_findings("RUN curl -sfL https://example.com/v1/t.tgz -o /t.tgz\n")
+    allowlist, errors = cch.read_allowlist(
+        "download  svc/Dockerfile  https://example.com/v1/t.tgz  # verified by the next stage\n"
+    )
+    assert errors == []
+    assert cch.apply_allowlist(found, allowlist) == ([], [])
+    for rule in ("pip", "npm", "pipe-to-shell", "base-image"):
+        _, errors = cch.read_allowlist(f"{rule}  svc/Dockerfile  x  # because\n")
+        assert len(errors) == 1 and "not a rule" in errors[0], rule
+
+
 # --- Allow-list --------------------------------------------------------------
 
 
@@ -328,7 +771,10 @@ def test_comments_and_blank_lines_are_skipped():
 
 
 def write_tree(root: Path, files: dict) -> None:
+    files = {"svc/Dockerfile": GOOD_DOCKERFILE, **files}
     for name, text in files.items():
+        if text is None:
+            continue
         target = root / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
@@ -358,7 +804,7 @@ def test_a_clean_tree_passes(tmp_path):
     write_tree(tmp_path, {"docker-compose.yml": GOOD})
     result = run(tmp_path)
     assert result.returncode == 0, result.stderr
-    assert "1 Compose file(s) checked" in result.stdout
+    assert "1 Compose file(s) and 1 Dockerfile(s) checked" in result.stdout
 
 
 def test_the_logspout_service_fails_wherever_the_file_is(tmp_path):
@@ -400,6 +846,23 @@ def test_a_tree_without_compose_files_fails(tmp_path):
     result = run(tmp_path)
     assert result.returncode == 1
     assert "no Compose file found" in result.stderr
+
+
+def test_a_tree_without_dockerfiles_fails(tmp_path):
+    write_tree(tmp_path, {"docker-compose.yml": GOOD, "svc/Dockerfile": None})
+    result = run(tmp_path)
+    assert result.returncode == 1
+    assert "no Dockerfile found" in result.stderr
+
+
+def test_a_dockerfile_under_any_of_its_names_is_checked(tmp_path):
+    bad = GOOD_DOCKERFILE + "RUN pip install --upgrade pip\n"
+    for name in ("svc/Dockerfile", "svc/Dockerfile.dev", "docker/api.dockerfile"):
+        tree = tmp_path / name.replace("/", "_")
+        write_tree(tree, {"docker-compose.yml": GOOD, name: bad})
+        result = run(tree)
+        assert result.returncode == 1, name
+        assert f"{name}:" in result.stderr and "pip [" in result.stderr
 
 
 def test_a_stale_allowlist_entry_fails(tmp_path):
@@ -450,6 +913,46 @@ def test_the_repository_mounts_no_runtime_socket_even_allowlisted():
     )
     assert errors == []
     assert [key for key in allowlist if key[0] in ("socket", "privilege")] == []
+
+
+def python_dockerfiles() -> list:
+    found = sorted(REPO.glob("open-security-*/Dockerfile*"))
+    return [path for path in found if "pip install" in path.read_text(encoding="utf-8")]
+
+
+def test_every_python_image_installs_the_same_way():
+    # #657: identity, data, agents and sensor used the base image's pip, the
+    # other four upgraded it first. All of them, and the tools dev image, now
+    # run the same two commands.
+    files = python_dockerfiles()
+    assert len(files) == 9, [str(path) for path in files]
+    hashed = "pip install --no-cache-dir --require-hashes --no-build-isolation"
+    shared = (
+        "pip install --no-cache-dir --no-index --no-deps --no-build-isolation "
+        "/tmp/open-security-shared"
+    )
+    for path in files:
+        runs = [
+            " ".join(command)
+            for instruction in cch.parse_dockerfile(path.read_text(encoding="utf-8"))
+            if instruction.keyword == "RUN"
+            for command in cch.shell_commands(instruction.value)
+            if cch.pip_arguments(command) is not None
+        ]
+        assert shared in runs, path
+        lockfile = [run for run in runs if run.startswith(hashed)]
+        assert len(lockfile) == 1 and lockfile[0].endswith("-r requirements.txt"), path
+        for run in runs:
+            assert "--upgrade" not in run and " -U" not in run, (path, run)
+
+
+def test_no_dockerfile_exception_is_allowlisted():
+    allowlist, _ = cch.read_allowlist(
+        (REPO / "scripts" / "container_hygiene_allowlist.txt").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert [key for key in allowlist if key[0] == "download"] == []
 
 
 def test_the_gateway_dev_stack_has_no_log_shipper():

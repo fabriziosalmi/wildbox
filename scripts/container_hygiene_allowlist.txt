@@ -7,6 +7,10 @@
 # deliberate, as "rule  file  subject  # reason"; the subject is what the
 # finding prints in brackets. An entry without a reason, or one that matches
 # no finding any more, fails the check too.
+#
+# Of the Dockerfile rules only "download" can be listed here (a download that
+# is verified some other way). An unverified pip or npm install, a base image
+# without a digest and a download piped to a shell have no exception.
 
 # The gateway is the platform's entry point: browsers, API clients and
 # sensors on other machines reach it (docs/guides/ports.md).

@@ -785,6 +785,9 @@
     "gliderlabs",
     "curlimages",
     "seccomp",
+    "setuptools",
+    "resty",
+    "unhashed",
     "unrouted"
   ],
   "ignoreWords": [

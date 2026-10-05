@@ -32,8 +32,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stack, and the reverse proxies of the standalone data, tools and
   scaled-sensor stacks, stay on every interface: they are entry points.
 
+- **Image builds no longer run or download an installer that nothing
+  pinned** (#657). cspm, guardian, responder, tools and the tools
+  development image ran `pip install --upgrade pip` before their
+  hash-checked install: the installer was whatever PyPI served at build
+  time, unhashed, and it then installed everything else. They now use
+  the pip of the digest-pinned base image (24.0), as identity, data,
+  agents and sensor did. A second download was in all eight images:
+  `pip install --no-deps /tmp/open-security-shared` built the shared
+  package in an isolated environment, for which pip fetched the latest
+  setuptools (84.0.0 on the day of the fix) from PyPI, unhashed, at
+  every build. The shared package, and the sensor's own
+  `pip install -e .`, are now installed with
+  `--no-index --no-deps --no-build-isolation`, so pip cannot reach an
+  index for them; the hash-checked installs carry
+  `--no-build-isolation`, so a source distribution in a lockfile is
+  built with the base image's setuptools instead of one downloaded for
+  the occasion. The tools development image also moves from Python
+  3.12 to the 3.11 its lockfile is compiled for, states
+  `--require-hashes`, drops an unpinned `pip install watchdog` that
+  nothing imported, and installs the shared package, without which its
+  container could not import the application.
+- **The downloads in the image builds are checked against a SHA-256**
+  (#657). Trivy in the tools image, osquery in the sensor image and the
+  three lua-resty-http files in the gateway images were pinned by
+  version in the URL and nothing else; a release asset or a git tag can
+  be replaced under the same name. Each is now verified with
+  `sha256sum -c` before it is unpacked or installed, against the value
+  upstream publishes (Trivy's checksum file; the osquery packages on
+  pkg.osquery.io and on the GitHub release; the lua-resty-http files at
+  the commit the tag names).
+
 ### CI
 
+- **Code Quality checks every Dockerfile** (#657).
+  `scripts/check_container_hygiene.py` also reads every tracked
+  Dockerfile and fails on a `pip install` that is neither
+  `--require-hashes --no-build-isolation -r <lockfile>` nor
+  `--no-index <local path>`, on an npm install that resolves versions
+  at build time, on a `FROM` or `COPY --from=<image>` without a digest,
+  on a download piped to a shell, and on a `curl`, `wget` or
+  `ADD <url>` that nothing in the same instruction verifies. The pip,
+  npm, base image and pipe-to-shell rules cannot be allow-listed. On
+  the commit before these fixes it reports 33 problems in the 13
+  Dockerfiles. `apt-get install` and `apk add` without versions are
+  not checked.
 - **Code Quality checks every Compose file** (#680). Only the root
   `docker-compose.yml` was ever validated, so the gateway's development
   file could mount the Docker socket unnoticed.

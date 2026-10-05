@@ -18,9 +18,25 @@ files:
   Do not edit it by hand.
 
 Every service Dockerfile installs the lock with
-`pip install --no-cache-dir --require-hashes -r requirements.txt`, so a build
-fails if a downloaded file does not match its hash or if a package is missing
-from the lock.
+`pip install --no-cache-dir --require-hashes --no-build-isolation -r requirements.txt`,
+so a build fails if a downloaded file does not match its hash or if a package
+is missing from the lock. The installer is the pip of the digest-pinned base
+image: no Dockerfile upgrades pip, setuptools or wheel, because that would
+install whatever PyPI serves at build time, without a hash, and then run it.
+`--no-build-isolation` keeps pip from downloading build dependencies for a
+package that the lock holds only as a source distribution; it is built with
+the base image's setuptools. A package whose build needs anything else fails
+the build, and needs a wheel or a different pin.
+
+The shared package and other local paths are installed with
+`pip install --no-index --no-deps --no-build-isolation <path>`: with
+`--no-index` pip cannot reach PyPI, neither for a dependency nor for the build
+backend.
+
+`scripts/check_container_hygiene.py`, run by the Code Quality job, fails on a
+`pip install` in a Dockerfile that has neither form. It also fails on a base
+image without a digest and on a download that nothing verifies; a `curl` or
+`wget` in a `RUN` needs a `sha256sum -c` in the same instruction.
 
 The dashboard uses `package-lock.json` and `npm ci`.
 

@@ -105,12 +105,16 @@ and in the service's `Dockerfile`:
 
 ```dockerfile
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-deps /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
 ```
 
 `--no-deps` because the service's own `requirements.txt` already provides the
 package's dependencies (FastAPI, Pydantic and the others listed in
-`open-security-shared/pyproject.toml`).
+`open-security-shared/pyproject.toml`). `--no-index --no-build-isolation`
+because pip would otherwise download setuptools from PyPI to build the
+package, unpinned and unhashed; with them it uses the setuptools already in
+the image. The Code Quality job refuses a Dockerfile that installs a local
+path without `--no-index`.
 
 ### Authenticate a route
 

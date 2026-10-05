@@ -35,10 +35,18 @@ RUN mkdir -p /etc/nginx/lua \
 
 # Install lua-resty-http from official release (v0.17.2)
 # Using pinned version for stability instead of master branch
+# The three files are checked against SHA-256 values recorded here: a git tag
+# can be moved, and the gateway runs this code on every authenticated request
+# (#657). The values are those of the files at tag v0.17.2 (commit 18331032).
 RUN cd /usr/local/openresty/lualib/resty \
     && wget -O http.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http.lua \
     && wget -O http_headers.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http_headers.lua \
-    && wget -O http_connect.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http_connect.lua
+    && wget -O http_connect.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http_connect.lua \
+    && printf '%s  %s\n' \
+        3587e013ada745c4976280037c5ce4d41a7e463b720bb5e49683ac732caef1cd http.lua \
+        4dc87bc7c47be6e26e6ab4905945a146649b2b64c8da894d594dec50f6d6dc1a http_headers.lua \
+        3b093b4be129f0d3a8ee723dc4b6c1d4d18da466d556ce1b9e3ee314a0b98b7f http_connect.lua \
+        | sha256sum -c -
 
 # Copy configuration files
 COPY nginx/ /etc/nginx/

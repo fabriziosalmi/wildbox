@@ -376,7 +376,14 @@ jobs:
       # image that names no version, a privileged setting and a port
       # published on every interface; deliberate exceptions go in
       # scripts/container_hygiene_allowlist.txt with a reason.
-      - name: Compose files mount no runtime socket and pin their images
+      #
+      # The same script reads every tracked Dockerfile (#657): four images
+      # ran `pip install --upgrade pip` before the hash-checked install, and
+      # all eight let pip download setuptools to build the shared package.
+      # It refuses a pip install that is not hash-checked or offline, an npm
+      # install that is not `npm ci`, a base image without a digest, and a
+      # download that is piped to a shell or that nothing verifies.
+      - name: Compose files and Dockerfiles pin and verify what they run
         run: python3 scripts/check_container_hygiene.py
 
       # Tier 1 -- real defects, whole tree, always blocking.
