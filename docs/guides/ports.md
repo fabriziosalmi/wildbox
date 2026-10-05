@@ -36,8 +36,8 @@ if this page and that file disagree, the file is right and this page is a bug.
 | `dashboard` | `open-security-dashboard` | `127.0.0.1:3000` | Web dashboard | `http://localhost:3000/` |
 | `tools-flower` | `open-security-tools-flower` | `127.0.0.1:5555` | Celery Flower for the tools workers | `http://localhost:5555/healthcheck` |
 | `automations` | `open-security-automations` | `127.0.0.1:5678` | n8n; only with `--profile automations` | `http://localhost:5678/healthz` |
-| `prometheus` | (Compose default) | `127.0.0.1:9090` | Prometheus; only with `--profile monitoring` | `http://localhost:9090/-/ready` |
-| `alertmanager` | (Compose default) | `127.0.0.1:9093` | Alertmanager: receives the alerts Prometheus fires; only with `--profile monitoring` | `http://localhost:9093/-/ready` |
+| `prometheus` | (Compose default) | `127.0.0.1:9090` | Prometheus; only with `--profile monitoring` | `http://localhost:9090/-/healthy` |
+| `alertmanager` | (Compose default) | `127.0.0.1:9093` | Alertmanager: receives the alerts Prometheus fires; only with `--profile monitoring` | `http://localhost:9093/-/healthy` |
 | `postgres` | `wildbox-postgres` | none | PostgreSQL 15 | `pg_isready` inside the container |
 | `wildbox-redis` | `wildbox-redis` | none | Redis 7 | `redis-cli ping` inside the container |
 | `tools-worker`, `guardian-worker`, `cspm-worker` | (Compose default) | none | Celery workers for tools, guardian and cspm | `celery ... inspect ping` inside the container |
@@ -53,6 +53,24 @@ The paths the gateway routes to each service are listed in the
 [gateway routes table](https://www.wildbox.io/docs.html#gateway-routes).
 
 ## Checking the Stack
+
+`make health` probes every URL in the Health check column and exits non-zero
+when one is unhealthy, so it can gate a deployment step or a cron alert:
+
+```bash
+make health
+```
+
+A service is healthy when its URL answers 2xx. A redirect is not followed and
+counts as unhealthy, as does any 4xx or 5xx and no answer at all. It also
+checks that PostgreSQL accepts connections and holds the `identity`, `data`
+and `guardian` databases, and that Redis answers. `automations` and
+`prometheus` are skipped when they are not running, unless `COMPOSE_PROFILES`
+names their profile. The URLs live in one table,
+`scripts/lib/health_endpoints.sh`, which `scripts/wait-for-services.sh` uses
+too; a test keeps it equal to the column above and to `docker-compose.yml`.
+
+By hand:
 
 ```bash
 docker compose ps
