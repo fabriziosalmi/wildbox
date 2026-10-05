@@ -81,12 +81,10 @@ Use the local API on the host loopback address.
 ### Standalone
 
 `docker-compose.yml` in this directory builds the same image, mounts the same
-`config.yaml.example`, publishes `127.0.0.1:8004`, and also starts a Redis
-container (the sensor code does not use it). It attaches to the external
-`security-suite` network, so create that network first:
+`config.yaml.example` and publishes `127.0.0.1:8004`. The sensor is its only
+service:
 
 ```bash
-docker network create security-suite
 SENSOR_API_KEY=<key> docker compose up -d
 curl http://127.0.0.1:8004/health
 ```
@@ -206,9 +204,8 @@ These override the configuration file (`sensor/core/config.py`):
 | `SENSOR_API_KEY` | `network.api_key` |
 
 The HTML route list at `/` and `/docs` is served only when
-`ENVIRONMENT=development`. `docker-compose.yml` and `docker-compose.scale.yml`
-in this directory set no `ENVIRONMENT`, so the two paths answer 404 there;
-`docker-compose.dev.yml` sets `development`.
+`ENVIRONMENT=development`. `docker-compose.yml` in this directory sets no
+`ENVIRONMENT`, so the two paths answer 404 there.
 
 No environment variable sets `collection.log_forwarding` or `log_sources`:
 what the sensor reads from the host is the configuration file's to say.

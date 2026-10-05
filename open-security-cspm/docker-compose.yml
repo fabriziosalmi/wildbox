@@ -35,7 +35,6 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./config:/app/config:ro
       - ./logs:/app/logs
     networks:
       - wildbox-network
@@ -71,7 +70,6 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./config:/app/config:ro
       - ./logs:/app/logs
     networks:
       - wildbox-network
@@ -101,7 +99,6 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./config:/app/config:ro
       - ./logs:/app/logs
     networks:
       - wildbox-network

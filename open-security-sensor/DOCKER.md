@@ -19,21 +19,16 @@ gateway's certificate from the `gateway_cert` volume; set
 
 ## Standalone
 
-`docker-compose.yml` in this directory runs the sensor on its own.
+`docker-compose.yml` in this directory runs the sensor on its own; it is the
+only service in the file.
 
-1. Create the external network the compose file attaches to:
-
-   ```bash
-   docker network create security-suite
-   ```
-
-2. Start the sensor with a key for its local API:
+1. Start the sensor with a key for its local API:
 
    ```bash
    SENSOR_API_KEY=<key> docker compose up -d
    ```
 
-3. Verify:
+2. Verify:
 
    ```bash
    curl http://127.0.0.1:8004/health
@@ -45,25 +40,18 @@ so run it from a full repository checkout.
 
 ### Ports and configuration
 
-Both compose files mount `config.yaml.example` as
+Both compose files, this one and the root one, mount `config.yaml.example` as
 `/etc/security-sensor/config.yaml`. It binds the local API to `0.0.0.0:8004`
 inside the container, and compose publishes that port on `127.0.0.1:8004` only.
 To change the configuration, edit `config.yaml.example` or use the
 `SENSOR_*` environment variables listed in [README.md](README.md#environment-variables).
 
-### Monitoring profile
+### No monitoring profile
 
-The `monitoring` profile adds Prometheus (port `9090`) and Grafana (port
-`3000`), both published on all host interfaces. Grafana's admin password comes
-from `GRAFANA_ADMIN_PASSWORD`:
-
-```bash
-GRAFANA_ADMIN_PASSWORD=<password> SENSOR_API_KEY=<key> \
-  docker compose --profile monitoring up -d
-```
-
-The sensor does not expose a `/metrics` endpoint, so the Prometheus scrape job
-for it in `monitoring/prometheus.yml` has no target to read.
+The sensor does not expose a `/metrics` endpoint, so there is nothing for a
+Prometheus to scrape, and this file starts none. The Prometheus and
+Alertmanager of the Wildbox stack are in the root `docker-compose.yml`
+(`--profile monitoring`); they watch the services that do export metrics.
 
 ## Environment variables
 
@@ -75,9 +63,8 @@ for it in `monitoring/prometheus.yml` has no target to read.
 | `SENSOR_DATA_LAKE_CA_BUNDLE` | None (system trust store) | PEM file for a gateway certificate no public CA signed |
 | `SENSOR_LOGGING_LEVEL` | `INFO` | Log level |
 | `PYTHONPATH` | `/app` | Python module path |
-| `GRAFANA_ADMIN_PASSWORD` | None; needed by the `monitoring` profile | Grafana admin password |
 
-The standalone compose files pass the `SENSOR_DATA_LAKE_*` variables through
+The standalone compose file passes the `SENSOR_DATA_LAKE_*` variables through
 only when they are set in the shell.
 
 ## Connect to Wildbox
@@ -194,8 +181,6 @@ docker compose down
 - `503 API authentication is not configured on this sensor`: the container
   started without `SENSOR_API_KEY` and no `network.api_key` in the
   configuration.
-- `network security-suite declared as external, but could not be found`: run
-  `docker network create security-suite`.
 - `Security Sensor not started: ... log_sources[0] ('name'): ...`: the
   `log_sources` section has an entry the sensor cannot understand; the
   message says which and why. See [README.md](README.md#log-forwarding).

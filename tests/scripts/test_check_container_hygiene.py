@@ -1316,10 +1316,17 @@ def test_no_dockerfile_exception_is_allowlisted():
     assert [key for key in allowlist if key[0] == "download"] == []
 
 
-def test_the_gateway_dev_stack_has_no_log_shipper():
-    text = (REPO / "open-security-gateway" / "docker-compose.dev.yml").read_text(
-        encoding="utf-8"
-    )
-    services = cch.load_compose(text)["services"]
-    assert "logviewer" not in services
-    assert cch.check_compose("open-security-gateway/docker-compose.dev.yml", text) == []
+def test_no_compose_file_runs_a_log_shipper():
+    # #680 took the logspout service out of the gateway's development file;
+    # #726 removed the file, which could not start. No Compose file may bring
+    # the service back.
+    assert not (REPO / "open-security-gateway" / "docker-compose.dev.yml").exists()
+    for path in REPO.glob("**/*compose*.y*ml"):
+        if "node_modules" in path.parts:
+            continue
+        document = cch.load_compose(path.read_text(encoding="utf-8"))
+        if document is None:
+            continue
+        for name, service in document["services"].items():
+            assert name != "logviewer", path
+            assert "logspout" not in str(service.get("image", "")), path
