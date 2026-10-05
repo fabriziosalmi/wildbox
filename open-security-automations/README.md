@@ -46,7 +46,25 @@ the error; nothing is sent.
    docker compose --profile automations up -d automations
    ```
 
-2. Create a personal API key in the dashboard (Settings > API keys) with the
+2. Create n8n's owner account, now. Open <http://127.0.0.1:5678> on the
+   host (from another machine, through an SSH tunnel:
+   `ssh -L 5678:127.0.0.1:5678 <host>`); a new instance shows its setup page,
+   `/setup`, and the account created there owns the instance. Do this before
+   anything else: until an owner exists, n8n lets whoever reaches port 5678
+   create it, with no credential, and the owner runs code in a container
+   that reaches the gateway. The port is published on the loopback interface
+   only, but the containers on n8n's network reach it too. To check:
+
+   ```bash
+   curl -s http://127.0.0.1:5678/rest/settings | jq '.data.userManagement.showSetupOnFirstLoad'
+   ```
+
+   `false` means the owner exists; `true` means the instance is still to be
+   claimed. n8n 1.74 has no command or setting that creates the owner ahead
+   of the first start, and no basic auth: the `N8N_BASIC_AUTH_*` variables
+   earlier releases set were ignored, and are gone.
+
+3. Create a personal API key in the dashboard (Settings > API keys) with the
    `read` scope, and set the variables in the root `.env`:
 
    | Variable | Value |
@@ -59,7 +77,7 @@ the error; nothing is sent.
    Recreate the container after changing them
    (`docker compose --profile automations up -d automations`).
 
-3. Import the workflows:
+4. Import the workflows:
 
    ```bash
    ./open-security-automations/scripts/import_workflows.sh
@@ -69,9 +87,22 @@ the error; nothing is sent.
    runs `n8n import:workflow`. Each workflow has a fixed id, so importing
    again updates it rather than adding a copy.
 
-4. In n8n (<http://localhost:5678>), attach an SMTP credential to the
+5. In n8n (<http://127.0.0.1:5678>), attach an SMTP credential to the
    "Send Executive Email" node, then activate the workflow. Imported
    workflows start inactive.
+
+### Reaching n8n
+
+n8n is reached on `127.0.0.1:5678` of the host and nowhere else. The gateway
+does not route to it: `/api/v1/automations/`, which used to proxy to n8n's
+editor, REST API and webhooks, answers 404. n8n is a single-tenant tool with
+accounts of its own, and the gateway let every registered user of every team
+through to it.
+
+The workflows here need nothing inbound: they start on a schedule and call
+the API outbound. A workflow that starts from a webhook is not reachable
+from outside the host as shipped. Do not publish port 5678 for it; n8n's
+webhooks are unauthenticated unless the webhook node is given credentials.
 
 ### Reaching the gateway
 

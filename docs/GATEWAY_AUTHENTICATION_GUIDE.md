@@ -74,15 +74,16 @@ configuration that calls `authenticate()` without declaring the variables.
 
 ### Routes that differ
 
-- **Automations** (`/api/v1/automations/`): the upstream is n8n, which is not
-  a Wildbox service. The location runs the shared handler as
-  `authenticate({ upstream = "third_party" })`: the caller is authenticated,
-  needs the `tools:admin` scope and counts against the rate limit, and the
-  request is then proxied with no `X-Gateway-Secret`, no `X-Wildbox-*`
-  header and none of the caller's credentials (`Authorization`,
-  `X-API-Key`, the `auth_token` cookie). The secret must never leave the
-  set of services that validate it: whoever holds it can state any user,
-  team and role to all of them (#711).
+- **Automations**: not routed. `/api/v1/automations/` used to proxy to n8n,
+  which is not a Wildbox service: it was sent `X-Gateway-Secret` and the
+  caller's identity (#711), and every registered session of every team
+  reached its editor, its REST API and, on an instance with no owner yet,
+  its owner setup (#714). The path now answers 404 like any unknown one.
+  `authenticate()` is only for a location whose upstream is a Wildbox
+  service: the secret must never leave the set of services that validate
+  it, because whoever holds it can state any user, team and role to all of
+  them. `tests/scripts/test_gateway_authenticated_locations.py` fails for a
+  location that proxies anywhere else.
 - **Identity** (`/api/v1/identity/`, `/auth/`): identity is the
   authentication authority and validates the bearer token itself, so these
   routes do not run the shared handler and pass `Authorization` through.

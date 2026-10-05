@@ -9,31 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **gateway: n8n no longer receives the gateway's secret, the caller's
-  identity or the session cookie** (#711). The automations location
-  proxies to n8n with the same settings as a Wildbox service, so n8n was
-  sent `X-Gateway-Secret` and the caller's user, team and role on every
-  request, and from a browser the session JWT in the `auth_token`
-  cookie. The secret is what the services accept as proof that the
-  identity headers came from the gateway: whoever holds it can state any
-  user, team and role to all of them, a workflow started by a webhook
-  reads the headers of the request that started it, and n8n reaches
-  every service on the internal network. The location now calls
-  `authenticate({ upstream = "third_party" })`: the caller is still
-  authenticated, still needs `tools:admin` and still counts against the
-  rate limit, and n8n is sent none of it. The same audit of every other
-  upstream: the `auth_token` cookie is removed on every authenticated
-  route, so the backends, from which `Authorization` was already
-  withheld, no longer get the same token in a cookie; and a client's
-  `X-API-Key` no longer reaches the dashboard or identity's own routes,
-  which do not read it. The gateway also stops adding
-  `Authorization: Basic` from `N8N_BASIC_AUTH_USER` and
-  `N8N_BASIC_AUTH_PASSWORD`: n8n 1.x has no basic auth and ignores it
-  (#714). A new `test/upstream_header_tests.sh` runs the production
-  image and configuration, fails for a proxying location it has no
-  classification for, and checks what each upstream receives of a
-  request that carries a session token, an API key, the session cookie
-  and forged copies of the gateway's own headers.
+- **gateway: n8n is no longer reachable through the gateway** (#714).
+  `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
+  REST API and its webhooks, for whoever the gateway authenticated:
+  every registered session of every team, whatever its role, and any API
+  key holding `tools:admin`. n8n is a single-tenant tool with accounts
+  of its own and knows nothing of Wildbox's teams, and an instance whose
+  owner account has not been created yet lets the first caller create
+  it, with no credential (`POST /rest/owner/setup`, measured on 1.74.0).
+  The owner writes workflows, which run code in a container that reaches
+  the gateway and the services. Withholding headers (#711, below) does
+  not make that safe, so the location is removed, with its row in the
+  scope map: the path answers 404 with or without a credential. Nothing
+  shipped needs an inbound path: the workflows in
+  `open-security-automations/workflows` start on a schedule and call the
+  API outbound with an API key. n8n's editor stays on the port Compose
+  publishes on the loopback interface, `127.0.0.1:5678`, and its README
+  now tells the operator to create the owner account right after the
+  first start and how to check that one exists; n8n 1.74 has no way to
+  create it ahead of time. `N8N_BASIC_AUTH_ACTIVE`, `N8N_BASIC_AUTH_USER`
+  and `N8N_BASIC_AUTH_PASSWORD` are gone from both Compose files, both
+  `.env.example` files, `generate_secrets.py`, `validate_secrets.py` and
+  `security_validation_v2.sh`: n8n 1.x has no basic auth and ignored
+  them, so they read like a lock on the editor and were none. The
+  Traefik labels in `open-security-automations/docker-compose.yml`,
+  which would have let a Traefik on the same host publish n8n, are
+  removed too. `tools:admin` stays a valid scope; no route requires it.
+  The harness asks the production image for nine n8n paths as a session,
+  with a `tools:admin`, an `admin` and an unlimited key and with no
+  credential, and expects the gateway's own 404 each time;
+  `tests/scripts` fails for a location that proxies to anything but a
+  Wildbox service or the dashboard, for an n8n port published off the
+  loopback interface, and for a file that sets the variables again.
+
+- **gateway: nothing outside Wildbox's services receives the gateway's
+  secret, the caller's identity or the session cookie** (#711). The
+  automations location proxied to n8n with the same settings as a
+  Wildbox service, so n8n was sent `X-Gateway-Secret` and the caller's
+  user, team and role on every request, and from a browser the session
+  JWT in the `auth_token` cookie. The secret is what the services accept
+  as proof that the identity headers came from the gateway: whoever
+  holds it can state any user, team and role to all of them, a workflow
+  started by a webhook reads the headers of the request that started it,
+  and n8n reaches every service on the internal network. That location
+  is removed (#714, above); rotate the secret if n8n ever ran behind it.
+  The same audit of every other upstream: the `auth_token` cookie is
+  removed on every authenticated route, so the backends, from which
+  `Authorization` was already withheld, no longer get the same token in
+  a cookie; and a client's `X-API-Key` no longer reaches the dashboard
+  or identity's own routes, which do not read it. The gateway also
+  stops adding `Authorization: Basic` from `N8N_BASIC_AUTH_USER` and
+  `N8N_BASIC_AUTH_PASSWORD`. A new `test/upstream_header_tests.sh` runs
+  the production image and configuration, fails for a proxying location
+  it has no classification for, and checks what each upstream receives
+  of a request that carries a session token, an API key, the session
+  cookie and forged copies of the gateway's own headers.
 
 - **API-key scopes reach the services, and data, guardian and tools
   check them again** (#637). The gateway enforced an API key's scopes
@@ -244,6 +274,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **gateway: `/api/v1/automations/`, the route to n8n** (#714). It
+  answers 404. n8n's editor is on `http://127.0.0.1:5678` of the host
+  with the `automations` profile started; from another machine, through
+  an SSH tunnel. The `N8N_BASIC_AUTH_*` variables are removed with it:
+  leftover lines in `.env` are ignored, and `validate_secrets.py` no
+  longer asks for `N8N_BASIC_AUTH_PASSWORD`.
 - **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
   `ENABLE_RATE_LIMITING`, settings that no code enforced.**
   `docker-compose.yml` set the first two and operators could tune them,

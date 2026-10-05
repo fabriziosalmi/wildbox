@@ -115,7 +115,6 @@ same scope:
 | Path | Read (`GET`, `HEAD`) | Other methods |
 | --- | --- | --- |
 | `/api/v1/tools`, `/api/v1/agents`, `/api/v1/tasks` | `tools:read` | `tools:execute` |
-| `/api/v1/automations` | `tools:admin` | `tools:admin` |
 | `/api/v1/guardian` | `data:read` | `data:write`, or `data:delete` for `DELETE` |
 | `/api/v1/data/ingest` (this path only) | `read` | `data:ingest`, also satisfied by `data:write` or `write` |
 | `/api/v1/data`, `/api/v1/cspm`, `/api/v1/responder`, `/api/v1/identity/health` | `read` | `write` |
@@ -127,7 +126,9 @@ A generic scope also satisfies the resource scopes of its level: `read`
 satisfies `tools:read` and `data:read`, and `write` satisfies those and
 `tools:execute`, `data:write` and `data:ingest`. `tools:admin` and
 `data:delete` are satisfied only by themselves, by the resource's `admin`
-scope, and by `admin` and `*`.
+scope, and by `admin` and `*`. No route requires `tools:admin` since the
+automations route was removed; a key that holds it has what `tools:read`
+and `tools:execute` give.
 
 The request is mapped by the path nginx chose its location for, before any
 rewrite in that location: the server block copies `$uri` into
@@ -174,20 +175,43 @@ own credentials go only where they are validated:
 | A Wildbox service behind `authenticate()` | `X-Gateway-Secret`, the caller's user, team and role, the credential's type and scopes | the caller's `Authorization`, `X-API-Key` and `auth_token` cookie |
 | identity's own routes (`/api/v1/identity/`, `/auth/users/`, `/auth/jwt/`, ...) | the caller's `Authorization`, which identity validates | `X-Gateway-Secret`, any `X-Wildbox-*`, `X-API-Key` |
 | The dashboard | its cookies | `X-Gateway-Secret`, any `X-Wildbox-*`, `Authorization`, `X-API-Key` |
-| Anything else (n8n) | what the client sent for that service itself, such as `X-N8N-API-KEY` or n8n's own cookie | `X-Gateway-Secret`, any `X-Wildbox-*`, `Authorization`, `X-API-Key`, the `auth_token` cookie |
 
 The `auth_token` cookie is where the dashboard keeps the session JWT. A
 browser sends it with every request to the gateway's origin, so
 `clean_request_headers()` removes it, and only it, on every route
 `authenticate()` guards.
 
-A location that proxies to something that is not a Wildbox service must
-call `authenticate({ upstream = "third_party" })`. The harness enforces
-the table: `test/upstream_header_tests.sh` reads every location with a
-`proxy_pass` from `wildbox_gateway.conf`, fails for one it has no
-classification for, and checks on the wire what each one's upstream
+The gateway proxies to nothing else. `/api/v1/automations/` used to reach
+n8n, the optional automations service, which is not a Wildbox service; the
+location is removed and the path answers 404
+(see [Automations](#automations-n8n)). `authenticate()` must not guard a
+location whose upstream is anything but a Wildbox service: it would send
+that upstream the secret.
+
+The harness enforces the table: `test/upstream_header_tests.sh` reads every
+location with a `proxy_pass` from `wildbox_gateway.conf`, fails for one it
+has no classification for, and checks on the wire what each one's upstream
 receives of a request that carries a session token, an API key, the
 session cookie and forged copies of the gateway's own headers.
+`tests/scripts/test_gateway_authenticated_locations.py` fails for a
+location that proxies to anything but a Wildbox service or the dashboard.
+
+### Automations (n8n)
+
+The gateway does not route to n8n. `/api/v1/automations/` proxied to its
+whole surface, the editor, the REST API and the webhooks, for every
+registered session of every team; n8n is a single-tenant tool with accounts
+of its own, and an instance whose owner account does not exist yet lets the
+first caller create it. The path now falls to the catch-all and answers 404
+with or without a credential.
+
+n8n's editor is on `127.0.0.1:5678` of the host, with the `automations`
+Compose profile started; `open-security-automations/README.md` has the
+setup. The workflows shipped there call the API outbound, through the
+gateway, with an API key. A workflow that needs an inbound webhook needs a
+location of its own for n8n's `/webhook/` prefix only, without
+`authenticate()` and without `proxy_params.conf`, relying on the webhook's
+own authentication in n8n.
 
 ## Routing
 
@@ -234,7 +258,6 @@ caller it verified, #664).
 | `/api/v1/tools/*` | `open-security-tools:8000` `/api/tools/*` | gateway |
 | `/api/v1/tasks` | `open-security-tools:8000` `/api/tasks` | gateway |
 | `/api/v1/tasks/*` | `open-security-tools:8000` `/api/tasks/*` | gateway |
-| `/api/v1/automations/*` | `open-security-automations:5678` `/*` | gateway |
 
 Notes:
 
@@ -244,13 +267,8 @@ Notes:
   `X-Forwarded-Prefix: /api/v1/guardian`, a literal that replaces any value
   the client sent: guardian writes its pagination links under that path, as
   relative references without a host (#643).
-- `/api/v1/automations/*` reaches n8n, which runs only with the `automations`
-  Compose profile; the upstream is resolved at request time, so the route
-  answers `502` while n8n is not running. n8n is not a Wildbox service, so
-  the location calls `authenticate({ upstream = "third_party" })`: the
-  caller is authenticated, needs `tools:admin` and counts against the rate
-  limit, and n8n is sent nothing the gateway vouches with; see
-  [What each upstream receives](#what-each-upstream-receives).
+- `/api/v1/automations/*` is not a route: it answers 404. See
+  [Automations](#automations-n8n).
 
 ### Dashboard and other locations
 

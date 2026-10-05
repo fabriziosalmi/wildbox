@@ -7,10 +7,12 @@
 # The gateway vouches for a caller with X-Gateway-Secret and the X-Wildbox-*
 # headers. A Wildbox service checks the secret and trusts the rest, so it is
 # sent them; whoever else holds the secret can state any user, team and role
-# to every service. The automations location proxies to n8n and included
+# to every service. The automations location proxied to n8n and included
 # the same proxy settings as a backend, so n8n -- not a Wildbox service,
 # and able to hand a request's headers to a workflow -- was sent the secret,
 # the caller's identity and, from a browser, the session JWT in a cookie.
+# That location is gone (#714): the gateway proxies to Wildbox's own
+# services and to nothing else.
 #
 # So every location of wildbox_gateway.conf that proxies is classified here
 # by what its upstream is, and what that kind may receive is checked on the
@@ -25,10 +27,12 @@
 #                themselves: the client's Authorization, and nothing the
 #                gateway vouches with
 #   dashboard    the dashboard: its own session cookie, nothing else
-#   third_party  anything else (n8n): nothing at all
 #
-# The locations are read from the configuration: one that proxies and has
-# no line below fails, so a location added later must be classified.
+# There is no kind for anything else, on purpose: an upstream that is not
+# Wildbox's has no line to be written with. The locations are read from the
+# configuration: one that proxies and has no line below fails, so a location
+# added later must be classified, and tests/scripts checks that each kind
+# names an upstream that is that kind of service.
 
 set -u
 
@@ -55,7 +59,7 @@ SESSION_COOKIE="auth_token=eyJhbGciOiJIUzI1NiJ9.session.fixture"
 CLIENT=(
     -H "Authorization: Bearer $SESSION"
     -H "X-API-Key: wsk_client_supplied_fixture"
-    -H "Cookie: theme=dark; $SESSION_COOKIE; n8n-auth=n8n-own-session"
+    -H "Cookie: theme=dark; $SESSION_COOKIE; lang=it"
     -H "X-Gateway-Secret: forged-by-the-client"
     -H "X-Wildbox-User-ID: forged-user"
     -H "X-Wildbox-Team-ID: forged-team"
@@ -87,7 +91,6 @@ secret_state() {
 BACKEND_HEADERS="x-gateway-secret x-wildbox-auth-type x-wildbox-role x-wildbox-team-id x-wildbox-user-id"
 IDENTITY_HEADERS="authorization cookie:auth_token"
 DASHBOARD_HEADERS="cookie:auth_token"
-THIRD_PARTY_HEADERS=""
 
 CLASSIFIED="$WORK/classified"
 : > "$CLASSIFIED"
@@ -96,7 +99,7 @@ CLASSIFIED="$WORK/classified"
 #
 # <location> is the location as wildbox_gateway.conf writes it, <path> a
 # request it serves, <port> the port of the service it proxies to (the mock
-# says which port a request arrived on), <kind> one of the four above.
+# says which port a request arrived on), <kind> one of the three above.
 upstream() {
     local location="$1" kind="$2" port="$3" method="$4" path="$5" expected status got name
     printf '%s\n' "$location" >> "$CLASSIFIED"
@@ -112,7 +115,6 @@ upstream() {
         backend) expected="$BACKEND_HEADERS" ;;
         identity) expected="$IDENTITY_HEADERS" ;;
         dashboard) expected="$DASHBOARD_HEADERS" ;;
-        third_party) expected="$THIRD_PARTY_HEADERS" ;;
         *) fail "$name: unknown kind '$kind'"; return ;;
     esac
     got=$(wildbox_headers)
@@ -132,7 +134,7 @@ upstream() {
             else
                 fail "$name: secret $(secret_state), user '$(header x-wildbox-user-id)', team '$(header x-wildbox-team-id)', role '$(header x-wildbox-role)', auth type '$(header x-wildbox-auth-type)'"
             fi
-            if [ "$(header cookie)" = "theme=dark; n8n-auth=n8n-own-session" ]; then
+            if [ "$(header cookie)" = "theme=dark; lang=it" ]; then
                 pass "$name: the other cookies are kept"
             else
                 fail "$name: Cookie is '$(header cookie)', expected the cookies without auth_token"
@@ -146,17 +148,10 @@ upstream() {
             fi
             ;;
         dashboard)
-            if [ "$(header cookie)" = "theme=dark; $SESSION_COOKIE; n8n-auth=n8n-own-session" ]; then
+            if [ "$(header cookie)" = "theme=dark; $SESSION_COOKIE; lang=it" ]; then
                 pass "$name: the dashboard gets its cookies as the browser sent them"
             else
                 fail "$name: Cookie is '$(header cookie)'"
-            fi
-            ;;
-        third_party)
-            if [ "$(header cookie)" = "theme=dark; n8n-auth=n8n-own-session" ]; then
-                pass "$name: its own cookies reach it, the Wildbox session does not"
-            else
-                fail "$name: Cookie is '$(header cookie)', expected the cookies without auth_token"
             fi
             ;;
     esac
@@ -205,10 +200,6 @@ upstream '~ ^/api/v1/tools/(.*)$'    backend 8000 POST /api/v1/tools/whois
 upstream '= /api/v1/tasks'           backend 8000 GET  /api/v1/tasks
 upstream '^~ /api/v1/tasks/'         backend 8000 GET  /api/v1/tasks/1f0c4ea6
 
-# n8n (port 5678): not a Wildbox service.
-upstream '/api/v1/automations/'      third_party 5678 POST /api/v1/automations/webhook/incident
-upstream '/api/v1/automations/'      third_party 5678 GET  /api/v1/automations/rest/workflows
-
 # --- Every proxying location is classified -----------------------------------
 echo "== Locations =="
 LOCATIONS="$WORK/locations"
@@ -236,50 +227,55 @@ else
     pass "every classification names a location of $(basename "$GATEWAY_CONF")"
 fi
 
-# --- n8n, with each credential a caller may hold ------------------------------
+# --- n8n is not behind the gateway (#714) -------------------------------------
 echo "== Automations =="
-# third_party_gets_nothing <name> <curl args...>
-third_party_gets_nothing() {
-    local name="$1" status got
-    shift
-    status=$(curl -sk -o "$WORK/body" -w "%{http_code}" "$@" "$GATEWAY_PROD_URL/api/v1/automations/webhook/incident")
-    got=$(wildbox_headers)
-    if [ "$status" = 200 ] && [ "$(jq -r '.port' "$WORK/body")" = 5678 ] && [ -z "$got" ]; then
-        pass "$name: n8n is reached and receives nothing of Wildbox's"
+# The mock still answers where n8n would be (open-security-automations:5678),
+# so a location that proxied there again would be seen to reach it.
+#
+# not_routed <name> <method> <path> <curl args...>: the gateway's own 404,
+# whoever asks; nothing was proxied.
+not_routed() {
+    local name="$1" method="$2" path="$3" status
+    shift 3
+    status=$(curl -sk --path-as-is -o "$WORK/body" -w "%{http_code}" -X "$method" "$@" "$GATEWAY_PROD_URL$path")
+    if [ "$status" = 404 ] && [ "$(jq -r '.error' "$WORK/body" 2>/dev/null)" = endpoint_not_found ] \
+            && [ "$(jq -r '.headers | type' "$WORK/body" 2>/dev/null)" != object ]; then
+        pass "$method $path, $name: 404, nothing is reached"
     else
-        fail "$name: HTTP $status, n8n received '$got' — $(head -c 160 "$WORK/body")"
+        fail "$method $path, $name: HTTP $status, port '$(jq -r '.port' "$WORK/body" 2>/dev/null)' — $(head -c 160 "$WORK/body")"
     fi
 }
-third_party_gets_nothing "a session" -H "Authorization: Bearer $SESSION"
-third_party_gets_nothing "a session with its cookie" -H "Authorization: Bearer $SESSION" -H "Cookie: $SESSION_COOKIE"
-third_party_gets_nothing "an API key" -H "X-API-Key: wsk_scoped~upstream-admin~tools:admin"
-third_party_gets_nothing "an unlimited API key" -H "X-API-Key: wsk_scoped~upstream-star~*"
-# A cached decision is no different.
-third_party_gets_nothing "a session, cached" -H "Authorization: Bearer $SESSION"
+# The editor, the REST API (the owner setup among it), a webhook, the public
+# API, and the prefix itself with and without its slash.
+for target in "GET /api/v1/automations/" "GET /api/v1/automations" \
+        "GET /api/v1/automations/rest/workflows" "POST /api/v1/automations/rest/owner/setup" \
+        "GET /api/v1/automations/rest/settings" "POST /api/v1/automations/webhook/incident" \
+        "POST /api/v1/automations/webhook-test/incident" "GET /api/v1/automations/api/v1/workflows" \
+        "GET /api/v1/automations/healthz"; do
+    method="${target%% *}"
+    path="${target#* }"
+    not_routed "without a credential" "$method" "$path"
+    not_routed "a session" "$method" "$path" -H "Authorization: Bearer $SESSION"
+    not_routed "a session with its cookie" "$method" "$path" -H "Authorization: Bearer $SESSION" -H "Cookie: $SESSION_COOKIE"
+    not_routed "a tools:admin key" "$method" "$path" -H "X-API-Key: wsk_scoped~upstream-admin~tools:admin"
+    not_routed "an admin key" "$method" "$path" -H "X-API-Key: wsk_scoped~upstream-full~admin"
+    not_routed "an unlimited key" "$method" "$path" -H "X-API-Key: wsk_scoped~upstream-star~*"
+done
+# And n8n's own credentials open nothing either.
+not_routed "n8n's own API key and cookie" GET /api/v1/automations/api/v1/workflows \
+    -H "X-N8N-API-KEY: n8n-own-key" -H "Cookie: n8n-auth=n8n-own-session"
 
-# The route is still authenticated and still needs tools:admin: only what
-# the upstream is told has changed.
-status=$(curl -sk -o "$WORK/body" -w "%{http_code}" "$GATEWAY_PROD_URL/api/v1/automations/webhook/incident")
-if [ "$status" = 401 ]; then
-    pass "automations without a credential: 401"
+# No proxying location names n8n: the inventory the classification above was
+# checked against holds Wildbox's services only.
+if grep -Eq 'automations|n8n|5678' "$LOCATIONS"; then
+    fail "a proxying location names n8n: $(grep -E 'automations|n8n|5678' "$LOCATIONS" | tr '\n' ';')"
 else
-    fail "automations without a credential: HTTP $status"
+    pass "no proxying location names n8n"
 fi
-status=$(curl -sk -o "$WORK/body" -w "%{http_code}" -H "X-API-Key: wsk_scoped~upstream-read~read,write" \
-    "$GATEWAY_PROD_URL/api/v1/automations/webhook/incident")
-if [ "$status" = 403 ] && [ "$(jq -r '.required_scope' "$WORK/body")" = tools:admin ]; then
-    pass "automations with a key that lacks tools:admin: 403"
+if grep -Ev '^[[:space:]]*#' "$GATEWAY_CONF" | grep -Eq 'automations|n8n|:5678'; then
+    fail "$(basename "$GATEWAY_CONF") still names n8n outside its comments"
 else
-    fail "automations with a read,write key: HTTP $status — $(head -c 160 "$WORK/body")"
-fi
-# What n8n itself reads is passed on: its API key header, its own cookie.
-status=$(curl -sk -o "$WORK/body" -w "%{http_code}" -H "Authorization: Bearer $SESSION" \
-    -H "X-N8N-API-KEY: n8n-own-key" -H "Cookie: n8n-auth=n8n-own-session" \
-    "$GATEWAY_PROD_URL/api/v1/automations/api/v1/workflows")
-if [ "$status" = 200 ] && [ "$(header x-n8n-api-key)" = n8n-own-key ] && [ "$(header cookie)" = "n8n-auth=n8n-own-session" ]; then
-    pass "n8n's own API key and session cookie reach it"
-else
-    fail "n8n's own credentials: HTTP $status, X-N8N-API-KEY '$(header x-n8n-api-key)', Cookie '$(header cookie)'"
+    pass "$(basename "$GATEWAY_CONF") names n8n in comments only"
 fi
 
 # --- The session cookie, in the shapes a browser sends it ---------------------

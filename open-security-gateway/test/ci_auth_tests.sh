@@ -196,6 +196,21 @@ assert_json "unreadable path requires admin to write" '.required_scope' 'admin'
 request "an unreadable path serves an admin key" 200 \
     -H "X-API-Key: wsk_scoped~unmapped-admin~admin" "$UNROUTED"
 assert_json "unreadable path still proxied where the location says" '.path' '/api/v1/tools/echo'
+# And where a location rewrites the path before authenticate() runs, the
+# scope is still the one of the route the location was chosen by. This one
+# is under /api/v1/guardian and rewrites to /api/v1/tools/...: a map that
+# read $uri would ask for tools:execute, and let a tools key write to a
+# guardian route. Production had such a location (automations) until #714.
+REWRITTEN="$GATEWAY_URL/api/v1/guardian/rewritten/echo"
+request "a rewritten path is not what the scope is read from" 403 -X POST \
+    -H "X-API-Key: wsk_scoped~rewritten-tools~tools:execute,tools:admin" "$REWRITTEN"
+assert_json "a rewriting location requires its route's scope" '.required_scope' 'data:write'
+request "a rewriting location reads with its route's scope" 403 \
+    -H "X-API-Key: wsk_scoped~rewritten-tools~tools:execute,tools:admin" "$REWRITTEN"
+assert_json "a rewriting location requires its route's read scope" '.required_scope' 'data:read'
+request "a rewriting location serves a key holding its route's scope" 200 -X POST \
+    -H "X-API-Key: wsk_scoped~rewritten-data~data:write" "$REWRITTEN"
+assert_json "the request is proxied to the rewritten path" '.path' '/api/v1/tools/echo'
 
 # 10. Auth cache: the two valid-bearer requests above (tests 4 and 5) must
 #     have produced exactly ONE /internal/authorize call
@@ -330,38 +345,6 @@ request "authenticated route, forged secret" 200 -X POST \
     -H "Authorization: Bearer valid-bearer-token" \
     -H "X-Gateway-Secret: forged-by-the-client" "$AGENTS/analyze"
 assert_secret "client-supplied secret replaced on an authenticated route" match
-
-# --- The kind of upstream (#711) ---------------------------------------------
-# authenticate({ upstream = "third_party" }) authenticates the caller and
-# sends the upstream nothing the gateway vouches with. A kind it does not
-# know is a mistake in the configuration and is refused, not read as a
-# backend: a typo must not hand a third party the secret.
-echo "== upstream kind =="
-request "third-party upstream, session" 200 \
-    -H "Authorization: Bearer valid-bearer-token" -H "X-API-Key: wsk_client_supplied" \
-    -H "Cookie: auth_token=a.b.c; theme=dark" "$GATEWAY_URL/api/v1/tools/third-party/echo"
-assert_secret "a third party is not vouched for" absent
-assert_json "a third party is not told the user" '.headers["x-wildbox-user-id"] // "absent"' 'absent'
-assert_json "a third party is not told the team" '.headers["x-wildbox-team-id"] // "absent"' 'absent'
-assert_json "a third party is not told the role" '.headers["x-wildbox-role"] // "absent"' 'absent'
-assert_json "a third party is not told the auth type" '.headers["x-wildbox-auth-type"] // "absent"' 'absent'
-assert_json "a third party does not get the bearer token" '.headers.authorization // "absent"' 'absent'
-assert_json "a third party does not get the API key" '.headers["x-api-key"] // "absent"' 'absent'
-assert_json "a third party does not get the session cookie" '.headers.cookie' 'theme=dark'
-request "third-party upstream still needs a credential" 401 "$GATEWAY_URL/api/v1/tools/third-party/echo"
-request "third-party upstream still needs the scope" 403 -X POST \
-    -H "X-API-Key: wsk_readonly_ci_fixture" "$GATEWAY_URL/api/v1/tools/third-party/echo"
-
-request "unknown upstream kind is refused" 500 \
-    -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_URL/api/v1/tools/unknown-upstream/echo"
-# The body is nginx's own error page, not the echo of a proxied request.
-if printf '%s' "$BODY" | grep -q '"headers"'; then
-    fail "unknown upstream kind: the request was proxied — $(head -c 200 /tmp/body.json)"
-else
-    pass "unknown upstream kind: nothing was proxied"
-fi
-request "unknown upstream kind is refused without a credential, too" 500 \
-    "$GATEWAY_URL/api/v1/tools/unknown-upstream/echo"
 
 # A connection identity closed is retried once; an unreachable identity is
 # a JSON 503 with Retry-After (#609).

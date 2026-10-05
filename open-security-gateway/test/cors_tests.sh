@@ -191,7 +191,7 @@ for path in /api/v1/identity/users/me /api/v1/identity/auth/jwt/login /api/v1/id
         /api/v1/data/ingest /api/v1/data/health /api/v1/cspm/scans /api/v1/responder/playbooks \
         /api/v1/guardian/assets/assets/ /api/v1/agents/analyze /api/v1/agents/stats \
         /api/v1/tools /api/v1/tools/whois /api/v1/tasks /api/v1/tasks/1f0c4ea6 \
-        /api/v1/automations/webhook/incident /api/v1/no-such-service/x; do
+        /api/v1/no-such-service/x; do
     preflight "$GATEWAY_PROD_URL" "$LISTED" POST "$path"
     allowed "POST $path"
 done
@@ -205,8 +205,8 @@ send -H "Origin: $LISTED" -H "Authorization: Bearer not-a-real-token" "$GATEWAY_
 labelled "401 invalid_token" 401
 send -X POST -H "Origin: $LISTED" "$GATEWAY_PROD_URL/auth/jwt/login"
 labelled "identity's login route" 200
-send -H "Origin: $LISTED" -H "Authorization: Bearer prod-harness-session-token" "$GATEWAY_PROD_URL/api/v1/automations/rest/workflows"
-labelled "a route whose location rewrites the path" 200
+send -H "Origin: $LISTED" -H "Authorization: Bearer prod-harness-session-token" "$GATEWAY_PROD_URL/api/v1/guardian/assets/assets/"
+labelled "a route the gateway authenticates" 200
 if header access-control-expose-headers | grep -qi 'x-ratelimit-remaining'; then
     pass "a page may read the rate limit headers"
 else

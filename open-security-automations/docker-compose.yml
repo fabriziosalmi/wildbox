@@ -15,9 +15,8 @@ services:
       - "127.0.0.1:5678:5678"
     environment:
       # n8n Configuration
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      # No N8N_BASIC_AUTH_*: n8n 1.x has no basic auth and ignores them
+      # (#714). Create the owner account right after the first start.
       - N8N_HOST=${N8N_HOST:-localhost}
       - N8N_PORT=5678
       - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
@@ -60,11 +59,10 @@ services:
     networks:
       - wildbox-net
 
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`automations.wildbox.local`)"
-      - "traefik.http.routers.n8n.tls=true"
-      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+    # No reverse-proxy labels: n8n is reached on the loopback port above and
+    # nowhere else (#714). The Traefik labels that were here would have let a
+    # Traefik on the same Docker host publish the editor, the REST API and
+    # the owner setup of a new instance under automations.wildbox.local.
       
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]

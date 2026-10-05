@@ -79,12 +79,6 @@ const GATEWAY_ROUTES: GatewayRoute[] = [
     upstream: '/api/v1/…',
     note: 'No written reference yet.',
   },
-  {
-    prefix: '/api/v1/automations/…',
-    service: 'automations',
-    upstream: '/…',
-    note: 'Only with the automations Compose profile; 502 otherwise.',
-  },
 ]
 
 const LOGIN_EXAMPLE = `curl -X POST "https://<gateway-host>/auth/jwt/login" \\
