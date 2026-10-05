@@ -76,7 +76,27 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Set created_by when creating vulnerability"""
         serializer.save(created_by=self.request.user)
-    
+
+    def perform_update(self, serializer):
+        """Save, and tell a new assignee.
+
+        A PUT or PATCH that changes ``assigned_to`` assigns the
+        vulnerability as ``assign/`` does, and told nobody: the notice was
+        to come from a post_save handler that never ran (#724).
+        """
+        before = serializer.instance.assigned_to_id
+        vulnerability = serializer.save()
+        if vulnerability.assigned_to_id not in (None, before):
+            self._notify_assignment(vulnerability)
+
+    def _notify_assignment(self, vulnerability):
+        """Queue the assignment e-mail for the vulnerability's assignee.
+
+        Who is told, and whether, is the task's to decide
+        (apps.vulnerabilities.tasks.notify_vulnerability_assignment).
+        """
+        notify_vulnerability_assignment.delay(vulnerability.id, self.request.user.id)
+
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
         """Assign vulnerability to user or group"""
@@ -108,9 +128,8 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         
         vulnerability.save()
         
-        # Trigger notification task
-        notify_vulnerability_assignment.delay(vulnerability.id, request.user.id)
-        
+        self._notify_assignment(vulnerability)
+
         return Response({
             'message': 'Vulnerability assigned successfully',
             'assigned_to': vulnerability.assigned_to.get_full_name() if vulnerability.assigned_to else None,

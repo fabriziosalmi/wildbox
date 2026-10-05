@@ -542,6 +542,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did not show it: it mounts `open-security-gateway/nginx` over
   `/etc/nginx`. The Dockerfile removes the file, and
   `test/production_image_tests.sh` checks the image as built.
+- **guardian: a vulnerability's `resolved_at` follows its status**
+  (#724). Only `close/` and `reopen/` wrote it, so a vulnerability
+  resolved with `PATCH {"status": "resolved"}` had no date: `stats/`
+  left it out of the average resolution time and `trends/` out of the
+  day's `resolved_count`, and one reopened with PATCH kept the date of a
+  resolution it no longer had. The code meant to do this ran after the
+  list of changes it read had been deleted. Any save that makes the
+  status `resolved` now sets the date, and any that takes it away clears
+  it. A migration gives the resolved vulnerabilities without a date the
+  time their history says they were resolved, where it says, and clears
+  the date of those that are not resolved.
+- **guardian: assigning a vulnerability with `PUT` or `PATCH` notifies
+  the new assignee** (#724). `assign/` queued the assignment e-mail; the
+  same assignment made by changing `assigned_to` told nobody: the notice
+  was to come from the same dead code. It is queued now, when the
+  assignee changes to a user. Who is told is unchanged: the assignee,
+  while a member of the team.
+- **guardian no longer writes to stdout when a vulnerability is saved.**
+  Three `print()` calls in the vulnerability signals put a line outside
+  the log, with the vulnerability's title, for every creation, history
+  entry and deletion; a creation is a log line now and the others are
+  gone, with a signal nothing sent and its handler (#724).
 - **guardian answers JSON, and serves the browsable API only in
   development** (#724). Django REST framework's HTML renderer was on in
   every environment, and in the image any request that asked for

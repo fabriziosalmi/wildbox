@@ -309,8 +309,10 @@ queues the same scan on demand.
 - `status`: `open` (default), `in_progress`, `resolved`, `accepted`,
   `false_positive`, `duplicate`.
 - `priority`: `p1` to `p4` (default `p3`).
-- `resolved_at`: set by the `close` action and cleared by `reopen`; a plain
-  `PATCH` of `status` does not set it.
+- `resolved_at`: when the status became `resolved`. It follows the status
+  on every save (`apps/vulnerabilities/signals.py`): set when the status
+  becomes `resolved`, by `close/`, a `PATCH`, a bulk action or a task, and
+  cleared when it stops being so (#724).
 - Unique together: `(asset, cve_id, port)`.
 
 Within the team, users who lack the `view_all_vulnerabilities` permission see only the

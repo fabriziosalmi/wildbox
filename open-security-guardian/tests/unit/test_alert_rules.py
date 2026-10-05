@@ -69,7 +69,7 @@ def _vulnerability(asset, **fields):
     fields.setdefault("description", "d")
     with mock.patch(
         "apps.vulnerabilities.signals.enrich_vulnerability_with_threat_intel"
-    ), mock.patch("apps.vulnerabilities.signals.notify_vulnerability_assignment"):
+    ):
         vulnerability = Vulnerability.objects.create(asset=asset, **fields)
     # save() recalculates the risk score; set it as the test means it.
     if "risk_score" in fields:
