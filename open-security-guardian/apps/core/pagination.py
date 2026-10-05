@@ -111,7 +111,18 @@ class _PublicLinks:
 
 
 class GatewayPageNumberPagination(PageNumberPagination):
-    """Page-number pagination with links relative to the gateway's path."""
+    """Page-number pagination with links relative to the gateway's path.
+
+    ``?page_size=N`` sets the size of the page, from 1 to ``max_page_size``;
+    a larger N is served ``max_page_size`` rows, and anything that is not a
+    positive whole number the default (settings' ``PAGE_SIZE``). guardian
+    ignored the parameter: the dashboard asked for one row to read a count,
+    and for the three newest vulnerabilities, and was sent fifty each time
+    (#724). The maximum bounds what one request can make guardian serialize.
+    """
+
+    page_size_query_param = "page_size"
+    max_page_size = 200
 
     def paginate_queryset(self, queryset, request, view=None):
         page = super().paginate_queryset(queryset, request, view=view)

@@ -4,18 +4,55 @@ Asset Management Filters
 Django filter classes for asset management API endpoints.
 """
 
+import ipaddress
+
 import django_filters
 from django.db.models import Q
+from rest_framework.exceptions import ValidationError
 
-from .models import Asset, AssetSoftware, AssetPort, AssetType, AssetCriticality, AssetStatus
+from .models import Asset, AssetType, AssetCriticality, AssetStatus
+
+#: The most addresses ``ip_range`` lists one by one (see ``network_q``).
+MAX_LISTED_ADDRESSES = 256
+
+
+def network_q(network):
+    """The ``Q`` for the addresses inside ``network``, whatever its size.
+
+    The filter used to list every host of the network and ask for
+    ``ip_address IN (...)``: ``?ip_range=10.0.0.0/8`` built sixteen million
+    strings, and ``0.0.0.0/0`` never answered (#724). An IPv4 address is
+    stored in dotted form, so a network that ends on an octet is a text
+    prefix (``10.`` for ``10.0.0.0/8``), and any other network is at most
+    128 such networks, or at most 128 addresses. Nothing grows with the size
+    of the range.
+
+    IPv6 text has no such prefix (``::`` stands for any run of zeros), so an
+    IPv6 range is listed, and one of more than MAX_LISTED_ADDRESSES is
+    refused by the caller.
+    """
+    if network.version == 6:
+        return Q(ip_address__in=[str(address) for address in network])
+    octets = -(-network.prefixlen // 8)
+    if octets == 4:
+        return Q(ip_address__in=[str(address) for address in network])
+    if octets == 0:
+        # 0.0.0.0/0: every IPv4 address.
+        return Q(ip_address__contains='.') & ~Q(ip_address__contains=':')
+    condition = Q()
+    for subnet in network.subnets(new_prefix=octets * 8):
+        prefix = '.'.join(str(subnet.network_address).split('.')[:octets]) + '.'
+        condition |= Q(ip_address__startswith=prefix)
+    return condition
 
 
 class AssetFilter(django_filters.FilterSet):
-    """Filter class for Asset model"""
-    
-    # Text search across multiple fields
-    search = django_filters.CharFilter(method='filter_search', label='Search')
-    
+    """Filter class for Asset model
+
+    ``?search=`` is DRF's SearchFilter over the viewset's ``search_fields``;
+    the ``search`` this filter set also had was applied as well (#724).
+    """
+
     # IP address range filtering
     ip_range = django_filters.CharFilter(method='filter_ip_range', label='IP Range')
     
@@ -47,33 +84,30 @@ class AssetFilter(django_filters.FilterSet):
         model = Asset
         fields = []
 
-    def filter_search(self, queryset, name, value):
-        """Search across multiple text fields"""
-        return queryset.filter(
-            Q(name__icontains=value) |
-            Q(hostname__icontains=value) |
-            Q(fqdn__icontains=value) |
-            Q(ip_address__icontains=value) |
-            Q(description__icontains=value)
-        )
-
     def filter_ip_range(self, queryset, name, value):
-        """Filter by IP address range (CIDR notation)"""
+        """The assets whose address is in a network (CIDR), or starts so.
+
+        A value that is not a network or an address is the start of one:
+        ``?ip_range=10.20.`` answers the addresses that begin with it.
+        """
         try:
-            import ipaddress
-            network = ipaddress.ip_network(value, strict=False)
-            return queryset.filter(
-                ip_address__in=[str(ip) for ip in network.hosts()]
-            )
-        except (ValueError, ipaddress.AddressValueError):
-            # If invalid CIDR, treat as partial IP match
-            return queryset.filter(ip_address__startswith=value)
+            network = ipaddress.ip_network(value.strip(), strict=False)
+        except ValueError:
+            return queryset.filter(ip_address__startswith=value.strip())
+        if network.version == 6 and network.num_addresses > MAX_LISTED_ADDRESSES:
+            raise ValidationError({
+                name: [
+                    'An IPv6 range of at most '
+                    f'{MAX_LISTED_ADDRESSES} addresses (/120 or longer).'
+                ]
+            })
+        return queryset.filter(network_q(network))
 
     def filter_tags(self, queryset, name, value):
-        """Filter by tags (comma-separated)"""
-        tags = [tag.strip() for tag in value.split(',')]
-        for tag in tags:
-            queryset = queryset.filter(tags__contains=tag)
+        """The assets that have every one of the comma-separated tags"""
+        for tag in value.split(','):
+            if tag.strip():
+                queryset = queryset.filter(tags__contains=tag.strip())
         return queryset
 
     def filter_has_vulnerabilities(self, queryset, name, value):
@@ -96,48 +130,3 @@ class AssetFilter(django_filters.FilterSet):
             return queryset.filter(ports__state='open').distinct()
         else:
             return queryset.exclude(ports__state='open').distinct()
-
-
-class AssetSoftwareFilter(django_filters.FilterSet):
-    """Filter class for AssetSoftware model"""
-    
-    asset_name = django_filters.CharFilter(field_name='asset__name', lookup_expr='icontains')
-    asset_ip = django_filters.CharFilter(field_name='asset__ip_address')
-    name = django_filters.CharFilter(lookup_expr='icontains')
-    vendor = django_filters.CharFilter(lookup_expr='icontains')
-    version = django_filters.CharFilter(lookup_expr='icontains')
-    is_critical = django_filters.BooleanFilter()
-    
-    class Meta:
-        model = AssetSoftware
-        fields = []
-
-
-class AssetPortFilter(django_filters.FilterSet):
-    """Filter class for AssetPort model"""
-    
-    asset_name = django_filters.CharFilter(field_name='asset__name', lookup_expr='icontains')
-    asset_ip = django_filters.CharFilter(field_name='asset__ip_address')
-    port_number = django_filters.NumberFilter()
-    port_range = django_filters.CharFilter(method='filter_port_range')
-    protocol = django_filters.ChoiceFilter(choices=[('tcp', 'TCP'), ('udp', 'UDP')])
-    state = django_filters.ChoiceFilter(choices=[
-        ('open', 'Open'), ('closed', 'Closed'), 
-        ('filtered', 'Filtered'), ('unknown', 'Unknown')
-    ])
-    service = django_filters.CharFilter(lookup_expr='icontains')
-    
-    class Meta:
-        model = AssetPort
-        fields = []
-
-    def filter_port_range(self, queryset, name, value):
-        """Filter by port range (e.g., '80-443')"""
-        try:
-            if '-' in value:
-                start, end = map(int, value.split('-', 1))
-                return queryset.filter(port_number__gte=start, port_number__lte=end)
-            else:
-                return queryset.filter(port_number=int(value))
-        except (ValueError, TypeError):
-            return queryset.none()
