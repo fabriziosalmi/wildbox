@@ -1092,6 +1092,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the service are gone too (`@validator`, `Field(env=...)` in the
   settings, `.dict()`, `Path(regex=...)`); they worked, with deprecation
   warnings, so nothing else changes for a client or an operator.
+- **A sensor whose key is refused keeps what it reads** (#745). Every
+  4xx answer but 429 dropped the batch and settled its events, so the log
+  positions moved past them: with a revoked or expired key (401), a key
+  without the scope or a member removed from the team (403), everything
+  the sensor read was discarded and could never be read again. The sender
+  now reads an answer for what it says. A credential or permission
+  answer, a rate limit, a redirect or a 404 keeps the batch as an outage
+  does, with the same backoff and `Retry-After`; the sensor logs `Not
+  delivering since ...` once, with the reason and what to do, and reports
+  `delivery.state` (`unauthorized`, `forbidden`, `rate_limited`,
+  `unavailable`, `misconfigured`) under `data_forwarder` in
+  `GET /api/v1/components`, `delivery_state` in `GET /api/v1/stats` and
+  an alert in the dashboard summary. Only an answer about the payload
+  costs events (413, 422, the data service's own 400, a 200 that stored
+  nothing), and then the event at fault, not its batch: the batch is
+  split in halves until that event is alone, at most 64 requests for one
+  batch, and a batch refused for its size is delivered in parts. A 200
+  whose `events_ingested` is below what was sent no longer counts the
+  difference as forwarded. An integration test revokes a sensor's key,
+  writes lines, starts the sensor again with a valid key and requires
+  each line once in the data service.
 
 ### Changed
 

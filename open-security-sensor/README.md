@@ -707,7 +707,8 @@ python main.py --config /etc/security-sensor/config.yaml --test-connection
 It posts an empty batch with the configured key and reports what the gateway
 answered: 200 means the URL, the TLS trust, the key and its scope are right;
 401 means the key is invalid, expired or revoked; 403 means it lacks the
-`data:ingest` scope.
+`data:ingest` scope. The running sensor reads the same answers the same way:
+see [When the gateway takes nothing](#when-the-gateway-takes-nothing).
 
 The sensor sends the key in the `X-API-Key` header only, does not follow
 redirects with it, and never logs it.
@@ -719,11 +720,38 @@ answers for them. A batch is the oldest events: at most `batch_size` of them
 and 8 MiB, which the gateway's 10 MiB request limit admits. It is sent when
 it is full, or `flush_interval` seconds after its first event.
 
-| The gateway answers | What happens to the batch |
-| :--- | :--- |
-| 200 or 201 | It leaves the buffer; `events_forwarded` counts its events |
-| A network error, 429 or 5xx | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). After a 429 the delay is at least the answer's `Retry-After`, or 10 seconds. No number of attempts gives it up |
-| Any other 4xx, or a redirect | It is dropped, and `events_dropped_refused` counts its events: sent again it would get the same answer, and hold back everything collected after it |
+An answer is read for what it says. Only an answer about the events
+themselves costs events; one that says the sensor is not allowed, not now,
+or not at the right address keeps the batch, as an outage does.
+
+| The answer | It means | What happens to the batch |
+| :--- | :--- | :--- |
+| 200 or 201 | Stored | It leaves the buffer; `events_forwarded` counts the events the data service says it stored (`events_ingested`), and any it says it did not are counted as dropped |
+| A network error, 5xx | The gateway, identity or the data service is unreachable (`unavailable`) | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). No number of attempts gives it up |
+| 429 | The team's request budget, or nginx's limit per address (`rate_limited`) | Kept, as above; the delay is at least the answer's `Retry-After`, or 10 seconds |
+| 401, or the gateway's 400 `invalid_token` | The key is invalid, expired or revoked (`unauthorized`) | Kept, as above |
+| 403 | The key lacks the `data:ingest` scope, its member left the team or has not changed the initial password (`forbidden`) | Kept, as above |
+| A redirect, 404, another 4xx | The request did not reach the ingest route (`misconfigured`) | Kept, as above |
+| 413, 422, the data service's 400, a 200 that stored nothing | The payload is not acceptable | The batch is split in halves, each sent in its turn, until the event at fault is alone: that one is dropped and counted in `events_dropped_refused`, the others are delivered. A batch refused for its size is delivered in parts and loses nothing |
+
+While batches are kept the sensor is **not delivering**, and says so:
+
+- an error in its log when it begins, `Not delivering since <time> (HTTP 401
+  invalid_token: ...)`, with what to do about it, and a line when it is
+  over;
+- `data_forwarder.delivery` in `GET /api/v1/components`: `state` (`ok`,
+  `unavailable`, `rate_limited`, `unauthorized`, `forbidden`,
+  `misconfigured`, or `unconfigured` without a key), `since` and `reason`;
+- `delivery_state` and `delivery_since` in `GET /api/v1/stats`, and an alert
+  in `GET /api/v1/dashboard/metrics`.
+
+Nothing is dropped meanwhile, and no log position moves: with a revoked key
+the sensor keeps what it collects, then stops collecting when its buffer is
+full, and delivers every line once after it is restarted with a valid key.
+
+Splitting a refused batch is bounded: after 64 requests spent on one batch,
+what is left of it is dropped whole, with an error that says how many
+events. Finding one unacceptable event among 100 takes about 14.
 
 The buffer holds at most `buffer_max_events` events and `buffer_max_bytes`
 bytes of serialized events (5,000 and 16 MiB by default), and each of the two
@@ -744,7 +772,7 @@ An event leaves the sensor unsent, and is counted, in these cases only:
 
 | Counter | When |
 | :--- | :--- |
-| `events_dropped_refused` | The gateway refused its batch, as above |
+| `events_dropped_refused` | The data service refused the event itself, as above |
 | `events_dropped_oversize` | Serialized, it is larger than a batch may be (8 MiB, or `buffer_max_bytes` if that is less) |
 | `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN) |
 | `events_dropped_unconfigured` | No API key is set: everything collected is discarded |
@@ -808,7 +836,9 @@ never changed, whatever its source is named.
 Revoke its key (**Settings > API keys**, or
 `DELETE /api/v1/identity/api-keys/<prefix>`) or remove its member from the
 team. The gateway refuses the key on the sensor's next batch, with no cache
-delay.
+delay. The sensor then reports `unauthorized` (or `forbidden`), keeps what
+it has collected and stops collecting when its buffer is full; it discards
+nothing. To bring it back, give it a valid key and restart it.
 
 ## Local API
 

@@ -296,6 +296,9 @@ class SecuritySensorAgent:
         * errors: errors of the processor and of the sender (network errors
           and error answers of the gateway).
         * last_activity: when the last event was collected, or null.
+        * delivery_state: "ok", or why no batch reaches the data service
+          ("unauthorized", "forbidden", "rate_limited", "unavailable",
+          "misconfigured", "unconfigured"), and delivery_since.
         """
         processor = self.data_processor.stats if self.data_processor else {}
         forwarder = self.data_forwarder.stats if self.data_forwarder else {}
@@ -321,6 +324,10 @@ class SecuritySensorAgent:
             'last_activity': last_put.isoformat() if last_put else None,
             'uptime_seconds': uptime,
         }
+        if self.data_forwarder:
+            delivery = self.data_forwarder.get_status()['delivery']
+            stats['delivery_state'] = delivery['state']
+            stats['delivery_since'] = delivery['since']
         stats.update(self.resources)
         return stats
 

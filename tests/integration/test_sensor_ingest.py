@@ -22,7 +22,10 @@ list). What they assert happens through the gateway, as for any client:
     not read (#638);
   * a sensor that restarts goes on where the data service's last accepted
     line was: a line written while it was down is stored, and none twice
-    (#725).
+    (#725);
+  * a sensor whose key is revoked keeps what it reads, says that it is not
+    authorized, and delivers every line once when it has a valid key again
+    (#745).
 
 Deterministic: one batch per step, no retries, and no waiting except for the
 log forwarder to look at its file and, in the restart test, for the gateway
@@ -277,6 +280,104 @@ asyncio.run(main())
 """
 
 
+# Runs in the sensor container (#745). The same pipeline as above, on one log
+# file and one data directory: a run with a key the gateway refuses, during
+# which lines are written, then a run with a valid key. The first run waits
+# until the sender has been refused and holds every line; the second until
+# the gateway has accepted them all.
+FORWARD_LOG_REVOKED = r"""
+import asyncio, json, os, shutil, sys, tempfile
+
+request = json.load(sys.stdin)
+
+import yaml
+
+from sensor.collectors.log_forwarder import LogForwarder
+from sensor.core.config import load_config
+from sensor.pipeline.data_forwarder import DataForwarder
+from sensor.pipeline.data_processor import DataProcessor
+
+
+async def until(condition, what):
+    deadline = asyncio.get_running_loop().time() + 30
+    while not condition():
+        if asyncio.get_running_loop().time() > deadline:
+            raise SystemExit("timed out waiting for " + what)
+        await asyncio.sleep(0.05)
+
+
+async def run(config_path, log, key, lines, done):
+    os.environ["SENSOR_DATA_LAKE_API_KEY"] = key
+    config = load_config(config_path)
+    config.data_lake.sensor_id = request["sensor_id"]
+    config.data_lake.batch_size = 2
+    config.data_lake.flush_interval = 1
+    collected, processed = asyncio.Queue(100), asyncio.Queue(100)
+    forwarder = LogForwarder(config, collected)
+    forwarder.poll_interval = 0.05
+    processor = DataProcessor(config, collected, processed)
+    sender = DataForwarder(config, processed)
+    await processor.start()
+    await sender.start()
+    await forwarder.start()
+    try:
+        for line in lines:
+            with open(log, "a") as handle:
+                handle.write(line + "\n")
+        await until(lambda: done(sender), "the sender")
+        status = sender.get_status()
+        positions = forwarder.get_status()["log_sources"][0]["positions"]
+    finally:
+        await forwarder.stop()
+        await processor.stop()
+        await sender.stop()
+        forwarder.save_positions()
+    return {
+        "stats": dict(sender.stats),
+        "delivery": status["delivery"],
+        "held": status["buffer"]["events"],
+        "positions": positions,
+    }
+
+
+async def main():
+    directory = tempfile.mkdtemp(prefix="log-revoked-")
+    data_dir = os.path.join(directory, "data")
+    os.mkdir(data_dir)
+    log = os.path.join(directory, "access.log")
+    open(log, "w").close()
+
+    with open("/etc/security-sensor/config.yaml") as handle:
+        settings = yaml.safe_load(handle)
+    settings.setdefault("collection", {})["log_forwarding"] = True
+    settings["data_dir"] = data_dir
+    settings["log_sources"] = [
+        {"name": request["source"], "path": log, "format": "raw"}
+    ]
+    config_path = os.path.join(directory, "config.yaml")
+    with open(config_path, "w") as handle:
+        yaml.safe_dump(settings, handle)
+
+    lines = request["lines"]
+    try:
+        refused = await run(
+            config_path, log, request["revoked_key"], lines[:3],
+            lambda sender: sender.delivery_state == "unauthorized"
+            and len(sender.buffer) == 3 and sender.failures >= 2,
+        )
+        restored = await run(
+            config_path, log, request["key"], lines[3:],
+            lambda sender: sender.stats["events_forwarded"] >= len(lines),
+        )
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+    print(json.dumps({"refused": refused, "restored": restored, "log": log}))
+
+
+asyncio.run(main())
+"""
+
+
 def _email(label):
     return f"sensor-ingest-{label}-{secrets.token_hex(6)}@example.com"
 
@@ -359,8 +460,9 @@ def _in_sensor(script, key, **request):
     if result.returncode != 0 and "No such container" in result.stderr:
         _unavailable(f"{SENSOR_CONTAINER} is not running")
     assert result.returncode == 0, result.stderr[-800:]
-    # The key must not appear in anything the forwarder printed or logged.
-    assert key not in result.stdout and key not in result.stderr
+    # No key may appear in anything the forwarder printed or logged.
+    for secret in [key] + list(request.get("secrets", [])):
+        assert secret not in result.stdout and secret not in result.stderr
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
@@ -589,5 +691,63 @@ def test_a_revoked_key_is_refused_on_the_next_batch(teams):
 
     second = _forward(created["key"], sensor_id, _events(uuid.uuid4().hex))
     assert second["stats"]["batches_sent"] == 0, second["stats"]
-    assert second["stats"]["last_error"] == "HTTP 401", second["stats"]
+    assert second["stats"]["last_error"].startswith("HTTP 401 invalid_token"), second[
+        "stats"
+    ]
+    # Refused, and not thrown away: the sensor still holds the batch (#745).
+    assert second["stats"]["events_dropped"] == 0, second["stats"]
     assert len(_listed(token, sensor_id)) == 2
+
+
+def test_a_revoked_key_loses_no_line_and_a_valid_one_delivers_them_once(teams):
+    """A key the gateway refuses costs no event (#745).
+
+    The sender used to drop every batch answered 401 and let the log
+    positions move past its lines: with a revoked key, everything the sensor
+    read was thrown away for good. Here the sensor's key is revoked, three
+    lines are written, and the sensor is started again with a valid key and
+    a fourth line.
+    """
+    token = _account("revoked-key")
+    revoked = _ingest_key(token)
+    valid = _ingest_key(token)
+    removed = requests.delete(
+        f"{IDENTITY_API}/api-keys/{revoked['prefix']}",
+        headers=_bearer(token),
+        timeout=TIMEOUT,
+    )
+    assert removed.status_code == 200, removed.text[:200]
+    sensor_id = f"revoked-{uuid.uuid4().hex[:8]}"
+    source = f"app_{uuid.uuid4().hex[:6]}"
+    lines = [f"line {number} {uuid.uuid4().hex}" for number in range(1, 5)]
+
+    result = _in_sensor(
+        FORWARD_LOG_REVOKED,
+        valid["key"],
+        revoked_key=revoked["key"],
+        sensor_id=sensor_id,
+        source=source,
+        lines=lines,
+        secrets=[revoked["key"]],
+    )
+
+    refused, restored = result["refused"], result["restored"]
+    # With the revoked key: refused, said, and every line still there.
+    assert refused["delivery"]["state"] == "unauthorized", refused
+    assert refused["delivery"]["reason"].startswith("HTTP 401 invalid_token"), refused
+    assert refused["held"] == 3, refused
+    assert refused["stats"]["events_forwarded"] == 0, refused["stats"]
+    assert refused["stats"]["events_dropped"] == 0, refused["stats"]
+    # Read, and not accepted: the position did not move.
+    assert refused["positions"][result["log"]]["accepted"] == 0, refused
+    assert refused["positions"][result["log"]]["read"] > 0, refused
+    # With a valid key: all four, the three written meanwhile included.
+    assert restored["delivery"]["state"] == "ok", restored
+    assert restored["stats"]["events_forwarded"] == 4, restored["stats"]
+    assert restored["stats"]["events_dropped"] == 0, restored["stats"]
+
+    stored = [
+        event["event_data"]["data"]["raw_message"]
+        for event in _listed(token, sensor_id)
+    ]
+    assert sorted(stored) == sorted(lines), stored

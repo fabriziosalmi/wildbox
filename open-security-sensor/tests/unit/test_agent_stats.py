@@ -270,6 +270,33 @@ async def test_the_summary_counts_errors_as_something_to_look_at(tmp_path, gatew
 
 
 @pytest.mark.asyncio
+async def test_a_sensor_that_delivers_nothing_says_so_where_it_is_looked_at(
+    tmp_path, gateway
+):
+    # The local API answered "running" and zero errors for a sensor whose
+    # key had been revoked for a week.
+    log = tmp_path / "app.log"
+    log.write_text("")
+    agent = _agent(log)
+    api = LocalAPI(agent.config, agent)
+
+    await agent.start()
+    try:
+        agent.data_forwarder.min_request_interval = 0.002
+        assert agent.get_stats()["delivery_state"] == "ok"
+        agent.data_forwarder._note("unauthorized", "HTTP 401 invalid_token")
+        stats = await _answer(api._stats_handler)
+        summary = await _answer(api._dashboard_metrics_handler)
+    finally:
+        await agent.stop()
+
+    assert stats["delivery_state"] == "unauthorized"
+    assert stats["delivery_since"]
+    assert summary["delivery_state"] == "unauthorized"
+    assert summary["alerts"] == 1
+
+
+@pytest.mark.asyncio
 async def test_the_queue_counts_every_put_and_nothing_else():
     queue = CountingQueue(maxsize=2)
 

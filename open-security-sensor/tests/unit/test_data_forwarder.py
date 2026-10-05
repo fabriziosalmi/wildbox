@@ -48,12 +48,15 @@ from sensor.pipeline.data_forwarder import (  # noqa: E402
     REFUSED,
     RETRY,
     SENT,
+    SPLIT_BUDGET,
     DataForwarder,
     build_batch,
+    classify_answer,
     encode_batch,
     encode_event,
     ingest_event_type,
     retry_delay,
+    stored_events,
 )
 from sensor.pipeline.delivery import DELIVERY_KEY, Delivery  # noqa: E402
 
@@ -126,14 +129,27 @@ class FakeGateway:
         self.requests = []
         self.status = 200
         self.outage = deque()
-        self.body = {"batch_id": "b", "events_received": 0, "events_ingested": 0}
+        # None: what the data service answers, every event stored. Else
+        # this, whatever the status.
+        self.body = None
         self.location = None
         self.retry_after = None
         self.delay = 0  # seconds between receiving a request and answering
+        # As the data service: 422 for a batch that holds one of these ids.
+        self.unacceptable = set()
+        # As nginx (413) or the data service (400): no more events than this.
+        self.most_events = None
+        self.too_many = 413
 
     async def handle(self, request):
         raw = await request.read()
         status = self.outage.popleft() if self.outage else self.status
+        if status == 200 and raw:
+            ids = [e["event_data"].get("id") for e in json.loads(raw)["events"]]
+            if self.most_events is not None and len(ids) > self.most_events:
+                status = self.too_many
+            elif self.unacceptable.intersection(ids):
+                status = 422
         self.requests.append(
             {
                 "method": request.method,
@@ -150,7 +166,13 @@ class FakeGateway:
             headers["Retry-After"] = self.retry_after
         if self.delay:
             await asyncio.sleep(self.delay)
-        return web.json_response(self.body, status=status, headers=headers)
+        body = self.body
+        if body is None:
+            count = len(json.loads(raw)["events"]) if raw else 0
+            body = {"batch_id": "b", "events_received": count, "events_ingested": count}
+            if status >= 400:
+                body = {"error": {"code": status, "message": "refused by the stand-in"}}
+        return web.json_response(body, status=status, headers=headers)
 
     def accepted_ids(self):
         """The ids of the events of every batch answered 200, in order."""
@@ -328,34 +350,539 @@ async def test_the_ca_bundle_does_not_trust_another_hostname(gateway):
     assert "certificate" in str(forwarder.stats["last_error"]).lower()
 
 
+# What the gateway and the data service answer when the sensor is not
+# allowed, not now, or not at the right address (#745): the status, the body,
+# and the state the sensor must report. None of them says anything about the
+# events. From open-security-gateway/nginx/lua/auth_handler.lua, nginx itself
+# and open-security-shared's error shape.
+NOT_ABOUT_THE_EVENTS = {
+    "a revoked or expired key": (
+        401,
+        {
+            "error": "invalid_token",
+            "message": "Authentication token is invalid or expired",
+        },
+        "unauthorized",
+    ),
+    "no key at all": (
+        401,
+        {
+            "error": "authentication_required",
+            "message": "Valid authentication token required",
+        },
+        "unauthorized",
+    ),
+    "a key too long to be one": (
+        400,
+        {
+            "error": "invalid_token",
+            "message": "Authentication token exceeds maximum allowed length",
+        },
+        "unauthorized",
+    ),
+    "a key without the scope": (
+        403,
+        {
+            "error": "insufficient_scope",
+            "message": "This API key is not authorized for this operation.",
+            "required_scope": "data:ingest",
+        },
+        "forbidden",
+    ),
+    "a member removed from the team": (
+        403,
+        {
+            "error": "team_membership_ended",
+            "message": "The account no longer belongs to this team",
+        },
+        "forbidden",
+    ),
+    "an initial password not changed": (
+        403,
+        {
+            "error": "PASSWORD_CHANGE_REQUIRED",
+            "message": "Change the initial password before using the account",
+        },
+        "forbidden",
+    ),
+    "identity's own refusal, without a body": (403, "", "forbidden"),
+    "the data service's scope check": (
+        403,
+        {
+            "error": {
+                "code": 403,
+                "message": "Forbidden",
+                "details": {"code": "INSUFFICIENT_SCOPE"},
+            }
+        },
+        "forbidden",
+    ),
+    "the team's request budget": (
+        429,
+        {
+            "error": "rate_limit_exceeded",
+            "message": "Rate limit exceeded",
+            "limit_per_hour": 10000,
+            "retry_after_seconds": 1,
+        },
+        "rate_limited",
+    ),
+    "nginx's limit per address": (
+        429,
+        "<html><h1>429 Too Many Requests</h1></html>",
+        "rate_limited",
+    ),
+    "identity unreachable": (
+        503,
+        {
+            "error": "service_unavailable",
+            "message": "Authentication service temporarily unavailable",
+        },
+        "unavailable",
+    ),
+    "the data service unreachable": (
+        502,
+        "<html><h1>502 Bad Gateway</h1></html>",
+        "unavailable",
+    ),
+    "the batch not stored": (
+        503,
+        {"error": {"code": 503, "message": "The batch was not stored; send it again."}},
+        "unavailable",
+    ),
+    "a route that is not the ingest route": (
+        404,
+        {"error": "not_found"},
+        "misconfigured",
+    ),
+    "a request nginx refuses": (
+        400,
+        "<html><h1>400 Bad Request</h1></html>",
+        "misconfigured",
+    ),
+    "a method not allowed there": (405, "", "misconfigured"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(NOT_ABOUT_THE_EVENTS))
 @pytest.mark.asyncio
-async def test_a_refused_key_is_not_retried(gateway, caplog):
-    gateway.status = 401
-    gateway.body = {"error": "invalid_token"}
+async def test_an_answer_that_is_not_about_the_events_costs_none(
+    gateway, monkeypatch, case
+):
+    # main: every one of these but 429 and the 5xx dropped the batch and let
+    # the log positions move past its lines. A revoked key threw away
+    # everything the sensor read, for good.
+    monkeypatch.setattr(data_forwarder, "RATE_LIMIT_DELAY", 0)
+    status, body, state = NOT_ABOUT_THE_EVENTS[case]
+    gateway.status, gateway.body = status, body
     forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    settled = []
+    await forwarder._init_session()
+    try:
+        forwarder.accept(_tracked(settled, "a"))
+        forwarder.accept(_tracked(settled, "b"))
 
-    with caplog.at_level(logging.ERROR, logger=data_forwarder.__name__):
-        await _flush(forwarder)
+        assert await forwarder._flush_batch() == RETRY
+        assert await forwarder._flush_batch() == RETRY
+        refused = forwarder.get_status()
 
-    assert len(gateway.requests) == 1
-    assert forwarder.stats["batches_sent"] == 0
-    assert "invalid, expired or revoked" in caplog.text
+        # Whoever had to act has acted, or the limit has passed.
+        gateway.status, gateway.body = 200, None
+        assert await forwarder._flush_batch() == SENT
+    finally:
+        await forwarder.session.close()
+
+    # Kept, whole; nothing dropped, nothing its collector may move past.
+    assert refused["buffer"]["events"] == 2
+    assert refused["stats"]["events_dropped"] == 0
+    assert refused["retry"]["consecutive_failures"] == 2
+    assert refused["delivery"]["state"] == state
+    assert refused["delivery"]["since"]
+    assert refused["delivery"]["reason"].startswith(f"HTTP {status}")
+    # And delivered once, when it could be.
+    assert gateway.accepted_ids() == ["a", "b"]
+    assert settled == ["a", "b"]
+    assert forwarder.get_status()["delivery"] == {
+        "state": "ok",
+        "since": forwarder.delivery_since,
+        "reason": None,
+    }
+    assert _accounted(forwarder)
 
 
 @pytest.mark.asyncio
-async def test_a_missing_scope_is_reported_and_not_retried(gateway, caplog):
+async def test_a_refused_key_is_said_loudly_once_and_when_it_is_over(gateway, caplog):
+    gateway.status = 401
+    gateway.body = {
+        "error": "invalid_token",
+        "message": "Authentication token is invalid or expired",
+    }
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    await forwarder._init_session()
+    try:
+        forwarder.accept(EVENTS[0])
+        with caplog.at_level(logging.INFO, logger=data_forwarder.__name__):
+            for _ in range(3):
+                assert await forwarder._flush_batch() == RETRY
+            gateway.status, gateway.body = 200, None
+            assert await forwarder._flush_batch() == SENT
+    finally:
+        await forwarder.session.close()
+
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    # Once, not at each of the three attempts; with what to do about it,
+    # and that nothing is lost meanwhile.
+    (said,) = errors
+    assert said.startswith("Not delivering since ")
+    assert "HTTP 401 invalid_token" in said
+    assert "invalid, expired or revoked" in said
+    assert "Nothing is dropped" in said
+    assert (
+        "The gateway accepts the sensor's batches again (it was unauthorized"
+        in caplog.text
+    )
+    assert forwarder.stats["last_error"].startswith("HTTP 401 invalid_token")
+
+
+@pytest.mark.asyncio
+async def test_a_missing_scope_says_which_scope_the_key_needs(gateway, caplog):
     gateway.status = 403
     gateway.body = {"error": "insufficient_scope", "required_scope": "data:ingest"}
     forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
 
     with caplog.at_level(logging.ERROR, logger=data_forwarder.__name__):
-        await _flush(forwarder)
+        assert await _flush(forwarder) == RETRY
 
     assert len(gateway.requests) == 1
     assert "data:ingest" in caplog.text
+    assert forwarder.get_status()["delivery"]["state"] == "forbidden"
+    assert len(forwarder.buffer) == 2
 
 
-# -- what waits while the gateway takes nothing (#725) ---------------------
+@pytest.mark.asyncio
+async def test_a_sensor_without_a_key_says_so_in_its_delivery_state(gateway):
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca, api_key="")
+
+    assert forwarder.get_status()["delivery"]["state"] == "unconfigured"
+
+
+@pytest.mark.parametrize(
+    "status, text, expected",
+    [
+        (200, "", (SENT, "ok")),
+        (201, "", (SENT, "ok")),
+        (
+            422,
+            '{"error": {"code": 422, "message": "Validation failed"}}',
+            (REFUSED, "payload"),
+        ),
+        (413, "<html>413 Request Entity Too Large</html>", (REFUSED, "payload")),
+        (
+            400,
+            '{"error": {"code": 400, "message": "Too many events in batch. Maximum allowed: 1000"}}',
+            (REFUSED, "payload"),
+        ),
+        (400, '{"error": "invalid_token"}', (RETRY, "unauthorized")),
+        (400, "<html>400 Bad Request</html>", (RETRY, "misconfigured")),
+        (400, "", (RETRY, "misconfigured")),
+        (401, "", (RETRY, "unauthorized")),
+        (403, "", (RETRY, "forbidden")),
+        (429, "", (RETRY, "rate_limited")),
+        (301, "", (RETRY, "misconfigured")),
+        (307, "", (RETRY, "misconfigured")),
+        (404, "", (RETRY, "misconfigured")),
+        (409, "", (RETRY, "misconfigured")),
+        (500, "", (RETRY, "unavailable")),
+        (502, "", (RETRY, "unavailable")),
+        (504, "", (RETRY, "unavailable")),
+    ],
+)
+def test_what_each_answer_means(status, text, expected):
+    outcome, state, reason = classify_answer(status, text)
+
+    assert (outcome, state) == expected
+    assert reason.startswith(f"HTTP {status}")
+
+
+def test_the_reason_names_the_code_and_the_message_of_either_error_shape():
+    gateway_shape = '{"error": "insufficient_scope", "message": "Not authorized", "required_scope": "data:ingest"}'
+    service_shape = '{"error": {"code": 403, "message": "Forbidden", "details": {"code": "GATEWAY_AUTH_REQUIRED"}}}'
+
+    assert (
+        classify_answer(403, gateway_shape)[2]
+        == "HTTP 403 insufficient_scope: Not authorized"
+    )
+    assert (
+        classify_answer(403, service_shape)[2]
+        == "HTTP 403 GATEWAY_AUTH_REQUIRED: Forbidden"
+    )
+    assert classify_answer(502, "<html>" + "x" * 5000)[2] == "HTTP 502"
+    assert classify_answer(403, '{"error": {"message": 5}}')[2] == "HTTP 403"
+    assert len(classify_answer(401, json.dumps({"error": "e" * 5000}))[2]) == 300
+    assert classify_answer(403, "[" * 100_000)[2] == "HTTP 403"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ('{"events_received": 5, "events_ingested": 5}', 5),
+        ('{"events_received": 5, "events_ingested": 3}', 3),
+        ('{"events_received": 5, "events_ingested": 0}', 0),
+        ('{"events_ingested": 99}', 5),  # more than was sent: no
+        ('{"events_ingested": -1}', 0),
+        ('{"events_ingested": "5"}', 5),  # not a count: the status stands
+        ('{"events_ingested": true}', 5),
+        ("{}", 5),
+        ("[]", 5),
+        ("", 5),
+        ("<html>ok</html>", 5),
+    ],
+)
+def test_how_many_events_an_accepting_answer_says_it_stored(text, expected):
+    assert stored_events(text, 5) == expected
+
+
+# -- an answer about the payload: the event at fault, not its batch ---------
+
+
+async def _deliver(forwarder, events):
+    """Hand the forwarder the events and flush until its buffer is empty;
+    the outcomes."""
+    await forwarder._init_session()
+    outcomes = []
+    try:
+        for event in events:
+            forwarder.accept(event)
+        while forwarder.buffer:
+            outcomes.append(await forwarder._flush_batch())
+            assert len(outcomes) < 500, "the forwarder does not finish"
+    finally:
+        await forwarder.session.close()
+    return outcomes
+
+
+@pytest.mark.asyncio
+async def test_one_unacceptable_event_costs_that_event_and_not_its_batch(
+    gateway, caplog
+):
+    # main: the 100 events of the batch, for one the data service refused.
+    gateway.unacceptable = {"e37"}
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca, batch_size=100)
+    settled = []
+    events = [_tracked(settled, f"e{index}") for index in range(100)]
+
+    with caplog.at_level(logging.ERROR, logger=data_forwarder.__name__):
+        await _deliver(forwarder, events)
+
+    delivered = [f"e{index}" for index in range(100) if index != 37]
+    assert gateway.accepted_ids() == delivered
+    assert forwarder.stats["events_forwarded"] == 99
+    assert forwarder.stats["events_dropped_refused"] == 1
+    assert forwarder.stats["events_dropped"] == 1
+    # Every event is finished with, the dropped one included.
+    assert sorted(settled) == sorted(f"e{index}" for index in range(100))
+    # About two requests for each halving of 100.
+    assert len(gateway.requests) <= 16
+    assert forwarder.stats["batches_split"] >= 6
+    assert (
+        "The data service refuses an event of type 'network.listening_ports'"
+        in caplog.text
+    )
+    assert "HTTP 422" in caplog.text
+    assert forwarder.get_status()["delivery"]["state"] == "ok"
+    assert _accounted(forwarder)
+
+
+@pytest.mark.asyncio
+async def test_the_running_forwarder_does_not_wait_between_the_parts_of_a_split(
+    gateway,
+):
+    # Fewer events than a batch, due after flush_interval: once the batch
+    # is refused, its parts are not each made to wait that long again.
+    gateway.unacceptable = {"e2"}
+    forwarder = _forwarder(
+        gateway.url, ca_bundle=gateway.ca, batch_size=100, flush_interval=1
+    )
+
+    await forwarder.start()
+    try:
+        for event in _numbered(6):
+            await forwarder.input_queue.put(event)
+        started = asyncio.get_running_loop().time()
+        await _until(
+            lambda: not forwarder.buffer and forwarder.stats["events_forwarded"] == 5
+        )
+        took = asyncio.get_running_loop().time() - started
+    finally:
+        await forwarder.stop()
+
+    assert gateway.accepted_ids() == ["e0", "e1", "e3", "e4", "e5"]
+    assert forwarder.stats["events_dropped_refused"] == 1
+    # One flush_interval before the batch is due, not one for each part.
+    assert took < 2.5
+
+
+@pytest.mark.asyncio
+async def test_several_unacceptable_events_are_each_found(gateway):
+    gateway.unacceptable = {"e0", "e21", "e22", "e49"}
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca, batch_size=50)
+
+    await _deliver(forwarder, _numbered(60))
+
+    assert gateway.accepted_ids() == [
+        f"e{index}" for index in range(60) if index not in (0, 21, 22, 49)
+    ]
+    assert forwarder.stats["events_dropped_refused"] == 4
+    assert forwarder.stats["events_forwarded"] == 56
+
+
+@pytest.mark.parametrize("too_many", [413, 400])
+@pytest.mark.asyncio
+async def test_a_batch_refused_for_its_size_is_delivered_in_parts_and_loses_nothing(
+    gateway, too_many
+):
+    # nginx's 413 for a body too large, or the data service's 400 for too
+    # many events: no event is at fault, and no half of the batch is taken
+    # for refused because the other one was accepted.
+    gateway.most_events = 12
+    gateway.too_many = too_many
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca, batch_size=100)
+
+    await _deliver(forwarder, _numbered(100))
+
+    assert gateway.accepted_ids() == _ids(100)
+    assert forwarder.stats["events_dropped"] == 0
+    assert forwarder.stats["events_forwarded"] == 100
+    assert (
+        max(len(r["json"]["events"]) for r in gateway.requests if r["status"] == 200)
+        <= 12
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_work_spent_on_one_refused_batch_is_bounded(gateway, caplog):
+    # A batch of which the data service accepts nothing, in any part.
+    gateway.unacceptable = set(_ids(100))
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca, batch_size=100)
+    await forwarder._init_session()
+    try:
+        for event in _numbered(100):
+            forwarder.accept(event)
+        forwarder.accept(dict(EVENTS[0], id="after"))
+        with caplog.at_level(logging.ERROR, logger=data_forwarder.__name__):
+            for _ in range(300):
+                if len(forwarder.buffer) <= 1:
+                    break
+                await forwarder._flush_batch()
+        refused_batch = len(gateway.requests)
+        assert await forwarder._flush_batch() == SENT
+    finally:
+        await forwarder.session.close()
+
+    # Not one request for each of its hundred events and their halves.
+    assert refused_batch <= SPLIT_BUDGET + 1
+    assert forwarder.stats["events_dropped_refused"] == 100
+    assert "requests: the " in caplog.text and "are dropped with them" in caplog.text
+    # And the batch after it is not held up.
+    assert gateway.accepted_ids() == ["after"]
+    assert _accounted(forwarder)
+
+
+@pytest.mark.asyncio
+async def test_an_outage_while_a_batch_is_being_split_loses_and_repeats_nothing(
+    gateway,
+):
+    gateway.unacceptable = {"e5"}
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca, batch_size=16)
+    await forwarder._init_session()
+    try:
+        for event in _numbered(16):
+            forwarder.accept(event)
+        assert await forwarder._flush_batch() == REFUSED
+        # Refused for what it holds: the request did get through.
+        assert forwarder.get_status()["delivery"]["state"] == "ok"
+        assert await forwarder._flush_batch() == REFUSED  # the half with e5
+        # The gateway goes away in the middle of it.
+        gateway.outage.extend([503, 502, 429])
+        gateway.retry_after = "0"
+        for _ in range(3):
+            assert await forwarder._flush_batch() == RETRY
+        assert forwarder.get_status()["delivery"]["state"] == "rate_limited"
+        assert forwarder.stats["events_dropped"] == 0
+        while forwarder.buffer:
+            await forwarder._flush_batch()
+    finally:
+        await forwarder.session.close()
+
+    assert sorted(gateway.accepted_ids(), key=lambda i: int(i[1:])) == [
+        f"e{index}" for index in range(16) if index != 5
+    ]
+    assert len(gateway.accepted_ids()) == 15
+    assert forwarder.stats["events_dropped_refused"] == 1
+
+
+@pytest.mark.asyncio
+async def test_events_a_200_says_were_not_stored_are_not_counted_as_forwarded(
+    gateway, caplog
+):
+    # The data service answers 200 with events_ingested below what it
+    # received when it could not process some events. They were counted as
+    # forwarded.
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    gateway.body = {
+        "batch_id": "b",
+        "events_received": 5,
+        "events_ingested": 3,
+        "errors": ["Event 1: processing failed", "Event 4: processing failed"],
+    }
+    settled = []
+    await forwarder._init_session()
+    try:
+        for index in range(5):
+            forwarder.accept(_tracked(settled, f"e{index}"))
+        with caplog.at_level(logging.ERROR, logger=data_forwarder.__name__):
+            assert await forwarder._flush_batch() == SENT
+    finally:
+        await forwarder.session.close()
+
+    assert forwarder.stats["events_forwarded"] == 3
+    assert forwarder.stats["events_dropped_refused"] == 2
+    assert len(settled) == 5
+    assert "stored 3 of the 5 events" in caplog.text
+    assert _accounted(forwarder)
+
+
+@pytest.mark.asyncio
+async def test_a_200_that_stored_nothing_is_not_a_delivery(gateway):
+    # "Batch commit failed": the data service answers 200 and has stored
+    # none of the batch. The sensor took it for delivered.
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    gateway.body = {
+        "batch_id": "b",
+        "events_received": 2,
+        "events_ingested": 0,
+        "errors": ["Batch commit failed"],
+    }
+    settled = []
+    await forwarder._init_session()
+    try:
+        forwarder.accept(_tracked(settled, "a"))
+        forwarder.accept(_tracked(settled, "b"))
+        assert await forwarder._flush_batch() == REFUSED
+        assert settled == [] and len(forwarder.buffer) == 2
+        assert forwarder.stats["events_forwarded"] == 0
+
+        # It was the commit of that moment: its halves are stored.
+        gateway.body = None
+        while forwarder.buffer:
+            assert await forwarder._flush_batch() == SENT
+    finally:
+        await forwarder.session.close()
+
+    assert gateway.requests[-2]["json"]["events"][0]["event_data"]["id"] == "a"
+    assert forwarder.stats["events_forwarded"] == 2
+    assert forwarder.stats["events_dropped"] == 0
+    assert settled == ["a", "b"]
 
 
 @pytest.mark.asyncio
@@ -756,7 +1283,8 @@ async def test_drops_are_summed_up_in_the_log(gateway, caplog):
         for event in EVENTS:
             forwarder.accept(event)
         with caplog.at_level(logging.WARNING, logger=data_forwarder.__name__):
-            await forwarder._flush_batch()
+            while forwarder.buffer:  # refused together, then each alone
+                await forwarder._flush_batch()
             forwarder._report_drops(force=True)
             forwarder._report_drops(force=True)  # nothing new: no second line
     finally:
@@ -767,7 +1295,8 @@ async def test_drops_are_summed_up_in_the_log(gateway, caplog):
         "Dropped 2 events since the last report (refused: 2); 2 since the "
         "sensor started"
     ]
-    assert "The gateway refused a batch of 2 events (HTTP 422)" in caplog.text
+    assert caplog.text.count("The data service refuses an event of type") == 2
+    assert "(HTTP 422" in caplog.text
 
 
 # -- what a collector is told about its events (#725) ----------------------
@@ -921,36 +1450,6 @@ async def test_a_retry_attempts_key_is_said_to_be_unused(gateway, caplog):
     assert "data_lake.retry_attempts is set and no longer used" in caplog.text
 
 
-@pytest.mark.parametrize("status", [401, 403, 413, 422])
-@pytest.mark.asyncio
-async def test_a_refused_batch_is_dropped_and_does_not_block_the_next(gateway, status):
-    # It used to be put back in the buffer: sent again with every flush,
-    # refused again, and whatever was collected meanwhile lost with it. One
-    # batch the gateway found too large (413) stopped forwarding for good.
-    gateway.status = status
-    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
-    await forwarder._init_session()
-    try:
-        for event in EVENTS:
-            forwarder.accept(event)
-        assert await forwarder._flush_batch() == REFUSED
-
-        assert not forwarder.buffer and forwarder.buffer_bytes == 0
-        assert forwarder.stats["events_dropped_refused"] == 2
-        assert forwarder.stats["events_dropped"] == 2
-        assert forwarder.stats["batches_refused"] == 1
-
-        gateway.status = 200
-        forwarder.accept(EVENTS[0])
-        assert await forwarder._flush_batch() == SENT
-    finally:
-        await forwarder.session.close()
-
-    assert forwarder.stats["events_forwarded"] == 1
-    assert [len(r["json"]["events"]) for r in gateway.requests] == [2, 1]
-    assert _accounted(forwarder)
-
-
 @pytest.mark.asyncio
 async def test_a_redirect_is_not_followed_with_the_key(gateway):
     gateway.status = 307
@@ -1016,30 +1515,6 @@ async def test_without_a_key_nothing_is_sent_and_events_are_dropped(gateway):
     assert _accounted(forwarder)
     assert forwarder.get_status()["forwarding_enabled"] is False
     assert (await forwarder.test_connection())["success"] is False
-
-
-@pytest.mark.asyncio
-async def test_send_outcomes(gateway):
-    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
-    await forwarder._init_session()
-    try:
-        outcomes = {}
-        for status in (200, 201, 400, 401, 403, 422, 500, 502):
-            gateway.status = status
-            outcomes[status] = await forwarder._send_http_request(encode_batch([]))
-    finally:
-        await forwarder.session.close()
-
-    assert outcomes == {
-        200: SENT,
-        201: SENT,
-        400: REFUSED,
-        401: REFUSED,
-        403: REFUSED,
-        422: REFUSED,
-        500: RETRY,
-        502: RETRY,
-    }
 
 
 @pytest.mark.asyncio

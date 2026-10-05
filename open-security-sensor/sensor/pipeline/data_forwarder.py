@@ -32,11 +32,19 @@ them:
   stops taking events, the queues fill, and the collectors wait: a log source
   goes on later from where it stopped, the file monitor reports what changed
   when it scans again, and osquery's snapshots are not taken meanwhile.
-* What is dropped, and counted under ``events_dropped_*``: the events of a
-  batch the gateway refuses (a 4xx answer: sending it again would get the
-  same answer), an event that cannot be serialized or is larger than a
-  batch may be, every event while no API key is configured, and what is
-  still here when the sensor stops.
+* What is dropped, and counted under ``events_dropped_*``: an event the
+  data service finds unacceptable, an event that cannot be serialized or is
+  larger than a batch may be, every event while no API key is configured,
+  and what is still here when the sensor stops.
+* An answer is read for what it says (#745, ``classify_answer``). That the
+  sensor is not allowed, or not now (a revoked or expired key, a missing
+  scope, a rate limit), or that the address is wrong, says nothing about
+  the events: the batch is kept as in an outage, and the sensor reports
+  that it is not delivering and why. Only an answer about the payload (413,
+  422, a 400 of the data service, a 200 that stored nothing) costs events,
+  and then the batch is split in halves until the event at fault is alone:
+  that one is dropped, the others are delivered. ``SPLIT_BUDGET`` bounds the
+  requests spent on one batch.
 * An event may carry a ``Delivery`` (``sensor.pipeline.delivery``), which is
   settled when the gateway accepts the event's batch or the event is
   dropped. What is still here when the sensor stops is not settled; an
@@ -79,8 +87,41 @@ _DEFAULT_EVENT_TYPE = "security_event"
 
 # Outcome of one POST.
 SENT = "sent"
-RETRY = "retry"  # transient: network error, 429, 5xx
-REFUSED = "refused"  # the request itself is wrong: retrying cannot help
+RETRY = "retry"  # the batch is kept: it may pass later, or once someone acts
+REFUSED = "refused"  # the payload is unacceptable: sent again, the same answer
+
+# Why batches are, or are not, being delivered. All but OK keep the batch.
+OK = "ok"
+UNAVAILABLE = "unavailable"  # a network error, a 5xx answer
+RATE_LIMITED = "rate_limited"  # 429
+UNAUTHORIZED = "unauthorized"  # the key is invalid, expired or revoked
+FORBIDDEN = "forbidden"  # the key may not ingest
+MISCONFIGURED = "misconfigured"  # the address is not the gateway's ingest route
+PAYLOAD = "payload"  # the data service refuses what was sent
+
+# What to do about each state that someone has to act on.
+_REMEDIES = {
+    UNAUTHORIZED: (
+        "the gateway does not accept the sensor's API key: it is invalid, "
+        "expired or revoked. Set data_lake.api_key (SENSOR_DATA_LAKE_API_KEY) "
+        "to a valid identity API key and restart the sensor"
+    ),
+    FORBIDDEN: (
+        "the sensor's API key is not allowed to ingest. It needs the "
+        "data:ingest scope, and its member must still belong to the team and "
+        "have changed the initial password"
+    ),
+    MISCONFIGURED: (
+        "the ingest URL does not answer as the gateway's ingest route. "
+        "data_lake.endpoint must be the gateway's https:// URL"
+    ),
+}
+# The gateway's own error codes that are about the credential, whatever the
+# status they come with.
+_CREDENTIAL_ERRORS = ("invalid_token", "authentication_required")
+# Requests one refused batch may cost before what is left of it is dropped
+# whole. Finding one bad event among 100 takes about 8.
+SPLIT_BUDGET = 64
 
 # Why an event leaves the sensor without reaching the data service.
 DROP_REASONS = ("refused", "oversize", "unserializable", "unconfigured", "shutdown")
@@ -172,6 +213,90 @@ def encode_batch(bodies: List[bytes]) -> bytes:
     return head + b', "events": [' + b",".join(bodies) + b"]}"
 
 
+def _error_of(text: str) -> str:
+    """The code and message of an error answer, from either shape in use:
+    the gateway's ``{"error": "code", "message": ...}`` and the services'
+    ``{"error": {"code": 403, "message": ..., "details": {...}}}``."""
+    try:
+        answer = json.loads(text)
+    except (ValueError, RecursionError):
+        return ""
+    error = answer.get("error") if isinstance(answer, dict) else None
+    parts = []
+    if isinstance(error, str):
+        parts = [error, answer.get("message")]
+    elif isinstance(error, dict):
+        details = error.get("details")
+        code = details.get("code") if isinstance(details, dict) else None
+        parts = [code, error.get("message")]
+    return ": ".join(str(part) for part in parts if isinstance(part, str) and part)
+
+
+def _from_a_service(text: str) -> bool:
+    """Is this error answer in the shape the Wildbox services answer in?"""
+    try:
+        answer = json.loads(text)
+    except (ValueError, RecursionError):
+        return False
+    return isinstance(answer, dict) and isinstance(answer.get("error"), dict)
+
+
+def classify_answer(status: int, text: str = ""):
+    """What an answer to a batch means: (outcome, state, reason).
+
+    Read from what the gateway (nginx/lua/auth_handler.lua, nginx's own
+    limits) and the data service (POST /api/v1/ingest) answer:
+
+    * 200, 201: stored.
+    * 401, and the gateway's 400 for a token too long to be one: the key.
+    * 403: the key's scope, its member's place in the team or its initial
+      password, at the gateway; the scope again at the data service.
+    * 429: the team's request budget, or nginx's limit per address.
+    * 413 (nginx: the body is too large), 422 (the data service's
+      validation) and the data service's own 400 (too many events): the
+      payload. A 400 that is not in the services' error shape is nginx's or
+      the gateway's, about the request and not about the events.
+    * 5xx: the gateway could not reach identity or the data service, or the
+      data service could not store the batch.
+    * a redirect, 404 and any other 4xx: the request did not reach the
+      ingest route.
+    """
+    error = _error_of(text)
+    reason = f"HTTP {status}" + (f" {error}" if error else "")
+    reason = reason[:300]
+    if status in (200, 201):
+        return SENT, OK, reason
+    if status == 401 or (status == 400 and error.startswith(_CREDENTIAL_ERRORS)):
+        return RETRY, UNAUTHORIZED, reason
+    if status == 403:
+        return RETRY, FORBIDDEN, reason
+    if status == 429:
+        return RETRY, RATE_LIMITED, reason
+    if status in (413, 422) or (status == 400 and _from_a_service(text)):
+        return REFUSED, PAYLOAD, reason
+    if status >= 500:
+        return RETRY, UNAVAILABLE, reason
+    return RETRY, MISCONFIGURED, reason
+
+
+def stored_events(text: str, sent: int) -> int:
+    """How many of the ``sent`` events an accepting answer says were stored.
+
+    The data service answers 200 with ``events_ingested``, which is less
+    than what it received when it could not store some events, and 0 when
+    it could not commit the batch. An answer that does not say is taken at
+    its status: all of them.
+    """
+    try:
+        answer = json.loads(text)
+    except (ValueError, RecursionError):
+        return sent
+    stored = answer.get("events_ingested") if isinstance(answer, dict) else None
+    if isinstance(stored, bool) or not isinstance(stored, int):
+        return sent
+    return min(max(stored, 0), sent)
+
+
 def retry_delay(failures: int, first: float, longest: float) -> float:
     """Seconds to wait after ``failures`` failed attempts in a row.
 
@@ -237,6 +362,7 @@ class DataForwarder:
             "events_returned_to_source": 0,
             "batches_sent": 0,
             "batches_refused": 0,
+            "batches_split": 0,
             "send_failures": 0,
             "times_buffer_full": 0,
             "network_errors": 0,
@@ -249,7 +375,20 @@ class DataForwarder:
         self._dropped_reported = dict.fromkeys(DROP_REASONS, 0)
         self._next_drop_report = time.monotonic() + DROP_REPORT_INTERVAL
 
-        # Consecutive attempts that failed for a reason that may pass.
+        # Why batches are or are not being delivered, since when, and what
+        # the last answer said.
+        self.delivery_state = OK
+        self.delivery_since: Optional[str] = None
+        self.delivery_reason: Optional[str] = None
+        # The body of the last accepting answer.
+        self._accepted = ""
+        # The oldest events, when they belong to a batch that was refused:
+        # [size, whether this very run was refused] for each run of them,
+        # in order. And the requests spent on finding the event at fault.
+        self._suspects: Deque[List[Any]] = deque()
+        self._split_requests = 0
+
+        # Consecutive attempts after which the batch was kept.
         self.failures = 0
         self._retry_after = 0.0
         self._next_attempt: Optional[float] = None
@@ -578,6 +717,8 @@ class DataForwarder:
         data_lake = self.config.data_lake
         if not self.buffer:
             return float(data_lake.flush_interval)
+        if self._suspects:
+            return 0.0  # the rest of a batch that is being split
         if (
             len(self.buffer) >= data_lake.batch_size
             or self.buffer_bytes >= MAX_BATCH_BYTES
@@ -642,6 +783,11 @@ class DataForwarder:
 
     def _next_batch(self) -> int:
         """How many of the oldest events the next batch takes."""
+        self._resolve_suspects()
+        if self._suspects:
+            # Part of a batch that was refused: a run of it, to find out
+            # whether the event at fault is there.
+            return self._suspects[0][0]
         count = size = 0
         for body, _ in islice(self.buffer, self.config.data_lake.batch_size):
             if count and size + len(body) > MAX_BATCH_BYTES:
@@ -650,12 +796,63 @@ class DataForwarder:
             size += len(body)
         return count
 
+    def _resolve_suspects(self):
+        """Do what needs no request about the events of a refused batch:
+        drop a refused event that is alone, halve a run known to hold one."""
+        while self._suspects and self._suspects[0][1]:
+            size = self._suspects[0][0]
+            if size == 1:
+                self._suspects.popleft()
+                self._drop_refused(1)
+                continue
+            if self._split_requests >= SPLIT_BUDGET:
+                left = sum(run[0] for run in self._suspects)
+                self._suspects.clear()
+                logger.error(
+                    "Finding the events the data service refuses took %d "
+                    "requests: the %d events of the batch that are not "
+                    "delivered yet are dropped with them",
+                    self._split_requests,
+                    left,
+                )
+                self._drop_refused(left)
+                continue
+            # Two halves, each tried in its turn. Neither is taken for
+            # refused because the other was accepted: a batch refused for
+            # its size has two halves that are both fine, and an event is
+            # dropped only when it was refused alone.
+            self._suspects.popleft()
+            self._suspects.appendleft([size - size // 2, False])
+            self._suspects.appendleft([size // 2, False])
+            self.stats["batches_split"] += 1
+        if not self._suspects:
+            self._split_requests = 0
+
+    def _drop_refused(self, count: int):
+        """Drop the oldest ``count`` events as refused by the data service."""
+        if count == 1 and self.buffer:
+            try:
+                event_type = json.loads(self.buffer[0][0])["event_data"].get("type")
+            except (ValueError, KeyError, AttributeError, TypeError):
+                event_type = None
+            logger.error(
+                "The data service refuses an event of type %r (%s): it is "
+                "dropped. The other events of its batch are delivered",
+                event_type,
+                self.stats["last_error"],
+            )
+        self._count_dropped("refused", count)
+        for delivery in self._release(count):
+            # Dropped for good: its collector may move past it.
+            settle(delivery)
+
     async def _flush_batch(self) -> Optional[str]:
         """Send the oldest events as one batch: SENT, RETRY or REFUSED.
 
         None when there is nothing to send. The events leave the buffer when
-        the gateway has answered for them, and stay in it, in their place,
-        when the attempt fails for a reason that may pass.
+        the data service has taken them, or refused them for what they are.
+        They stay in it, in their place, for any other answer and when there
+        is none: see ``classify_answer``.
         """
         count = self._next_batch()
         if not count:
@@ -663,8 +860,19 @@ class DataForwarder:
 
         logger.debug(f"Flushing batch of {count} events")
         self._retry_after = 0.0
+        self._accepted = ""
         bodies = [body for body, _ in islice(self.buffer, count)]
         outcome = await self._send(encode_batch(bodies))
+        splitting = bool(self._suspects)
+        if splitting:
+            self._split_requests += 1
+
+        stored = stored_events(self._accepted, count) if outcome == SENT else 0
+        if outcome == SENT and stored == 0:
+            # Accepted, and nothing stored: the data service could not
+            # commit the batch. Its events are not delivered.
+            outcome = REFUSED
+            self._note(PAYLOAD, "HTTP 200, and none of the events stored")
 
         if outcome == RETRY:
             self.failures += 1
@@ -672,27 +880,76 @@ class DataForwarder:
             return RETRY
 
         self.failures = 0
-        deliveries = self._release(count)
-        if outcome == SENT:
-            self.stats["batches_sent"] += 1
-            self.stats["events_forwarded"] += count
-            self.stats["last_successful_send"] = datetime.now(timezone.utc).isoformat()
-            logger.debug(f"Successfully forwarded batch of {count} events")
-        else:
-            # Not kept: a refused batch sent again gets the same answer, and
-            # would hold back everything collected after it for good.
+        if outcome == REFUSED:
             self.stats["batches_refused"] += 1
-            self._count_dropped("refused", count)
+            if splitting:
+                self._suspects[0][1] = True
+            else:
+                self._suspects.append([count, True])
+            self._resolve_suspects()
+            return REFUSED
+
+        if splitting:
+            self._suspects.popleft()
+        deliveries = self._release(count)
+        self.stats["batches_sent"] += 1
+        self.stats["events_forwarded"] += stored
+        self.stats["last_successful_send"] = datetime.now(timezone.utc).isoformat()
+        logger.debug(f"Successfully forwarded batch of {count} events")
+        if stored < count:
+            # The data service says which it could not store only by their
+            # place in the batch; they are counted, not found.
+            self._count_dropped("refused", count - stored)
             logger.error(
-                "The gateway refused a batch of %d events (%s): they are " "dropped",
+                "The data service stored %d of the %d events of a batch it "
+                "accepted: the other %d are dropped",
+                stored,
                 count,
-                self.stats["last_error"],
+                count - stored,
             )
-        # Accepted, or dropped for good: either way the sensor has finished
+        # Stored, or dropped for good: either way the sensor has finished
         # with these events, and their collectors may move past them.
         for delivery in deliveries:
             settle(delivery)
-        return outcome
+        return SENT
+
+    def _note(self, state: str, reason: str):
+        """Record why the last batch was, or was not, delivered; say so
+        when that changes."""
+        if state != OK:
+            self.stats["last_error"] = reason
+        if state == PAYLOAD:
+            # About this batch: the request did reach the data service.
+            state, reason = OK, None
+        if state == self.delivery_state:
+            self.delivery_reason = None if state == OK else reason
+            return
+        was, since = self.delivery_state, self.delivery_since
+        self.delivery_state = state
+        self.delivery_since = datetime.now(timezone.utc).isoformat()
+        self.delivery_reason = None if state == OK else reason
+        if state == OK:
+            logger.info(
+                "The gateway accepts the sensor's batches again (it was %s "
+                "since %s)",
+                was,
+                since,
+            )
+        elif state in _REMEDIES:
+            logger.error(
+                "Not delivering since %s (%s): %s. Nothing is dropped: the "
+                "events wait, and no log source moves past what was accepted",
+                self.delivery_since,
+                reason,
+                _REMEDIES[state],
+            )
+        else:
+            logger.warning(
+                "Not delivering since %s: %s (%s). The events wait",
+                self.delivery_since,
+                state,
+                reason,
+            )
 
     async def _send(self, body: bytes) -> str:
         """One attempt for one batch; SENT, RETRY or REFUSED."""
@@ -727,59 +984,26 @@ class DataForwarder:
         """Send one batch; SENT, RETRY or REFUSED."""
         try:
             async with self._post(body) as response:
-                if response.status in (200, 201):
-                    return SENT
-
-                detail = (await response.text())[:300]
-                self.stats["api_errors"] += 1
-                self.stats["last_error"] = f"HTTP {response.status}"
-
-                if response.status == 429:
+                text = await response.text()
+                outcome, state, reason = classify_answer(response.status, text)
+                if outcome == SENT:
+                    self._accepted = text
+                else:
+                    self.stats["api_errors"] += 1
+                if state == RATE_LIMITED:
                     self._retry_after = self._rate_limit_delay(response)
-                    logger.warning(
-                        "API rate limit hit, backing off for at least %.0f " "seconds",
-                        self._retry_after,
-                    )
-                    return RETRY
-                if response.status == 401:
-                    logger.error(
-                        "The gateway refused the sensor's API key (HTTP 401): "
-                        "it is invalid, expired or revoked. Set "
-                        "data_lake.api_key to a valid identity API key."
-                    )
-                    return REFUSED
-                if response.status == 403:
-                    logger.error(
-                        "The gateway refused the batch (HTTP 403): %s. The "
-                        "sensor's API key needs the data:ingest scope.",
-                        detail,
-                    )
-                    return REFUSED
-                if 300 <= response.status < 400:
-                    logger.error(
-                        "The ingest URL %s answered HTTP %s (a redirect). "
-                        "data_lake.endpoint must be the gateway's https:// URL.",
-                        self.config.data_lake.ingest_url,
-                        response.status,
-                    )
-                    return REFUSED
-                if 400 <= response.status < 500:
-                    logger.error(f"API client error {response.status}: {detail}")
-                    return REFUSED
-
-                # Server error - can retry
-                logger.error(f"API server error {response.status}: {detail}")
-                return RETRY
+                self._note(state, reason)
+                return outcome
 
         except aiohttp.ClientError as e:
             logger.error(f"HTTP client error: {e}")
             self.stats["network_errors"] += 1
-            self.stats["last_error"] = str(e)
+            self._note(UNAVAILABLE, str(e)[:300])
             return RETRY
         except Exception as e:
             logger.error(f"Unexpected HTTP error: {e}")
             self.stats["network_errors"] += 1
-            self.stats["last_error"] = str(e)
+            self._note(UNAVAILABLE, str(e)[:300])
             return RETRY
 
     def _rate_limit_delay(self, response) -> float:
@@ -858,6 +1082,14 @@ class DataForwarder:
                 # Full: no event is taken from the collectors until a batch
                 # is accepted.
                 "full": self._full_since is not None,
+            },
+            # ok, or why no batch gets through: unavailable, rate_limited,
+            # unauthorized, forbidden, misconfigured; since when, and what
+            # the last answer said.
+            "delivery": {
+                "state": self.delivery_state if self.enabled else "unconfigured",
+                "since": self.delivery_since,
+                "reason": self.delivery_reason,
             },
             "retry": {
                 "consecutive_failures": self.failures,
