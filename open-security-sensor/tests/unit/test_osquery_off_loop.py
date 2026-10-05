@@ -65,13 +65,6 @@ print(json.dumps([{{"pid": "1", "name": "init", "query": query}}]))
 """
 
 
-class _Alive:
-    """The osquery daemon, as far as execute_query looks at it."""
-
-    def poll(self):
-        return None
-
-
 @pytest.fixture
 def osqueryi(tmp_path, monkeypatch):
     """A manager whose osqueryi is the script above; the file it records in."""
@@ -89,7 +82,7 @@ def osqueryi(tmp_path, monkeypatch):
         data_lake=DataLakeConfig(endpoint="https://gateway.example", api_key="")
     )
     manager = OsqueryManager(config, asyncio.Queue())
-    manager.process = _Alive()
+    manager.running = True
     return manager, record
 
 

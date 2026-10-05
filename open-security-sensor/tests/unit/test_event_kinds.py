@@ -137,8 +137,8 @@ async def test_noisy_processes_are_still_filtered_from_process_events(processor)
 
 def test_the_kinds_are_the_types_the_collectors_emit():
     assert {event_kind(kind) for kind in FILE_EVENT_TYPES} == {"file"}
-    assert event_kind("process_events.process_events") == "process"
-    assert event_kind("network.socket_events") == "network"
+    assert event_kind("process_events.process_tree") == "process"
+    assert event_kind("network.process_open_sockets") == "network"
     for other in (
         "user_events.logged_in_users",
         "system_inventory.kernel_modules",
@@ -150,7 +150,7 @@ def test_the_kinds_are_the_types_the_collectors_emit():
         "",
         None,
         7,
-        ["network.socket_events"],
+        ["network.process_open_sockets"],
     ):
         assert event_kind(other) is None, other
 

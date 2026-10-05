@@ -1137,6 +1137,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   logged whole; the log now has the last 2 KiB). `_validate_query`,
   which held the second blocking call, was called by nothing and is
   removed.
+- **The sensor no longer runs three osquery queries that cannot answer,
+  nor an `osqueryd` nothing read** (#745). `process_events.process_events`,
+  `network.socket_events` and `user_events.user_events` read osquery's
+  event tables through `osqueryi`, which in the sensor's image answers no
+  row and `is event-based but events are disabled`: they ran at every
+  cycle for nothing and are removed. The `osqueryd` the sensor started
+  ran the same packs a second time and wrote its results to a temporary
+  directory nothing read; its pipes were never read, it enabled no event
+  publisher as the sensor's user, and in the container it reported
+  `Cannot create extension socket`. It is no longer started, and
+  `process_alive` leaves `osquery_manager` in `GET /api/v1/components`,
+  which now reports the `osqueryi` found, its version, and `queries_run`,
+  `queries_failed` and `last_error`. The manager checks at start that
+  `osqueryi` answers a query, and stopping the sensor ends the collection
+  cycle and the query it is in, which nothing did. The README says what
+  osquery collects: pictures of the processes, sockets and users at each
+  cycle, not a stream of events.
 
 ### Changed
 

@@ -1,23 +1,36 @@
 """
 osquery Manager for system telemetry collection
 
-This module manages osquery to collect comprehensive system telemetry including:
-- Process events and ancestry
-- Network connections
-- User authentication events
-- System inventory and configuration
+Runs the sensor's query packs through ``osqueryi``, one query at a time, every
+``performance.query_interval`` seconds, and one-off queries for the local API:
+
+- the processes running, with their user
+- the sockets processes hold open
+- the users logged in
+- system inventory and configuration
+
+Each answer is a picture of the host at the moment of the query, not a stream
+of events. osquery's event tables (``process_events``, ``socket_events``,
+``user_events``) are not queried (#745). They are filled by the event
+publishers of a long-running osquery. Through osqueryi, in the sensor's
+image, each answers no row and says "is event-based but events are
+disabled", with ``--disable_events=false`` as without. The sensor ran those
+three queries at every cycle for nothing.
+
+There is no osqueryd either. The sensor started one, with the same packs as
+its schedule, and never read what it wrote: its results went to a temporary
+directory and its pipes were never read. As the sensor's user it enabled no
+event publisher, so its event tables stayed empty too, and in the container
+it reported that it could not create its extension socket. All it did was
+run every query a second time.
 """
 
 import asyncio
 import json
 import logging
-import subprocess
-import tempfile
-import time
+import shutil
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Any, Optional, AsyncGenerator
-import yaml
+from typing import Dict, List, Any, Optional
 
 from sensor.core.config import SensorConfig
 from sensor.utils.platform import is_windows, is_linux, is_macos
@@ -39,36 +52,42 @@ class _TooMuchOutput(Exception):
 
 
 class OsqueryManager:
-    """Manages osquery daemon and query execution"""
-    
+    """Runs the query packs, and one-off queries, through osqueryi"""
+
     def __init__(self, config: SensorConfig, event_queue: asyncio.Queue):
         self.config = config
         self.event_queue = event_queue
-        self.process = None
         self.running = False
+        # Where osqueryi is, and the version it reported when the manager
+        # started; None until then.
+        self.osqueryi: Optional[str] = None
+        self.osquery_version: Optional[str] = None
+        self.queries_run = 0
+        self.queries_failed = 0
+        self.last_error: Optional[str] = None
+        self._task: Optional[asyncio.Task] = None
         # One osqueryi at a time: the collection cycle and the local API's
         # /api/v1/query do not start them side by side.
         self._query_lock = asyncio.Lock()
-        
+
         # Query packs based on enabled collection types
         self.query_packs = self._build_query_packs()
-        
-        # Osquery configuration
-        self.osquery_config = self._build_osquery_config()
-        
+
     def _build_query_packs(self) -> Dict[str, Dict[str, Any]]:
-        """Build osquery query packs based on configuration"""
+        """Build osquery query packs based on configuration.
+
+        Every query of every pack runs once per collection cycle. A pack's
+        name is the first part of its events' type ("process_events.
+        process_tree"), which the pipeline and the data service's event
+        types are keyed on: the names stay, though no pack reads an event
+        table.
+        """
         packs = {}
-        
-        # Process events pack
+
+        # Processes pack
         if self.config.collection.process_events:
             packs['process_events'] = {
                 'queries': {
-                    'process_events': {
-                        'query': 'SELECT * FROM process_events;',
-                        'interval': 5,
-                        'description': 'Process creation and termination events'
-                    },
                     'process_tree': {
                         'query': '''
                             SELECT p.pid, p.name, p.cmdline, p.parent, p.path, p.on_disk,
@@ -77,21 +96,15 @@ class OsqueryManager:
                             FROM processes p
                             LEFT JOIN users u ON p.uid = u.uid;
                         ''',
-                        'interval': 30,
                         'description': 'Current running processes with user context'
                     }
                 }
             }
-        
+
         # Network connections pack
         if self.config.collection.network_connections:
             packs['network'] = {
                 'queries': {
-                    'socket_events': {
-                        'query': 'SELECT * FROM socket_events;',
-                        'interval': 5,
-                        'description': 'Network socket events'
-                    },
                     'process_open_sockets': {
                         'query': '''
                             SELECT s.pid, s.fd, s.socket, s.family, s.protocol, s.local_address,
@@ -100,209 +113,125 @@ class OsqueryManager:
                             FROM process_open_sockets s
                             LEFT JOIN processes p ON s.pid = p.pid;
                         ''',
-                        'interval': 15,
                         'description': 'Active network connections with process context'
                     }
                 }
             }
-        
-        # User events pack
+
+        # Users pack
         if self.config.collection.user_events:
             user_queries = {
-                'user_events': {
-                    'query': 'SELECT * FROM user_events;',
-                    'interval': 10,
-                    'description': 'User login/logout events'
-                },
                 'logged_in_users': {
                     'query': 'SELECT * FROM logged_in_users;',
-                    'interval': 60,
                     'description': 'Currently logged in users'
                 }
             }
-            
+
             # Platform-specific user queries
             if is_linux():
                 user_queries['sudoers'] = {
                     'query': 'SELECT * FROM sudoers;',
-                    'interval': 300,
                     'description': 'Sudo configuration'
                 }
             elif is_windows():
+                # Unverified. windows_events is an event table too, and no
+                # Windows osquery was at hand to see whether osqueryi
+                # answers it: left as it was rather than removed on a guess.
                 user_queries['logon_events'] = {
                     'query': '''
                         SELECT datetime, eventid, source, data
                         FROM windows_events
                         WHERE channel = 'Security' AND eventid IN (4624, 4625, 4634, 4647);
                     ''',
-                    'interval': 30,
                     'description': 'Windows logon events'
                 }
-            
+
             packs['user_events'] = {'queries': user_queries}
-        
+
         # System inventory pack
         if self.config.collection.system_inventory:
             inventory_queries = {
                 'system_info': {
                     'query': 'SELECT * FROM system_info;',
-                    'interval': 3600,
                     'description': 'Basic system information'
                 },
                 'os_version': {
                     'query': 'SELECT * FROM os_version;',
-                    'interval': 3600,
                     'description': 'Operating system version'
                 },
                 'installed_applications': {
                     'query': 'SELECT * FROM programs;' if is_windows() else 'SELECT * FROM deb_packages UNION SELECT * FROM rpm_packages;',
-                    'interval': 1800,
                     'description': 'Installed applications and packages'
                 },
                 'startup_items': {
                     'query': 'SELECT * FROM startup_items;',
-                    'interval': 300,
                     'description': 'System startup items'
                 },
                 'system_services': {
                     'query': self._get_services_query(),
-                    'interval': 300,
                     'description': 'System services'
                 }
             }
-            
+
             # Platform-specific inventory
             if is_linux():
                 inventory_queries.update({
                     'kernel_info': {
                         'query': 'SELECT * FROM kernel_info;',
-                        'interval': 3600,
                         'description': 'Kernel information'
                     },
                     'kernel_modules': {
                         'query': 'SELECT * FROM kernel_modules;',
-                        'interval': 300,
                         'description': 'Loaded kernel modules'
                     }
                 })
-            
+
             packs['system_inventory'] = {'queries': inventory_queries}
-        
+
         return packs
-    
-    def _build_osquery_config(self) -> Dict[str, Any]:
-        """Build osquery daemon configuration"""
-        config = {
-            'options': {
-                'config_plugin': 'filesystem',
-                'logger_plugin': 'filesystem',
-                'logger_path': tempfile.gettempdir(),
-                'database_path': tempfile.gettempdir(),
-                'utc': True,
-                'verbose': False,
-                'worker_threads': self.config.performance.worker_threads,
-                'enable_monitor': True,
-                'monitor_interval': 60
-            },
-            'schedule': {},
-            'packs': {}
-        }
-        
-        # Add query packs to schedule
-        for pack_name, pack_config in self.query_packs.items():
-            config['packs'][pack_name] = pack_config
-        
-        return config
-    
+
+    @staticmethod
+    def _binary() -> str:
+        return 'osqueryi.exe' if is_windows() else 'osqueryi'
+
     async def start(self):
-        """Start osquery daemon"""
+        """Check that osqueryi answers, then start the collection cycle"""
         logger.info("Starting osquery manager")
+
+        self.osqueryi = shutil.which(self._binary())
+        if self.osqueryi is None:
+            raise RuntimeError("osquery not found. Please install osquery on this system.")
+        # One real query: an osqueryi that is there and does not answer is
+        # said now, not at every cycle.
+        async with self._query_lock:
+            rows = await self._run_osqueryi("SELECT version FROM osquery_info;")
+        if not rows:
+            raise RuntimeError(f"osqueryi does not answer a query: {self.last_error or 'no rows'}")
+        version = rows[0].get('version') if isinstance(rows[0], dict) else None
+        self.osquery_version = version if isinstance(version, str) else None
+
         self.running = True
-        
-        try:
-            # Create osquery configuration file
-            config_file = await self._create_config_file()
-            
-            # Start osquery daemon
-            await self._start_osquery_daemon(config_file)
-            
-            # Start result collection
-            asyncio.create_task(self._collect_results())
-            
-            logger.info("osquery manager started successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to start osquery manager: {e}")
-            await self.stop()
-            raise
-    
+        self._task = asyncio.create_task(self._collect_results())
+        logger.info(
+            "osquery manager started: osqueryi %s, %d queries in %d packs",
+            self.osquery_version or "of an unknown version",
+            sum(len(pack['queries']) for pack in self.query_packs.values()),
+            len(self.query_packs),
+        )
+
     async def stop(self):
-        """Stop osquery daemon"""
+        """Stop the collection cycle, and the query it is in"""
         logger.info("Stopping osquery manager")
         self.running = False
-        
-        if self.process:
-            try:
-                self.process.terminate()
-                await asyncio.sleep(2)
-                if self.process.poll() is None:
-                    self.process.kill()
-            except Exception as e:
-                logger.error(f"Error stopping osquery process: {e}")
-    
-    async def _create_config_file(self) -> Path:
-        """Create osquery configuration file"""
-        config_file = Path(tempfile.gettempdir()) / 'osquery-sensor.conf'
-        
-        with open(config_file, 'w') as f:
-            json.dump(self.osquery_config, f, indent=2)
-        
-        logger.debug(f"Created osquery config file: {config_file}")
-        return config_file
-    
-    async def _start_osquery_daemon(self, config_file: Path):
-        """Start osquery daemon process"""
-        # Create a temporary directory for osquery runtime files
-        osquery_runtime_dir = Path(tempfile.mkdtemp(prefix="osquery_"))
-        logs_dir = osquery_runtime_dir / 'logs'
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        
-        osquery_cmd = [
-            'osqueryd', 
-            '--config_path', str(config_file),
-            '--pidfile', str(osquery_runtime_dir / 'osquery.pid'),
-            '--database_path', str(osquery_runtime_dir),
-            '--logger_path', str(logs_dir),
-            '--disable_events=false',
-            '--disable_audit=false'
-        ]
-        
-        # Platform-specific adjustments
-        if is_windows():
-            osquery_cmd = ['osqueryd.exe', '--config_path', str(config_file)]
-        
-        logger.debug(f"Starting osquery with command: {' '.join(osquery_cmd)}")
-        
-        try:
-            self.process = subprocess.Popen(
-                osquery_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-        except FileNotFoundError:
-            raise RuntimeError("osquery not found. Please install osquery on this system.")
-        
-        # Wait a moment and check if process started successfully
-        await asyncio.sleep(2)
-        if self.process.poll() is not None:
-            stdout, stderr = self.process.communicate()
-            raise RuntimeError(f"osquery failed to start: {stderr}")
-    
+        task, self._task = self._task, None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
     async def _collect_results(self):
         """Collect results from osquery and forward to event queue"""
         logger.info("Starting osquery result collection")
-        
+
         while self.running:
             try:
                 # Execute queries and collect results
@@ -310,7 +239,7 @@ class OsqueryManager:
                     for query_name, query_config in pack_config['queries'].items():
                         try:
                             results = await self.execute_query(query_config['query'])
-                            
+
                             if results:
                                 event = {
                                     'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -322,22 +251,22 @@ class OsqueryManager:
                                         'description': query_config.get('description', '')
                                     }
                                 }
-                                
+
                                 await self.event_queue.put(event)
                                 logger.debug(f"Collected {len(results)} results for {pack_name}.{query_name}")
-                        
+
                         except Exception as e:
                             logger.error(f"Error executing query {pack_name}.{query_name}: {e}")
-                
+
                 # Wait before next collection cycle
                 await asyncio.sleep(self.config.performance.query_interval)
-                
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in result collection: {e}")
                 await asyncio.sleep(30)
-    
+
     async def execute_query(self, query: str) -> List[Dict[str, Any]]:
         """Execute a single osquery query.
 
@@ -347,8 +276,8 @@ class OsqueryManager:
         local API did not answer. The query is bounded in time and in what
         it may print.
         """
-        if not self.process or self.process.poll() is not None:
-            raise RuntimeError("osquery daemon is not running")
+        if not self.running:
+            raise RuntimeError("osquery manager is not running")
 
         async with self._query_lock:
             return await self._run_osqueryi(query)
@@ -357,9 +286,8 @@ class OsqueryManager:
         """One osqueryi: its rows, or none when it fails, takes too long or
         prints too much."""
         # One argument: the query never passes through a shell.
-        cmd = ['osqueryi', '--json', query]
-        if is_windows():
-            cmd[0] = 'osqueryi.exe'
+        cmd = [self._binary(), '--json', query]
+        self.queries_run += 1
 
         try:
             child = await asyncio.create_subprocess_exec(
@@ -369,37 +297,38 @@ class OsqueryManager:
                 stderr=asyncio.subprocess.PIPE,
             )
         except OSError as e:
-            logger.error(f"Error executing osquery: {e}")
-            return []
+            return self._failed(f"Error executing osquery: {e}")
 
         try:
             output, said = await asyncio.wait_for(
                 self._read_bounded(child), timeout=QUERY_TIMEOUT
             )
         except asyncio.TimeoutError:
-            logger.error("osquery query timed out")
-            return []
+            return self._failed("osquery query timed out")
         except _TooMuchOutput:
-            logger.error(
-                "osquery query printed more than %d bytes: it is stopped and "
-                "its result is not used",
-                MAX_QUERY_OUTPUT,
+            return self._failed(
+                f"osquery query printed more than {MAX_QUERY_OUTPUT} bytes: "
+                f"it is stopped and its result is not used"
             )
-            return []
         finally:
             await self._end(child)
 
         if child.returncode != 0:
-            logger.error(f"osquery query failed: {said}")
-            return []
+            return self._failed(f"osquery query failed: {said}")
 
         # Parse JSON results
         try:
             results = json.loads(output)
             return results if isinstance(results, list) else []
         except (ValueError, RecursionError) as e:
-            logger.error(f"Failed to parse osquery results: {e}")
-            return []
+            return self._failed(f"Failed to parse osquery results: {e}")
+
+    def _failed(self, message: str) -> List[Dict[str, Any]]:
+        """A query that yields nothing: counted, kept for the status, said."""
+        self.queries_failed += 1
+        self.last_error = message
+        logger.error("%s", message)
+        return []
 
     @staticmethod
     async def _end(child):
@@ -476,11 +405,19 @@ class OsqueryManager:
         """Get osquery manager status"""
         return {
             'running': self.running,
-            'process_alive': self.process is not None and self.process.poll() is None,
+            # None: the manager has not started, or found no osqueryi.
+            'osqueryi': self.osqueryi,
+            'osquery_version': self.osquery_version,
             'query_packs': list(self.query_packs.keys()),
-            'total_queries': sum(len(pack['queries']) for pack in self.query_packs.values())
+            'total_queries': sum(len(pack['queries']) for pack in self.query_packs.values()),
+            # Since the sensor started, the local API's queries included. A
+            # failed query is one that yielded nothing: it exited with an
+            # error, took too long, printed too much or printed no JSON.
+            'queries_run': self.queries_run,
+            'queries_failed': self.queries_failed,
+            'last_error': self.last_error,
         }
-    
+
     def _get_services_query(self) -> str:
         """Get platform-specific services query"""
         if is_linux():

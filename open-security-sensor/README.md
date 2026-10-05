@@ -9,9 +9,10 @@ through the Wildbox gateway, to the data service of its team (see
 The sensor runs as a single Python process (`main.py`) that starts these
 components (`sensor/core/agent.py`):
 
-- **osquery manager** (`sensor/collectors/osquery_manager.py`): runs the osquery
-  daemon with built-in query packs for process events, network connections, user
-  events and system inventory, and runs one-off queries through `osqueryi`.
+- **osquery manager** (`sensor/collectors/osquery_manager.py`): runs built-in
+  query packs through `osqueryi` (the running processes, the open sockets, the
+  logged-in users, system inventory) and one-off queries for the local API. See
+  [What osquery collects](#what-osquery-collects).
 - **File monitor** (`sensor/collectors/file_monitor.py`): polls the configured
   paths and reports created, modified and deleted files, with a SHA-256 hash for
   files under 10 MB. See [File integrity monitoring](#file-integrity-monitoring).
@@ -151,10 +152,10 @@ data_lake:
 
 # Telemetry Collection
 collection:
-  process_events: true
-  network_connections: true
+  process_events: true        # the processes running: see "What osquery collects"
+  network_connections: true   # the sockets they hold open
   file_monitoring: true
-  user_events: true
+  user_events: true           # the users logged in
   system_inventory: true
   log_forwarding: false   # what it reads: see "Log forwarding"
 
@@ -559,6 +560,36 @@ what is mounted, so the mount is the outer limit of what a mistaken pattern
 can send. Do not mount `/var/log` whole unless everything in it may leave
 the host, and never `/`.
 
+## What osquery collects
+
+Every `performance.query_interval` seconds (10 by default) the sensor runs
+each query of the enabled packs through `osqueryi`, one at a time, and sends
+each answer that has rows as one event, of type `<pack>.<query>`:
+
+| Setting under `collection` | Pack | Queries |
+| :--- | :--- | :--- |
+| `process_events` | `process_events` | `process_tree`: the running processes, with their user |
+| `network_connections` | `network` | `process_open_sockets`: the open sockets, with their process |
+| `user_events` | `user_events` | `logged_in_users`; on Linux `sudoers`; on Windows `logon_events`, which reads an event table and was never run on a Windows host |
+| `system_inventory` | `system_inventory` | `system_info`, `os_version`, `installed_applications`, `startup_items`, `system_services`; on Linux `kernel_info`, `kernel_modules` |
+
+Each answer is a picture of the host at the moment of the query. The sensor
+collects no stream of events from osquery, whatever the settings are called:
+a process that starts and ends between two cycles, or a connection opened
+and closed between two, is not seen. osquery's event tables
+(`process_events`, `socket_events`, `user_events`) are not queried: through
+`osqueryi`, in the sensor's image, they answer no row and say `is
+event-based but events are disabled`. The sensor starts no `osqueryd`.
+
+In the container the pictures are the container's: its own processes and
+sockets (see [Security notes](#security-notes)).
+
+Without `osqueryi` on its `PATH`, or with one that does not answer a first
+query, the sensor does not start while any of the four settings is on.
+`osquery_manager` in `GET /api/v1/components` reports the `osqueryi` found
+and its `osquery_version`, the packs, and `queries_run`, `queries_failed`
+and `last_error` since the sensor started.
+
 ## File integrity monitoring
 
 With `collection.file_monitoring` and `fim.enabled` on, which is the default,
@@ -948,8 +979,8 @@ never measured them, and they were always zero or a constant.
   `no-new-privileges` and all capabilities dropped (`cap_drop: ALL`), in the
   root `docker-compose.yml` as in the standalone one. No collector needs a
   capability: in the built image, as uid 999, every osquery table the sensor
-  queries, `osqueryd`, the file monitor, the log forwarder and the data
-  volume behave the same with the default capability set and with none. What
+  queries, the file monitor, the log forwarder and the data volume behave
+  the same with the default capability set and with none. What
   the sensor cannot do is a matter of its user, not of capabilities: it sees
   only the processes and sockets of its own container (the container does
   not share the host's PID or network namespace), and it reads only the
