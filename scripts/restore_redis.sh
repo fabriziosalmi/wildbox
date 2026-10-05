@@ -11,17 +11,21 @@
 # the append-only file, and stops it. The service then starts with the
 # restored data.
 #
-# It REPLACES everything in the Redis data volume, and it refuses to run
-# while the Redis service is running. Stop the services that use Redis, then
-# Redis, restore, and start them again:
+# It REPLACES everything in the Redis data volume: scan and run state,
+# queued work, revoked tokens and lockouts written since the backup are
+# lost. So it runs only when told to, with --replace-redis-data, and it
+# refuses while the Redis service is running. Without the flag it says which
+# volume it would have replaced with which snapshot and changes nothing
+# (#723); there is no prompt, so a script can still run it. Stop the
+# services that use Redis, then Redis, restore, and start them again:
 #
 #   docker compose stop                      # or just the Redis clients
-#   ./scripts/restore_redis.sh --latest
+#   ./scripts/restore_redis.sh --latest --replace-redis-data
 #   docker compose up -d
 #
 # Usage:
-#   ./scripts/restore_redis.sh --timestamp 20260908_120000
-#   ./scripts/restore_redis.sh --latest
+#   ./scripts/restore_redis.sh --timestamp 20260908_120000 --replace-redis-data
+#   ./scripts/restore_redis.sh --latest --replace-redis-data
 #
 # Compose only: it works on the stack's own Redis volume, honoring
 # COMPOSE_FILE, COMPOSE_PROJECT_NAME and ENV_FILE like the backup. For a
@@ -40,12 +44,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 TIMESTAMP=""
 USE_LATEST=false
+REPLACE=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --timestamp) TIMESTAMP="$2"; shift 2 ;;
     --timestamp=*) TIMESTAMP="${1#*=}"; shift ;;
     --latest) USE_LATEST=true; shift ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    --replace-redis-data) REPLACE=true; shift ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -80,6 +86,22 @@ running=$("${WB_COMPOSE[@]}" ps --status running -q "$REDIS_SERVICE" </dev/null)
   || wb_die "docker compose could not list the '$REDIS_SERVICE' service. Check COMPOSE_FILE, COMPOSE_PROJECT_NAME and the env file."
 [ -z "$running" ] \
   || wb_die "the '$REDIS_SERVICE' service is running. This restore replaces its data: stop the services that use Redis, then Redis itself (docker compose stop), and run this again."
+
+# There is no harmless form of this restore, so it is never what a missing
+# option means.
+if [ "$REPLACE" != true ]; then
+  cat >&2 <<MSG
+REFUSING to replace the Redis data without --replace-redis-data.
+
+This would delete everything in the data volume of the '$REDIS_SERVICE'
+service and load $(basename "$SNAPSHOT") in its place.
+Scan and run state, queued work, revoked tokens and lockouts written since
+that backup would be lost. Nothing was changed.
+
+    --replace-redis-data   replace the data with the snapshot
+MSG
+  exit 2
+fi
 
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT

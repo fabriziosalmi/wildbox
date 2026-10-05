@@ -808,22 +808,42 @@ row count with the source, and drops the scratch databases. The live
 databases are only read. Run it on a schedule: a restore that has never been
 tested is not one.
 
+The comparison is exact, also on a stack that is in use. For each database
+the drill opens one read-only transaction, counts every table inside it, and
+has the backup dumped from that transaction's snapshot
+(`backup_postgres.sh --snapshot`). The restored copy has to hold the same
+tables with the same row counts, to the row; what the services write while
+the drill runs is on neither side of the comparison. The drill fails if a
+count differs, if it cannot open a snapshot, or if the backup cannot be taken
+from it.
+
 To restore for real, stop the services first, then:
 
 ```bash
 docker compose stop
 docker compose start postgres
-./scripts/restore_postgres.sh --timestamp 20261005_120000   # or --latest
-./scripts/restore_redis.sh --timestamp 20261005_120000
+./scripts/restore_postgres.sh --timestamp 20261005_120000 --overwrite-live-databases   # or --latest
+./scripts/restore_redis.sh --timestamp 20261005_120000 --replace-redis-data
 docker compose up -d
 ```
 
-`restore_postgres.sh` restores over the live databases; `--into-suffix
-_check` restores into `<db>_check` instead, and `--dry-run` only reads the
-archives. `restore_redis.sh` replaces the Redis data volume and refuses to
-run while Redis is running. It exists because Redis runs with the
-append-only file enabled and then ignores a `dump.rdb` at start: copying the
-snapshot into the volume by hand gives an empty Redis.
+Both restores destroy everything written since the backup, so each runs only
+with its flag. `--overwrite-live-databases` restores over the databases the
+services use, and `--replace-redis-data` replaces the Redis data volume.
+Without the flag the script changes nothing, exits with status 2, and says
+what it would have overwritten: each database with the archive it would be
+restored from, or the Redis volume with the snapshot. Neither script asks a
+question, so both still run from a script of your own.
+
+`restore_postgres.sh` has two targets that need no flag: `--into-suffix
+_check` restores into `<db>_check` next to the live databases, and
+`--dry-run` only reads the archives. It looks up every archive before it
+touches a database, so a missing one stops the run with nothing restored.
+
+`restore_redis.sh` also refuses to run while Redis is running. It exists
+because Redis runs with the append-only file enabled and then ignores a
+`dump.rdb` at start: copying the snapshot into the volume by hand gives an
+empty Redis.
 
 ---
 

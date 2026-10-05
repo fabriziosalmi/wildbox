@@ -1034,6 +1034,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever the secret. It now prints the services that receive the
   rotated secret, read from `docker compose config`, and the command
   that recreates only those (#649).
+- **Rotating `REDIS_PASSWORD` changes the running Redis and every Redis
+  URL in `.env`, or neither** (#723). `scripts/rotate_secrets.sh`
+  rewrote the `REDIS_PASSWORD=` line and nothing else: a Redis URL that
+  `.env` overrides (`IDENTITY_REDIS_URL`, `GUARDIAN_CELERY_BROKER_URL`
+  and the like) kept the old password, the running server was never told
+  the new one, and the script reported success with the stack stopped.
+  The rotation now follows the PostgreSQL one. It refuses unless
+  `wildbox-redis` is running, accepts the password in `.env`, receives it
+  from the compose configuration and is writing its append-only file. It
+  rewrites the variable and every `redis://` URL in `.env` that points
+  at the stack's Redis as the default user, and lists the ones it leaves
+  alone. It sets the password in the running server with
+  `CONFIG SET requirepass`, asks the server over TCP that the new one is
+  accepted and the old one refused, and restores `.env` and the server if
+  a step fails or the script is interrupted. Both passwords reach
+  `redis-cli` over standard input; Redis keeps `CONFIG` out of `MONITOR`
+  and redacts the value in its slow log.
+- **After a Redis rotation the Redis container is recreated too, and the
+  script says why** (#723). Redis keeps no password of its own: it
+  starts with `--requirepass` from the command line its container was
+  created with, so the change in the running server lasts until that
+  container restarts, and a restart before the recreation brings the old
+  password back. The command the script prints names `wildbox-redis`
+  first and then the services that hold the password. Recreating Redis
+  keeps its data volume, and the append-only file brings back queues,
+  scan and run state, revoked tokens and lockouts.
+- **The rotation script no longer names a profile's service in the
+  command it prints** (#723). For `POSTGRES_PASSWORD` and
+  `REDIS_PASSWORD` the command included `backup`, and
+  `docker compose up` starts a profile's service when it is named, so
+  following the script started a backup container on a stack that never
+  enabled the profile. Services behind a profile that is not active are
+  now listed separately.
 - **`make backup` and `make restore-drill` work on the default stack.**
   They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
   environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
@@ -1059,6 +1092,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **The restore drill compares the restore with one snapshot of the
+  source** (#723). It counted the live tables before and after the backup
+  and accepted any restored count in between, to tolerate writes during
+  the drill. That was wrong in both directions: a table that grew and
+  shrank while the drill ran failed it (`restored 15 rows, source had 10
+  before and 10 after the backup`), and a restore that lost a row of a
+  table that grew passed it. For each database the drill now opens one
+  read-only `REPEATABLE READ` transaction, exports its snapshot, counts
+  every table inside it, and has the backup dumped from that snapshot;
+  the restored counts must be equal to the row. It fails if a snapshot
+  cannot be opened or is gone before the dump. `backup_postgres.sh` takes
+  `--snapshot DATABASE=ID` for this.
+- **A restore over live data needs an explicit flag** (#723).
+  `scripts/restore_postgres.sh` without `--into-suffix` restored over the
+  live databases with no confirmation: the destructive form was the
+  default, one forgotten option away from the harmless one. It now
+  refuses, with exit status 2 and nothing changed, unless
+  `--overwrite-live-databases` is given, and the refusal names each
+  database and the archive it would have been restored from.
+  `--into-suffix` and `--dry-run` need no flag. `scripts/restore_redis.sh`
+  replaced the Redis data volume whenever Redis was stopped; it now needs
+  `--replace-redis-data` and otherwise names the volume and the snapshot.
+  Neither script prompts, so both still run unattended.
+- **`restore_postgres.sh` finds every archive before it restores a
+  database** (#723). With one archive missing it restored the databases
+  before it in the list and then failed. A missing archive now stops the
+  run with nothing restored.
 - **guardian sends e-mail by SMTP or not at all, and checks its mail
   settings when it starts** (#705). `EMAIL_BACKEND` is no longer read.
   Without `EMAIL_HOST` there is no mail server and every notification is
@@ -1146,6 +1206,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new job, Guardian Unit Tests (PostgreSQL), runs the whole suite on the
   PostgreSQL version of the stack; a test fails if that run is not on
   PostgreSQL.
+- **No script test can be skipped in CI** (#723). The backup, restore
+  and rotation tests start a throwaway PostgreSQL or Redis and skip
+  where Docker is missing. The step that runs `tests/scripts` already
+  set `WILDBOX_REQUIRE_DOCKER_TESTS=1`, and both test files failed
+  instead of skipping when Docker was missing, each with its own copy
+  of the check. Nothing kept it that way: a test with a skip of its
+  own, or a step that lost the variable, would have left those scripts
+  untested behind a green job. With the variable set,
+  `tests/scripts/conftest.py` now fails every test of the directory
+  that would be skipped, whatever skipped it, the Docker check is one
+  fixture, and a test fails when a workflow runs `tests/scripts`
+  without the variable.
 - **An image whose environment does not satisfy the shared package does
   not build, and Dependency Integrity says so first** (#722). The
   offline install of the shared package with extras and the `pip check`
