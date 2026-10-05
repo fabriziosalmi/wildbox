@@ -656,11 +656,12 @@ def record_alert_evaluation(rule_id, current_value, triggered, now=None):
 
 
 def alert_recipients(rule):
-    """The rule's own notification_config['recipients'], and nobody else.
+    """The addresses the rule's team typed into notification_config['recipients'].
 
-    A rule that names none notifies nobody: its notifications are recorded
-    undelivered. There is no platform-wide list to fall back to, which
-    would receive every team's alerts (#678).
+    A rule that names none is addressed to its team's owners and admins
+    when the notification is delivered (deliver_alert_notification, #705).
+    There is no platform-wide list to fall back to, which would receive
+    every team's alerts (#678).
     """
     return list((rule.notification_config or {}).get('recipients') or [])
 
@@ -692,38 +693,54 @@ def notify_scheduled_report(report):
     This lived in a post_save signal that read ``instance.tracker``, which
     Report does not have, so saving a completed report raised and
     generate_report recorded it as failed. The schedule's recipients were
-    never used. A schedule without recipients e-mails nobody: the report is
-    generated and listed, and the log says no e-mail went out (#678).
+    never used. A schedule that names none tells its team's owners and
+    admins (#705), never a platform-wide address (#678). The report is
+    generated and listed either way; when no e-mail went out, the log says
+    why. Returns whether it was sent.
     """
-    from apps.core.utils import send_notification
+    from apps.core.notifications import gateway_api_url, notify_team_from_template
 
     schedule = report.schedule
-    recipients = list(schedule.recipients or [])
-    if not recipients:
+    download = f"/api/v1/reports/reports/{report.pk}/download/"
+    delivery = notify_team_from_template(
+        report.template.team_id,
+        f"Scheduled Report Generated: {report.name}",
+        'reporting/report_generated.html',
+        {
+            'report': report,
+            'schedule': schedule,
+            # The route as a client of the gateway calls it, in full when
+            # GUARDIAN_BASE_URL says where the gateway is. guardian's own
+            # path, which the e-mail gave, is one no client reaches.
+            'download': gateway_api_url(download),
+        },
+        named=schedule.recipients,
+        kind='report',
+    )
+    if not delivery.sent:
         logger.warning(
             f"Report schedule {schedule.pk}: report {report.pk} is ready, "
-            "no e-mail sent (the schedule has no recipients)"
+            f"no e-mail sent ({delivery.reason})"
         )
-        return False
-    return send_notification(
-        subject=f"Scheduled Report Generated: {report.name}",
-        template='reporting/report_generated.html',
-        context={'report': report, 'schedule': schedule},
-        notification_type='report',
-        recipients=recipients,
-    )
+    return delivery.sent
 
 
 def deliver_alert_notification(notification):
     """
-    E-mail a recorded notification and record whether it went out.
+    E-mail a recorded notification and record what became of it.
 
-    Sent after the evaluation is committed, so a slow mail server does not
-    hold the rule's row lock. The template this used,
-    reporting/alert_notification.html, did not exist, so no alert e-mail
-    was ever sent (#549).
+    Sent after the evaluation is committed, so a slow mail server (or
+    identity, asked for the addresses) does not hold the rule's row lock.
+    The template this used, reporting/alert_notification.html, did not
+    exist, so no alert e-mail was ever sent (#549).
+
+    The rule's own recipients, or its team's owners and admins when it
+    names none (#705). The record keeps who the notification was addressed
+    to, whether it was delivered and, when it was not, why
+    (``failure_reason``): its team reads that on
+    GET .../alerts/{id}/notifications/.
     """
-    from apps.core.utils import send_notification
+    from apps.core.notifications import notify_team_from_template
 
     rule = notification.rule
     subjects = {
@@ -731,27 +748,33 @@ def deliver_alert_notification(notification):
         'repeat': f"Alert still firing: {rule.name}",
         'resolved': f"Resolved: {rule.name}",
     }
-    delivered = bool(notification.recipients) and send_notification(
-        subject=subjects[notification.kind],
-        template='reporting/alert_notification.html',
-        context={
+    delivery = notify_team_from_template(
+        rule.team_id,
+        subjects[notification.kind],
+        'reporting/alert_notification.html',
+        {
             'rule': rule,
             'notification': notification,
             'current_value': notification.value,
             'triggered_at': notification.created_at,
         },
-        notification_type='alert',
-        recipients=notification.recipients,
+        named=notification.recipients,
+        kind='alert',
     )
-    if delivered:
-        type(notification).objects.filter(pk=notification.pk).update(delivered=True)
-        notification.delivered = True
-    else:
+    notification.recipients = list(delivery.recipients)
+    notification.delivered = delivery.sent
+    notification.failure_reason = delivery.reason
+    type(notification).objects.filter(pk=notification.pk).update(
+        recipients=notification.recipients,
+        delivered=notification.delivered,
+        failure_reason=notification.failure_reason,
+    )
+    if not delivery.sent:
         logger.warning(
-            f"Alert rule {rule.name}: {notification.kind} notification not sent"
-            + ("" if notification.recipients else " (no recipients configured)")
+            f"Alert rule {rule.name}: {notification.kind} notification "
+            f"not sent ({delivery.reason})"
         )
-    return delivered
+    return delivery.sent
 
 
 @shared_task

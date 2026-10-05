@@ -503,20 +503,44 @@ TICKETING_SETTINGS = {
 # NOTIFICATION SETTINGS
 # =============================================================================
 
-# Email settings
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
-EMAIL_HOST = os.getenv('EMAIL_HOST', '')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'true').lower() == 'true'
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'guardian@wildbox.dev')
+# E-mail: by SMTP, or not at all (#705). EMAIL_BACKEND is not read: it
+# defaulted to the console backend, which printed every notification to the
+# log and reported it sent. EMAIL_HOST empty means no mail server, and a
+# notification is then recorded as not sent, with that reason
+# (apps.core.notifications). With a host, DEFAULT_FROM_EMAIL is required.
+# Every value is checked here, at start-up: see guardian/mailconf.py.
+from guardian.mailconf import (  # noqa: E402
+    mail_settings,
+    public_base_url,
+    team_contacts_settings,
+)
 
-# Prefix of the vulnerability links in notification e-mails. The SLA check
-# and the assignment notice read it, and it was never defined, so both raised
-# AttributeError as soon as they had someone to notify (#545). Unset, the
-# links are relative paths.
-BASE_URL = os.getenv('GUARDIAN_BASE_URL', '').rstrip('/')
+_mail = mail_settings()
+EMAIL_BACKEND = _mail['EMAIL_BACKEND']
+EMAIL_HOST = _mail['EMAIL_HOST']
+EMAIL_PORT = _mail['EMAIL_PORT']
+EMAIL_USE_TLS = _mail['EMAIL_USE_TLS']
+EMAIL_USE_SSL = _mail['EMAIL_USE_SSL']
+EMAIL_HOST_USER = _mail['EMAIL_HOST_USER']
+EMAIL_HOST_PASSWORD = _mail['EMAIL_HOST_PASSWORD']
+EMAIL_TIMEOUT = _mail['EMAIL_TIMEOUT']
+DEFAULT_FROM_EMAIL = _mail['DEFAULT_FROM_EMAIL']
+
+# The address users open the dashboard at (GUARDIAN_BASE_URL): what a link
+# in an e-mail starts with. The SLA and assignment e-mails linked
+# <BASE_URL>/vulnerabilities/<id>/, a page the dashboard does not have, and
+# a relative path when this was unset (#705). A link is now built only for a
+# page the dashboard serves, and only when this is set
+# (apps.core.notifications.dashboard_link).
+BASE_URL = public_base_url()
+
+# Where guardian asks identity who may be e-mailed about a team, and the
+# secret it presents (#705): GUARDIAN_TEAM_CONTACTS_URL, default identity's
+# name on the Compose network, and GUARDIAN_CONTACTS_SECRET. guardian keeps
+# no e-mail address: it mirrors identity's users by id. Without the secret
+# it asks nothing, and e-mails only the addresses a team typed into an
+# alert rule or a report schedule.
+TEAM_CONTACTS_URL, TEAM_CONTACTS_SECRET = team_contacts_settings()
 
 # Notification settings
 NOTIFICATION_SETTINGS = {

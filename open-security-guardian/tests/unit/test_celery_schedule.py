@@ -9,6 +9,7 @@ overlapping, and that each scheduled task actually runs.
 """
 
 import os
+import uuid
 from datetime import timedelta
 from unittest import mock
 
@@ -287,17 +288,17 @@ def test_the_alert_rule_sweep_records_a_triggered_rule(locmem_cache):
     assert rule.last_triggered is not None
 
 
-def _overdue_vulnerability():
+def _overdue_vulnerability(owner=None, team_id=None):
     from apps.assets.models import Asset
     from apps.vulnerabilities.models import Vulnerability
     from django.contrib.auth.models import User
     from django.utils import timezone
 
-    owner = User.objects.create(username="owner", email="owner@example.com")
+    owner = owner or User.objects.create(username="owner")
     with mock.patch("apps.assets.signals.scan_asset_ports"), mock.patch(
         "apps.vulnerabilities.signals.enrich_vulnerability_with_threat_intel"
     ), mock.patch("apps.vulnerabilities.signals.notify_vulnerability_assignment"):
-        asset = Asset.objects.create(name="host")
+        asset = Asset.objects.create(name="host", team_id=team_id)
         return Vulnerability.objects.create(
             title="overdue",
             description="d",
@@ -308,19 +309,29 @@ def _overdue_vulnerability():
 
 
 @pytest.mark.django_db
-def test_the_sla_check_notifies_once_a_day(locmem_cache, mailoutbox):
+def test_the_sla_check_notifies_once_a_day(
+    locmem_cache, mailoutbox, identity_contacts
+):
     # The check queried VulnerabilityHistory.changed_at, a field that does
     # not exist (it is timestamp), and formatted settings.BASE_URL, which was
     # never defined: with anything overdue, every run raised.
+    #
+    # This asserted an e-mail to the address on guardian's own copy of the
+    # user, which no user that came through the gateway has, and a link to
+    # /vulnerabilities/<id>/, a page the dashboard does not serve (#705). The
+    # address is now the one identity gives for the assignee, in the
+    # vulnerability's team.
     from apps.vulnerabilities.tasks import check_sla_violations
 
-    vulnerability = _overdue_vulnerability()
+    team_id = uuid.uuid4()
+    owner = identity_contacts.member(team_id, "owner@example.com", role="owner")
+    vulnerability = _overdue_vulnerability(owner, team_id)
     first = check_sla_violations.apply()
     assert first.successful(), first.traceback
     assert first.get() == {"notifications_sent": 1, "notifications_not_sent": 0}
     assert len(mailoutbox) == 1
     assert mailoutbox[0].to == ["owner@example.com"]
-    assert f"/vulnerabilities/{vulnerability.id}/" in mailoutbox[0].body
+    assert str(vulnerability.id) not in mailoutbox[0].body
 
     # Running every 15 minutes does not mean an e-mail every 15 minutes.
     second = check_sla_violations.apply()

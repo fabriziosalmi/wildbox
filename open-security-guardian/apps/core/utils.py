@@ -3,63 +3,15 @@ Utility functions for Open Security Guardian
 """
 
 import logging
-from django.core.mail import send_mail
-from django.conf import settings
-from django.template.loader import render_to_string
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
 
-def send_notification(subject, template, context, notification_type='general', recipients=None):
-    """
-    E-mail a notification to the recipients its caller names
-
-    Args:
-        subject: Email subject
-        template: Template path for notification content
-        context: Template context data
-        notification_type: Type of notification (general, alert, report, etc.)
-        recipients: List of email recipients
-
-    Returns:
-        bool: True if notification sent successfully
-
-    There is no default recipient (#678). This fell back to a
-    DEFAULT_NOTIFICATION_RECIPIENTS setting, one list for the whole
-    platform: defined, it would have received every team's alerts, reports
-    and compliance findings. A notification whose caller names nobody is
-    not sent, and says so in the log.
-    """
-    try:
-        # Render email content
-        html_content = render_to_string(template, context)
-
-        recipients = list(recipients or [])
-        if not recipients:
-            logger.warning(
-                "Notification not sent, it has no recipients (%s): %s",
-                notification_type,
-                subject,
-            )
-            return False
-
-        # Send email
-        send_mail(
-            subject=subject,
-            message=html_content,
-            html_message=html_content,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=recipients,
-            fail_silently=False,
-        )
-        
-        logger.info(f"Notification sent: {subject} to {len(recipients)} recipients")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Failed to send notification '{subject}': {str(e)}")
-        return False
+# ``send_notification`` was here: it e-mailed whoever its caller named, by
+# whatever EMAIL_BACKEND was configured. Every e-mail about a team's data now
+# goes through apps.core.notifications.notify_team, which decides who is
+# told, asks identity for the addresses and records what was not sent (#705).
 
 
 def validate_ip_address(ip):
