@@ -13,7 +13,7 @@ This page lists the routes registered in
 and the modules it includes. For request and response schemas, the service
 publishes its OpenAPI document at `/openapi.json`, Swagger UI at `/docs` and
 ReDoc at `/redoc` on its local port (not through the gateway), only when
-`ENVIRONMENT` is not `production`. The `.env` written by
+`ENVIRONMENT` is `development`. The `.env` written by
 `make generate-secrets` sets `ENVIRONMENT=production`, so those three paths
 answer 404 in the default stack.
 
@@ -174,6 +174,11 @@ keys and sessions), deleting one's own account, and removing a member from a
 team (the member's keys for that team). A key's `expires_at` is honored even
 when the gateway has a decision for the key in its cache. See
 [Revoking an API key](../../guides/authentication.md#revoking-an-api-key).
+
+Removing a member from a team, and deleting an account, also tell guardian,
+once the change is made, so that the user is no longer accepted or named as
+one of the team's users there. That notice never fails the request: see
+[Team memberships](../../guides/deployment.md#team-memberships).
 
 `/internal/authorize` reports, for an API key, `api_key_id` (what the gateway
 revokes the key by) and `credential_expires_at` (the key's expiry in epoch

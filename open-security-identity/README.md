@@ -153,6 +153,13 @@ Revoking a key, deactivating or deleting a user, and removing a member from a
 team are sent to the gateway before they are committed. If the gateway does
 not confirm, identity answers `503` and changes nothing.
 
+Removing a member from a team and deleting an account are also sent to
+guardian, after they are committed, so that guardian stops treating the user
+as one of the team's users (`app/guardian_memberships.py`). This one does not
+block: if guardian does not confirm, the change stands, identity logs an
+error, and guardian drops the user by itself when their membership there
+ages out. Deactivating an account sends guardian nothing.
+
 ### Internal
 
 `POST /internal/authorize` is called by the gateway only. It requires the
@@ -203,7 +210,7 @@ service `degraded`: login keeps working, but revocation and lockout stop
 working until it is back.
 
 `/docs`, `/redoc` and `/openapi.json` are served only when `ENVIRONMENT` is
-not `production`.
+`development`.
 
 ## Security details
 
@@ -236,6 +243,7 @@ case-insensitive), plus a few variables read directly.
 | `ACCOUNT_LOCKOUT_MINUTES` | `15` | Lockout duration |
 | `GATEWAY_INTERNAL_SECRET` | unset | Required for `/internal/authorize` and for purges sent to the gateway |
 | `GATEWAY_INTERNAL_URL` | `http://open-security-gateway:8081/internal/gateway/purge-auth-cache` | Gateway purge endpoint |
+| `GUARDIAN_INTERNAL_URL` | `http://open-security-guardian:8013/internal/team-memberships/revoke/` | Where guardian is told that a membership ended. Empty: no guardian, nothing is sent |
 | `CORS_ORIGINS` | `http://localhost:3000`, `https://wildbox.local`, `https://dashboard.wildbox.local` | Comma-separated or JSON list |
 | `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS` | see `app/config.py` | |
 | `ENVIRONMENT` | `development` | `production` disables the API docs |

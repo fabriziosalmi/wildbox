@@ -56,10 +56,17 @@ def gateway(monkeypatch, log):
     a test scripts another answer for a scope."""
     monkeypatch.setenv("GATEWAY_INTERNAL_SECRET", SECRET)
     monkeypatch.setattr(gateway_cache, "_RETRY_DELAYS", (0, 0))
-    state = {"script": {}, "bodies": []}
+    state = {"script": {}, "bodies": [], "guardian": []}
 
     def handler(request):
         body = json.loads(request.content)
+        if "open-security-guardian" in str(request.url):
+            # identity tells guardian after the commit (#676). Not a gateway
+            # call: it has its own log entry and consumes no scripted answer.
+            (scope,) = body
+            log.append(f"guardian:{scope}")
+            state["guardian"].append(body)
+            return httpx.Response(200, json={"revoked": len(body[scope]), "scope": scope})
         state["bodies"].append(body)
         scope = next(name for name in SCOPES if name in body)
         log.append(f"gateway:{scope}")
@@ -252,6 +259,15 @@ def test_the_member_s_team_sessions_end_at_the_gateway_before_the_removal(
         "gateway:memberships",
         "delete:member",
         "commit",
+        # guardian is told last, once the member is gone (#676).
+        "guardian:memberships",
+    ]
+    assert gateway["guardian"] == [
+        {
+            "memberships": [
+                {"user_id": str(target.user_id), "team_id": str(target.team_id)}
+            ]
+        }
     ]
     keys_body, sessions_body = gateway["bodies"]
     assert keys_body["api_keys"] == ["k-1"]
@@ -266,7 +282,13 @@ def test_the_member_s_team_sessions_end_at_the_gateway_before_the_removal(
 
 def test_removing_a_co_owner_ends_their_team_sessions_first(gateway, log, key_ids):
     remove(log, role=TeamRole.OWNER)
-    assert log == ["gateway:api_keys", "gateway:memberships", "delete:owner", "commit"]
+    assert log == [
+        "gateway:api_keys",
+        "gateway:memberships",
+        "delete:owner",
+        "commit",
+        "guardian:memberships",
+    ]
 
 
 def test_the_member_stays_when_the_gateway_does_not_confirm_the_sessions(
@@ -277,6 +299,8 @@ def test_the_member_stays_when_the_gateway_does_not_confirm_the_sessions(
         remove(log)
     assert exc.value.status_code == 503
     assert log == ["gateway:api_keys"] + ["gateway:memberships"] * 3
+    # The member stays, so guardian is told nothing.
+    assert gateway["guardian"] == []
 
 
 def test_the_member_stays_when_the_gateway_is_unreachable(gateway, log, key_ids):

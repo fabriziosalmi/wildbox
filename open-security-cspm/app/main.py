@@ -14,11 +14,11 @@ import json
 
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Request, Path, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import uvicorn
 
 from .config import settings
 from .credential_crypto import encrypt_credentials
+from open_security_shared.api_docs import api_docs_urls
 from open_security_shared.gateway_auth import get_user_from_gateway_headers
 from .worker import celery_app, run_cspm_scan_task, get_available_checks_task, health_check_task
 from .checks.runner import check_runner
@@ -26,6 +26,7 @@ from .checks.framework import CloudProvider
 from . import schemas
 from . import scan_store
 from . import providers
+from open_security_shared.errors import error_response, get_request_id
 from .utils import (
     _estimate_scan_duration, _summarize_compliance, _compliance_findings,
     _count_failed_by_severity,
@@ -38,19 +39,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Conditionally expose API docs (disabled in production)
-_docs_url = "/docs" if settings.debug else None
-_redoc_url = "/redoc" if settings.debug else None
-_openapi_url = "/openapi.json" if settings.debug else None
-
 # Create FastAPI application
+#
+# /docs, /redoc and /openapi.json are served in development only, by the rule
+# every service shares. They used to follow DEBUG whatever the environment,
+# so DEBUG=true published the schema in production (#679).
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Cloud Security Posture Management for Wildbox Security Suite",
-    docs_url=_docs_url,
-    redoc_url=_redoc_url,
-    openapi_url=_openapi_url
+    **api_docs_urls(settings.environment),
 )
 
 # Canonical error contract + correlation id + Prometheus metrics.
@@ -860,28 +858,22 @@ async def get_compliance_findings(
 
 
 # Error handlers
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    """Handle HTTP exceptions."""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=schemas.ErrorResponse(
-            error="HTTPException",
-            message=str(exc.detail),
-            details={"status_code": exc.status_code}
-        ).model_dump(mode="json")
-    )
-
-
+#
+# HTTPException is answered by the shared handler installed above, in the
+# canonical body. This module used to register its own handler for it after
+# that one, which replaced it: every error an endpoint raised left in a
+# second shape, {"error": "HTTPException", "message": ..., "details":
+# {"status_code": ...}, "timestamp": ...}, and its message was str(detail),
+# so the gateway authentication errors arrived as a Python dict literal
+# (#655).
 @app.exception_handler(ValueError)
-async def value_error_handler(request, exc):
-    """Handle validation errors."""
-    return JSONResponse(
-        status_code=400,
-        content=schemas.ErrorResponse(
-            error="ValidationError",
-            message="Validation error"
-        ).model_dump(mode="json")
+async def value_error_handler(request: Request, exc: ValueError):
+    """A ValueError no endpoint caught is the caller's input: 400, not 500."""
+    return error_response(
+        code=400,
+        message="Validation error",
+        error_type="ValidationError",
+        request_id=get_request_id(request),
     )
 
 

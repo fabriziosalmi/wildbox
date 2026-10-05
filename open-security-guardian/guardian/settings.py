@@ -46,7 +46,18 @@ if not DEBUG:
     # Patterns match the path without its leading slash; "health" is covered
     # too so the APPEND_SLASH redirect to health/ stays on plain HTTP.
     # The response carries only up/down status per dependency.
-    SECURE_REDIRECT_EXEMPT = [r"^health/?$"]
+    #
+    # The membership notice is exempt for the same reason: identity calls it
+    # on the internal network, over plain HTTP, to say that a member left a
+    # team (#676). Redirected, every such notice would be answered 301 to a
+    # port with no TLS and lost, as the gateway's cache purge once was
+    # (#475). This one route only: it is not reachable through the gateway,
+    # which proxies /api/v1/ only, and it refuses a request without the
+    # gateway-internal secret.
+    SECURE_REDIRECT_EXEMPT = [
+        r"^health/?$",
+        r"^internal/team-memberships/revoke/$",
+    ]
     SECURE_SSL_REDIRECT = True
     # Without this, SECURE_SSL_REDIRECT loops. TLS terminates at the gateway,
     # which proxies to guardian over plain HTTP, so Django sees an insecure
@@ -354,6 +365,13 @@ CELERY_BEAT_SCHEDULE = build_beat_schedule()
 from guardian.schedule import alert_renotify_interval  # noqa: E402
 
 ALERT_RENOTIFY_INTERVAL = alert_renotify_interval()
+
+# How long a user stays a member of a team for guardian without acting in
+# it (#676): GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS, 1 to 365, default 30;
+# see guardian/schedule.py.
+from guardian.schedule import team_membership_max_age  # noqa: E402
+
+TEAM_MEMBERSHIP_MAX_AGE = team_membership_max_age()
 
 # =============================================================================
 # LOGGING CONFIGURATION

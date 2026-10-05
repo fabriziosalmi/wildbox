@@ -24,6 +24,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when any service was unreachable. The real counters are in
   `GET /metrics` (`wildbox_tool_executions_total`); for the health of
   the other services use their own health checks or Prometheus (#646).
+- **No service serves its OpenAPI schema outside development** (#679).
+  data turned `/docs` and `/redoc` off outside development but still
+  answered `/openapi.json`; tools served its schema in every environment;
+  identity, agents and responder turned the three paths off only for
+  `ENVIRONMENT=production`, so `staging` published them; and cspm served
+  them whenever `DEBUG` was true, in production too. The six services now
+  take the three URLs from one rule, `open_security_shared.api_docs`:
+  served when `ENVIRONMENT` is `development`, 404 for any other value.
+  cspm no longer follows `DEBUG`. None of these paths was, or is,
+  reachable through the gateway.
+
+- **A user who left a team is no longer one of its users in guardian**
+  (#676). guardian recorded a membership the first time the gateway
+  authenticated a user in a team and never removed it. A member that
+  identity removed from a team could no longer authenticate in it, but the
+  team could still assign vulnerabilities to them and share dashboards
+  with them, and its data went on naming them as assignee, owner or
+  approver. Two things end a membership in guardian now. identity tells
+  guardian when it removes a member from a team or deletes an account
+  (`POST /internal/team-memberships/revoke/` on the internal network,
+  authenticated with the gateway-internal secret, refused when that
+  secret is not configured, and not routed by the gateway): the user is
+  refused at once wherever a team names a user, and the roles they held in
+  the team are cleared, a vulnerability's assignee with a line in its
+  history. And a membership counts only for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` (30, from 1 to 365, no way to
+  switch it off) from the user's last request in the team, so a notice
+  that never arrived, or a member who left before this release, does not
+  stay a member: a user who left can make no request that renews it. The
+  notice is sent after identity has committed the removal and does not
+  block it, because removing a member must not depend on guardian being
+  up; a notice guardian does not confirm is logged as an error by
+  identity, and `manage.py revoke_team_membership` applies it by hand.
+  What a former member did stays on record. The SLA and assignment
+  e-mails go to an assignee only while they are a member of the
+  vulnerability's team. Deactivating an account sends no notice: it keeps
+  its memberships and can be reactivated. Tests list, from the URL
+  configuration, the 24 fields through which a team can name a user and
+  check each against a member who left, by notice and by window; an
+  integration test removes a member in identity and has guardian refuse
+  them through the gateway.
+
+- **guardian has no platform-wide notification recipient** (#678).
+  Alert rules, scheduled reports and compliance notifications without
+  recipients fell back to a `DEFAULT_NOTIFICATION_RECIPIENTS` setting,
+  and every SLA violation was copied to `SECURITY_TEAM_EMAIL`. Nothing
+  defined either, so no such e-mail was sent; an operator who did define
+  them would have sent every team's asset names, vulnerability titles and
+  findings to one mailbox, across the team boundary of #642. Both are no
+  longer read. An alert rule and a report schedule e-mail the recipients
+  their team gave them, and an SLA violation e-mails the vulnerability's
+  assignee. A notification without recipients is not sent, and says so:
+  an alert notification is recorded with `delivered: false`, an SLA
+  violation is recorded once in the vulnerability's history as not
+  sent, and the worker logs a warning for each. Compliance notifications
+  have no recipients of their own, so none is e-mailed until a team can
+  name them. The SLA check no longer records a notification as sent when
+  its delivery failed. Unit tests define both settings and check that
+  nothing reaches them; eleven mutations of the fix each fail a test.
 
 ### Removed
 
@@ -65,6 +124,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `TOOLS_ALLOWED_INTERNAL_TARGETS`. They are now `8.8.8.8` and the
   host the Nmap project keeps for test scans, and the field descriptions
   name the setting (#646).
+- **An error detail that is a dict or a list reaches the client as JSON,
+  not as a Python dict string** (#655). The shared error handler built
+  `error.message` with `str()` unless the dict had a `reason`, so the
+  refusals of the gateway authentication dependency read
+  `"{'error': 'Gateway authentication required', 'message': ..., 'code':
+  'GATEWAY_AUTH_REQUIRED'}"` in tools, data, agents and responder.
+  `error.message` is now the dict's `reason`, else its `message`, else
+  its `error`, else the status phrase, and the dict is under
+  `error.details`, so the code is at `error.details.code`. A list detail
+  goes to `error.details` too. `error.message` is never empty.
+- **cspm answers the errors its endpoints raise in the canonical body**
+  (#655). A handler of its own replaced the shared one, so they left as
+  `{"error": "HTTPException", "message": ..., "details": {"status_code":
+  ...}, "timestamp": ...}`, with the same Python dict string for a dict
+  detail. They are now `{"error": {"code", "message", "type",
+  "request_id"}}`, as cspm's 422 and its 404 for an unknown path already
+  were, and as every other service answers. A client that read the
+  top-level `message` of a cspm error must read `error.message`.
+- **Input that a validator refuses answers 422, not 500.** When a model's
+  validator raised `ValueError`, the field errors could not be rendered
+  as JSON and the request ended in an internal error: an IOC value of
+  the wrong format sent to `POST /api/v1/agents/analyze`, for one.
+
+- **A guardian webhook endpoint path is unique per team, not across
+  guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642
+  left unique across every team: a team could not use a path another team
+  had taken, such as the conventional `/webhooks/jira`, and the `400` it
+  got told it that the path existed in a team it cannot see. The path is
+  a stored record, not a routing key: guardian serves no inbound webhook
+  route and nothing looks a request up by it, so it does not need to be
+  generated. The database now keeps it unique within the external system
+  the endpoint belongs to, and the API refuses a path that any endpoint of
+  the caller's own team already uses, looking at that team's rows only. A
+  path another team uses is answered exactly as a free one. Migration
+  `integrations.0003` replaces the constraint; existing rows already
+  satisfy the new one. Unit tests cover both teams, a second system of the
+  same team, updates and the database constraint; six mutations of the
+  fix each fail a test.
 - **`make backup` and `make restore-drill` work on the default stack.**
   They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
   environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
