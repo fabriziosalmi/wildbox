@@ -5,13 +5,14 @@ Manages permissions for security testing operations.
 
 import logging
 import hashlib
-import time
 import ipaddress
 from typing import Dict, List, Optional, Set
 from enum import Enum
 from datetime import datetime, timedelta
 import json
 import os
+
+from app.security.rate_limit import get_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +32,24 @@ class RiskLevel(Enum):
     HIGH = "high"
     CRITICAL = "critical"
 
+# Runs a caller may start per hour, by operation type.
+HOURLY_LIMITS = {
+    OperationType.READ_ONLY: 1000,
+    OperationType.PASSIVE_SCAN: 100,
+    OperationType.ACTIVE_SCAN: 10,
+    OperationType.DESTRUCTIVE_TEST: 1,
+    OperationType.CREDENTIAL_TEST: 5,
+    OperationType.VULNERABILITY_EXPLOIT: 1,
+}
+DEFAULT_HOURLY_LIMIT = 10
+
+
 class AuthorizationManager:
     """Manages authorization for security testing operations."""
-    
+
     def __init__(self):
         self.authorized_targets: Set[str] = set()
         self.user_permissions: Dict[str, List[OperationType]] = {}
-        self.rate_limits: Dict[str, Dict[str, int]] = {}
         self.load_configuration()
     
     def load_configuration(self):
@@ -124,45 +136,22 @@ class AuthorizationManager:
         return operation in user_perms
     
     def check_rate_limit(self, user_id: str, operation: OperationType) -> bool:
-        """Check if user is within rate limits for the operation."""
-        current_time = int(time.time())
-        window_size = 3600  # 1 hour window
-        
-        # Define rate limits by operation type
-        limits = {
-            OperationType.READ_ONLY: 1000,
-            OperationType.PASSIVE_SCAN: 100,
-            OperationType.ACTIVE_SCAN: 10,
-            OperationType.DESTRUCTIVE_TEST: 1,
-            OperationType.CREDENTIAL_TEST: 5,
-            OperationType.VULNERABILITY_EXPLOIT: 1
-        }
-        
-        limit = limits.get(operation, 10)
-        
-        # Initialize user rate limit tracking
-        if user_id not in self.rate_limits:
-            self.rate_limits[user_id] = {}
-        
-        op_key = operation.value
-        if op_key not in self.rate_limits[user_id]:
-            self.rate_limits[user_id][op_key] = []
-        
-        # Clean old entries
-        cutoff_time = current_time - window_size
-        self.rate_limits[user_id][op_key] = [
-            timestamp for timestamp in self.rate_limits[user_id][op_key]
-            if timestamp > cutoff_time
-        ]
-        
-        # Check limit
-        if len(self.rate_limits[user_id][op_key]) >= limit:
-            return False
-        
-        # Record current request
-        self.rate_limits[user_id][op_key].append(current_time)
-        return True
-    
+        """Take one of the user's hourly allowances for the operation.
+
+        True when the run may start, and it is then counted; False when the
+        user has had HOURLY_LIMITS[operation] runs in the last hour.
+
+        The count is in Redis (app/security/rate_limit.py), shared by the
+        API process and every worker child and kept across restarts. It was
+        a dict of this object, so each process allowed the limit on its own
+        and a restart forgot every run (#721).
+
+        Raises RateLimitUnavailable when the count cannot be reached: the
+        run is then refused, not let through uncounted.
+        """
+        limit = HOURLY_LIMITS.get(operation, DEFAULT_HOURLY_LIMIT)
+        return get_rate_limiter().allow(str(user_id), operation.value, limit)
+
     def require_authorization(self, target: str, user_id: str, operation: OperationType, 
                             tool_name: str, additional_checks: Optional[Dict] = None):
         """Comprehensive authorization check with logging."""

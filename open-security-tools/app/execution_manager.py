@@ -82,7 +82,10 @@ def authorize_tool_call(tool_func, tool_name: str, input_data, user_id: Optional
     as tool_func(input_data), so sql_injection_scanner, which demands a caller,
     refused every API execution.
 
-    Raises ToolAuthorizationError when the caller is missing or not allowed.
+    Raises ToolAuthorizationError when the caller is missing or not allowed,
+    and RateLimitUnavailable (app/security/rate_limit.py) when the caller's
+    hourly allowance cannot be counted: the tool must not run then either,
+    but that is the service's fault, not a refusal of the caller.
     """
     if not tool_acts_for_caller(tool_func):
         return {}
@@ -178,7 +181,16 @@ class ToolExecutionManager:
         execution_id = execution_id or f"{tool_name}_{uuid.uuid4().hex}"
         
         try:
-            tool_kwargs = authorize_tool_call(tool_func, tool_name, input_data, user_id)
+            if tool_acts_for_caller(tool_func):
+                # Off the event loop: the caller's hourly allowance is counted
+                # in Redis (#721), and a network call must not hold up every
+                # other request while it waits. RateLimitUnavailable is not
+                # caught here: no run starts, and the endpoint answers 503.
+                tool_kwargs = await asyncio.to_thread(
+                    authorize_tool_call, tool_func, tool_name, input_data, user_id
+                )
+            else:
+                tool_kwargs = authorize_tool_call(tool_func, tool_name, input_data, user_id)
         except ToolAuthorizationError as e:
             return self._refuse(tool_name, execution_id, user_id, str(e))
 

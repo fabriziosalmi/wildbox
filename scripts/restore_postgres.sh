@@ -11,15 +11,26 @@
 # happened during an incident (WILDBO-DATA-03).
 #
 # Usage:
-#   ./restore_postgres.sh --timestamp 20260908_120000                # all DBs
-#   ./restore_postgres.sh --timestamp 20260908_120000 --databases data
 #   ./restore_postgres.sh --timestamp 20260908_120000 --into-suffix _verify
 #   ./restore_postgres.sh --latest --databases identity --dry-run
+#   ./restore_postgres.sh --timestamp 20260908_120000 --overwrite-live-databases
+#   ./restore_postgres.sh --latest --databases data --overwrite-live-databases
 #
-# Without --into-suffix this restores OVER the live databases: stop the
-# services that use them first. --into-suffix restores into "<db><suffix>"
-# instead, which is how the drill in scripts/verify_restore.sh exercises this
-# path without touching live data.
+# One of three targets has to be named:
+#
+#   --into-suffix SUFFIX         restore into "<db>SUFFIX" next to the live
+#                                databases, which is how the drill in
+#                                scripts/verify_restore.sh exercises this
+#                                path without touching live data.
+#   --dry-run                    only read the archives.
+#   --overwrite-live-databases   restore OVER the databases the services use.
+#                                Everything written to them since the backup
+#                                is lost. Stop the services first.
+#
+# Without one of them the script refuses and says which databases it would
+# have overwritten, from which archives (#723): the destructive form used to
+# be the default, one forgotten option away from the harmless one. The flag
+# makes it a decision, and keeps it usable from a script: there is no prompt.
 #
 # Like the backup, it runs pg_restore and psql inside the stack's postgres
 # container by default (compose mode) and connects directly with
@@ -27,8 +38,8 @@
 # the variables (BACKUP_MODE, BACKUP_DIR, DATABASES, POSTGRES_*, ENV_FILE).
 # Archives encrypted with GPG_RECIPIENT are decrypted with the local gpg key.
 #
-# Redis is restored by hand from the redis_<timestamp>.rdb.gz snapshot; the
-# deployment guide has the steps.
+# Redis is restored from the redis_<timestamp>.rdb.gz snapshot by
+# scripts/restore_redis.sh.
 
 set -euo pipefail
 umask 077
@@ -42,6 +53,7 @@ TIMESTAMP=""
 INTO_SUFFIX=""
 DRY_RUN=false
 USE_LATEST=false
+OVERWRITE_LIVE=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -53,7 +65,8 @@ while [ $# -gt 0 ]; do
     --into-suffix=*) INTO_SUFFIX="${1#*=}"; shift ;;
     --latest) USE_LATEST=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    --overwrite-live-databases) OVERWRITE_LIVE=true; shift ;;
+    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -68,6 +81,10 @@ if [ -n "$TIMESTAMP" ] && ! [[ "$TIMESTAMP" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
 fi
 if [ -n "$INTO_SUFFIX" ] && ! [[ "$INTO_SUFFIX" =~ ^[A-Za-z0-9_]+$ ]]; then
   echo "ERROR: --into-suffix takes letters, digits and underscores, got: $INTO_SUFFIX" >&2
+  exit 2
+fi
+if [ -n "$INTO_SUFFIX" ] && [ "$OVERWRITE_LIVE" = true ]; then
+  echo "ERROR: --into-suffix and --overwrite-live-databases name two different targets; pass one." >&2
   exit 2
 fi
 
@@ -95,25 +112,10 @@ if [ "$BACKUP_MODE" = compose ]; then
   cd "$SCRIPT_DIR/.."
 fi
 
-WORKDIR=$(mktemp -d)
-trap 'rm -rf "$WORKDIR"' EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-
-echo "=== Wildbox PostgreSQL Restore ==="
-echo "Mode:       $WB_MODE_LABEL"
-echo "Backup dir: $BACKUP_DIR"
-echo "Databases:  ${DB_ARRAY[*]}"
-if [ -n "$INTO_SUFFIX" ]; then
-  echo "Target:     <database>${INTO_SUFFIX} (not the live database)"
-else
-  echo "Target:     the LIVE databases"
-fi
-[ "$DRY_RUN" = true ] && echo "MODE:       dry run, nothing will be written"
-echo ""
-
-wb_require_postgres
-
+# Which archive each database would be restored from, before anything else:
+# a refusal names them, and a missing one stops the run before the first
+# database is touched.
+ARCHIVES=()
 for db in "${DB_ARRAY[@]}"; do
   if [ "$USE_LATEST" = true ]; then
     # shellcheck disable=SC2012
@@ -126,6 +128,59 @@ for db in "${DB_ARRAY[@]}"; do
     echo "ERROR: no backup found for '$db' in $BACKUP_DIR" >&2
     exit 1
   fi
+  ARCHIVES+=("$ARCHIVE")
+done
+
+# Restoring over the live databases is the one form that destroys data, so
+# it is never what a missing option means.
+if [ -z "$INTO_SUFFIX" ] && [ "$DRY_RUN" != true ] && [ "$OVERWRITE_LIVE" != true ]; then
+  {
+    echo "REFUSING to restore over the live databases without --overwrite-live-databases."
+    echo ""
+    echo "This would restore into the databases the services use"
+    echo "(${WB_MODE_LABEL}):"
+    echo ""
+    for i in "${!DB_ARRAY[@]}"; do
+      printf '    %-12s from %s\n' "${DB_ARRAY[$i]}" "$(basename "${ARCHIVES[$i]}")"
+    done
+    echo ""
+    echo "pg_restore --clean drops every object an archive holds and loads it as it"
+    echo "was when the backup was taken: everything written to these databases"
+    echo "since then is lost. Nothing was changed. Name the target:"
+    echo ""
+    echo "    --into-suffix _check         restore into ${DB_ARRAY[0]}_check and so on,"
+    echo "                                 next to the live databases"
+    echo "    --dry-run                    only read the archives"
+    echo "    --overwrite-live-databases   restore over the live databases; stop"
+    echo "                                 the services that use them first"
+  } >&2
+  exit 2
+fi
+
+WORKDIR=$(mktemp -d)
+trap 'rm -rf "$WORKDIR"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+echo "=== Wildbox PostgreSQL Restore ==="
+echo "Mode:       $WB_MODE_LABEL"
+echo "Backup dir: $BACKUP_DIR"
+echo "Databases:  ${DB_ARRAY[*]}"
+if [ -n "$INTO_SUFFIX" ]; then
+  echo "Target:     <database>${INTO_SUFFIX} (not the live database)"
+elif [ "$OVERWRITE_LIVE" = true ]; then
+  echo "Target:     the LIVE databases (--overwrite-live-databases)"
+else
+  echo "Target:     none (dry run)"
+fi
+[ "$DRY_RUN" = true ] && echo "MODE:       dry run, nothing will be written"
+echo ""
+
+wb_require_postgres
+
+for i in "${!DB_ARRAY[@]}"; do
+  db="${DB_ARRAY[$i]}"
+  ARCHIVE="${ARCHIVES[$i]}"
   echo "Restoring $db from $(basename "$ARCHIVE")"
 
   STAGED="$WORKDIR/${db}.dump"
