@@ -207,6 +207,7 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
     "request_id": "&lt;id&gt;"
   }
 }</code></pre></div>
+                <p class="mt-4"><code>error.code</code> is the HTTP status and <code>error.message</code> is always a sentence. <code>error.details</code> is present when the error carries data: the list of field errors of a 422, or the dict or list a service raised. A machine-readable code that a service raises, such as <code>REGISTER_INVALID_PASSWORD</code> from identity, is at <code>error.details.code</code>.</p>
                 <p class="mt-4">guardian is a Django REST Framework service and uses that framework's error format.</p>
             </div>
         </section>
