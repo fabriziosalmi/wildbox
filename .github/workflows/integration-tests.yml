@@ -141,6 +141,11 @@ jobs:
           # scanned (#614). The benchmarking range: refused by default and
           # routed nowhere, so the scan reaches nothing.
           TOOLS_ALLOWED_INTERNAL_TARGETS: "198.18.0.0/15"
+          # The agent's two team-data tools, which the model is not given
+          # by default, so that test_agents_tools_identity runs them in the
+          # agents container against the data service and guardian (#652).
+          # No model key is set here: nothing is sent to a model provider.
+          AGENT_TEAM_DATA_TOOLS: "threat_intel_query_tool,vulnerability_search_tool"
 
       - name: Show what came up
         if: always()
@@ -198,6 +203,9 @@ jobs:
           GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
           # The allowlist the stack was started with (step above).
           TOOLS_ALLOWED_INTERNAL_TARGETS: "198.18.0.0/15"
+          # The team-data tools the stack was started with (step above): the
+          # tests fail, not skip, if the agents container does not have them.
+          AGENT_TEAM_DATA_TOOLS: "threat_intel_query_tool,vulnerability_search_tool"
         timeout-minutes: 20
 
       - name: Service logs on failure

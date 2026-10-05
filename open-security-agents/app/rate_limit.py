@@ -17,6 +17,9 @@ defect inside a team. An optional per-team ceiling
 (``ANALYZE_TEAM_RATE_LIMIT``) bounds what a team with many members can
 submit in total; it is off unless configured.
 
+The counters live in Redis, so they survive a restart and are shared by
+every process serving the API; see ``limiter`` below.
+
 slowapi resolves the endpoint's dependencies before it checks the limit,
 so ``rate_limited_caller`` has stored the verified caller on the request
 by the time a key function runs. A request without one is refused rather
@@ -64,7 +67,21 @@ async def rate_limited_caller(
 
 
 # No route uses the default key: every limit names its own key function.
-limiter = Limiter(key_func=user_rate_limit_key)
+#
+# The counters are kept in the service's Redis (REDIS_URL) unless
+# ANALYZE_RATE_LIMIT_STORAGE_URI says otherwise. They were in this process's
+# memory: every restart handed each user a new budget, which empties a limit
+# per day of its meaning, and a second API process would have counted on its
+# own (#652). The submission writes to the same Redis before it queues
+# anything, so the limiter adds no dependency. When the storage cannot be
+# reached the request is refused, not let through uncounted: slowapi raises
+# (no in-memory fallback, errors not swallowed) and app.main answers 503.
+limiter = Limiter(
+    key_func=user_rate_limit_key,
+    storage_uri=settings.rate_limit_storage_uri(),
+    in_memory_fallback_enabled=False,
+    swallow_errors=False,
+)
 
 
 def limit_analysis(func):

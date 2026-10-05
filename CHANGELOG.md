@@ -371,6 +371,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The health scripts now read one table,
   `scripts/lib/health_endpoints.sh`, which a test keeps equal to
   `docker-compose.yml` and to the Service ports guide (#656).
+- **The AI analysis's tools reach the services they name** (#652). Of
+  the nine tools the agent offers its model, six could only fail.
+  `threat_intel_query_tool` and `vulnerability_search_tool` called
+  `/api/v1/threat-intel/query` on the data service and
+  `/api/v1/vulnerabilities/search` on Guardian, routes neither serves,
+  at `localhost` inside the agents container: `WILDBOX_DATA_URL` and
+  `WILDBOX_GUARDIAN_URL` were not set by `docker-compose.yml`, and the
+  data default named identity's port. `reputation_check_tool`,
+  `dns_lookup_tool`, `url_analysis_tool` and `hash_lookup_tool` reached
+  a real tool of the tools service with field names its input model
+  does not have, and were answered 422. An analysis therefore ran on
+  WHOIS, geolocation and a port scan alone. Now:
+  - `threat_intel_query_tool` searches the data service's indicators
+    (`GET /api/v1/indicators/search`) and `vulnerability_search_tool`
+    the vulnerabilities Guardian records
+    (`GET /api/v1/vulnerabilities/?search=`). Both act as the user who
+    submitted the analysis, like every other tool: the request carries
+    that user's gateway identity and `GATEWAY_INTERNAL_SECRET`, so the
+    data service answers with that team's indicators and the shared
+    feeds, and Guardian with what that user may see. The agents service
+    has no key of its own. The model is given these two only when the
+    operator opts in; see `AGENT_TEAM_DATA_TOOLS` under Added.
+  - The four tools send the fields their tool validates.
+    `reputation_check_tool` now takes the IOC's type; `url_analysis_tool`
+    no longer offers a screenshot the tools service never took.
+  - `docker-compose.yml` sets `WILDBOX_DATA_URL` and
+    `WILDBOX_GUARDIAN_URL` (from `AGENTS_WILDBOX_DATA_URL` and
+    `AGENTS_WILDBOX_GUARDIAN_URL`), the service's defaults are those
+    addresses, and a value that is not an absolute `http(s)` URL stops
+    the service at start.
+  - A tool that fails returns an error to the model, with the service's
+    status and without its internal address, and never an empty result:
+    an unreachable Guardian used to raise into the analysis, since
+    `httpx.ConnectError` is not a builtin `ConnectionError`. The tool
+    descriptions and the system prompt say what each service really
+    does. A unit test checks every tool's request against the route,
+    the parameters and the input model in the target service's source.
+- **`ANALYZE_RATE_LIMIT` and `ANALYZE_TEAM_RATE_LIMIT` can be set in
+  `.env`** (#652). The agents service read them, but
+  `docker-compose.yml` did not pass them, so an operator needed a
+  Compose override of their own. The counters are now kept in the
+  service's Redis and not in the API process, so a restart no longer
+  hands every user a new budget, which a limit per day depends on. A
+  submission that cannot be counted because Redis is unreachable is
+  refused with 503.
+- **`completed_today` and `failed_today` of the agents statistics count
+  today** (#652). They were two Redis counters that nothing reset, so
+  they counted since the Redis data was last cleared. Each UTC date now
+  has its own counter, which expires two days later.
 - **A playbook's Guardian actions are served, not redirected** (#707).
   `wildbox.get_vulnerabilities`, `wildbox.get_asset_info` and
   `wildbox.create_vulnerability` were answered `301 Moved Permanently`
@@ -475,6 +524,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an empty Redis. The script loads the snapshot in a one-off container
   and writes the append-only file; it refuses to run while Redis is
   running (#681).
+- **`AGENT_TEAM_DATA_TOOLS` gives the AI analysis's model the team-data
+  tools, which are off by default** (#652). `threat_intel_query_tool`
+  and `vulnerability_search_tool` return data Wildbox holds for the
+  user's team: its threat indicators, and the vulnerabilities Guardian
+  records on its assets. The model is given one only when the operator
+  names it in `AGENT_TEAM_DATA_TOOLS` (`.env`; passed by both compose
+  files). Empty, the default, gives it neither: the tool is not in the
+  model's tool list, the prompt does not mention it, and the agents
+  service makes no request to the data service or to Guardian. Opting in
+  is a decision about data. What the tool returns is sent to the model
+  provider like every tool output; and it then sits in the model's
+  context beside text the lookup tools fetched from the internet, while
+  the model holds tools that reach outside with arguments it writes, so
+  text written to instruct the model can ask for the data to be passed
+  out. The prompt tells the model that tool output is data and not to
+  do so, which is a request, not a control. Any value but the two names
+  stops the service at start. Neither tool worked before this release,
+  so the default takes nothing away from an existing deployment.
 
 ### CI
 

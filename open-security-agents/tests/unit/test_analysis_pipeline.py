@@ -64,6 +64,9 @@ class FakeRedis:
     def incr(self, key):
         self.store[key] = int(self.store.get(key, 0)) + 1
 
+    def expire(self, key, ttl):
+        return True
+
     def delete(self, *keys):
         for key in keys:
             self.store.pop(key, None)
@@ -78,10 +81,20 @@ class FakeRedis:
 class Response:
     status_code = 200
 
+    def __init__(self, url=""):
+        self.url = url
+
     def raise_for_status(self):
         return None
 
     def json(self):
+        # An empty answer of the shape the route called serves: the data
+        # service's indicator search, Guardian's vulnerability list, or a
+        # tool's result. The client refuses an answer of another shape.
+        if "/indicators/search" in self.url:
+            return {"indicators": [], "total": 0, "limit": 25, "offset": 0}
+        if "/vulnerabilities/" in self.url:
+            return {"count": 0, "next": None, "previous": None, "results": []}
         return {"success": True}
 
 
@@ -101,11 +114,11 @@ class RecordingClient:
 
     async def post(self, url, **kwargs):
         RecordingClient.sent.append((url, kwargs.get("headers") or {}))
-        return Response()
+        return Response(url)
 
     async def get(self, url, **kwargs):
         RecordingClient.sent.append((url, kwargs.get("headers") or {}))
-        return Response()
+        return Response(url)
 
 
 @pytest.fixture
@@ -268,7 +281,16 @@ def test_a_task_without_a_caller_sends_nothing(task, recorded):
 # --- Agent tools -----------------------------------------------------------
 
 
-SAMPLE_ARGS = {"ip_address": "8.8.8.8", "url": "https://example.com"}
+# A valid value for every argument a tool takes that is not a free text. The
+# tools refuse an IOC type or a DNS record type their service does not have
+# before sending anything (#652); "example.com" for both used to be sent on.
+SAMPLE_ARGS = {
+    "ip_address": "8.8.8.8",
+    "url": "https://example.com",
+    "ioc_type": "domain",
+    "record_type": "A",
+    "hash_value": "d41d8cd98f00b204e9800998ecf8427e",
+}
 
 
 @pytest.mark.parametrize("tool", ALL_TOOLS, ids=lambda t: t.name)

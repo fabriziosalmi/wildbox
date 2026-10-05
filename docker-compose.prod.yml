@@ -29,7 +29,10 @@
 #             automations, prometheus, alertmanager
 #             gateway -> every upstream in nginx/conf.d/wildbox_gateway.conf;
 #             identity -> open-security-gateway:8081 (auth-cache purge);
-#             agents -> api:8000 (WILDBOX_API_URL); prometheus ->
+#             agents -> api:8000 (WILDBOX_API_URL) for its tools and, when
+#             AGENT_TEAM_DATA_TOOLS enables them, open-security-data:8002
+#             (WILDBOX_DATA_URL) and open-security-guardian:8013
+#             (WILDBOX_GUARDIAN_URL); prometheus ->
 #             the /metrics targets in monitoring/prometheus.yml and
 #             alertmanager:9093 (alerts, and its /metrics); alertmanager ->
 #             the mail server or webhook it notifies, outside the stack
@@ -245,6 +248,13 @@ services:
         max-file: "5"
 
   # Agents Service - Production
+  # backend carries its tools' calls to the tools service and, when
+  # AGENT_TEAM_DATA_TOOLS enables them, to the data and guardian services
+  # (WILDBOX_*_URL in docker-compose.yml, #652); data carries Redis. The
+  # service URLs and the analysis rate limits come from the base file, which
+  # an operator sets through AGENTS_WILDBOX_DATA_URL,
+  # AGENTS_WILDBOX_GUARDIAN_URL, ANALYZE_RATE_LIMIT and
+  # ANALYZE_TEAM_RATE_LIMIT in .env.
   agents:
     restart: always
     networks: !override
@@ -257,6 +267,10 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS}
       - WORKER_CONCURRENCY=4
       - CELERY_WORKER_PREFETCH_MULTIPLIER=2
+      # Off unless the operator opts in (#652): no team-data tool is given
+      # to the model, so no team data is sent to the model provider.
+      # Repeated from the base file so the overlay states it on its own.
+      - AGENT_TEAM_DATA_TOOLS=${AGENT_TEAM_DATA_TOOLS:-}
     deploy:
       resources:
         limits:
