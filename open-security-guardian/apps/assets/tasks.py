@@ -15,7 +15,13 @@ from datetime import timedelta
 
 from apps.core.tenancy import normalize_team_id, scope_to_team
 
-from .networks import NetworkRefused, check_address, scan_network
+from .networks import (
+    MAX_RULE_NETWORKS,
+    NetworkRefused,
+    check_address,
+    check_port_range,
+    scan_network,
+)
 from .models import (
     IMPLEMENTED_DISCOVERY_TYPES,
     Asset,
@@ -115,17 +121,34 @@ def execute_discovery_rule(self, rule_id):
         # them, so what this task knows is how many scans it queued, not how
         # many assets they will find: it used to report the first as the
         # second ("Discovered N assets", 'discovered_count') (#644).
-        networks_queued = _execute_network_scan(rule)
+        networks_queued, skipped = _execute_network_scan(rule)
+
+        # And which networks it did not queue, and why. A rule whose networks
+        # were all refused (stored before the target check, or before the
+        # operator narrowed the list) ended 'completed' with nothing queued,
+        # and the reason was in this worker's log only (#775).
+        outcome = {
+            'status': 'completed' if networks_queued else 'skipped',
+            'networks_queued': networks_queued,
+            'networks_skipped_count': len(skipped),
+            # A rule stored before the API bounded the list may name any
+            # number of networks; what is kept and returned is bounded.
+            'networks_skipped': skipped[:MAX_RULE_NETWORKS],
+        }
+        if not networks_queued:
+            outcome['reason'] = 'no_network_queued'
+
+        # Where the rule's owner reads it: the task's result is the
+        # operator's (the task route answers with a state and no result).
+        rule.last_run_result = outcome
+        rule.save(update_fields=['last_run_result'])
 
         logger.info(
-            f"Discovery rule {rule.name} completed. Queued {networks_queued} network scans."
+            f"Discovery rule {rule.name} {outcome['status']}. Queued "
+            f"{networks_queued} network scans, skipped {len(skipped)}."
         )
-        return {
-            'status': 'completed',
-            'rule_name': rule.name,
-            'networks_queued': networks_queued,
-        }
-        
+        return {'rule_name': rule.name, **outcome}
+
     except AssetDiscoveryRule.DoesNotExist:
         logger.error(f"Discovery rule with ID {rule_id} not found")
         return {'status': 'error', 'reason': 'rule_not_found'}
@@ -178,7 +201,10 @@ def scan_asset_ports(asset_id, port_range=None):
     
     Args:
         asset_id: UUID of the asset to scan
-        port_range: Port range to scan (e.g., '1-1000' or None for common ports)
+        port_range: Port range to scan (e.g., '1-1000' or None for common ports):
+            one port or a range of at most MAX_SCAN_PORTS ports from 1 to
+            65535 (apps.assets.networks.check_port_range). Anything else is
+            refused, with the reason in the result, and nothing is dialed.
     """
     try:
         asset = Asset.objects.get(id=asset_id)
@@ -192,29 +218,32 @@ def scan_asset_ports(asset_id, port_range=None):
         # it: the scan action, the creation of an asset, a discovery, or a
         # task queued before the check existed (#748). An asset may sit at
         # an internal address; it is recorded, and not scanned.
-        _, refusal = check_address(asset.ip_address)
+        # What is dialed below is the address this check returned, not the
+        # stored text read a second time (#775).
+        address, refusal = check_address(asset.ip_address)
         if refusal is not None:
             logger.warning(f"Port scan of asset {asset.name} refused: {refusal}")
             return {'status': 'refused', 'reason': refusal}
 
         # Define ports to scan
-        if port_range:
-            if '-' in port_range:
-                start, end = map(int, port_range.split('-'))
-                ports = range(start, end + 1)
-            else:
-                ports = [int(port_range)]
-        else:
+        if port_range is None or port_range == '':
             # Common ports
-            ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 
+            ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995,
                     1433, 3306, 3389, 5432, 5900, 6379, 8080, 8443]
-        
+        else:
+            # Bounded before anything is dialed (#775). Not retried: it
+            # would be the same.
+            ports, refusal = check_port_range(port_range)
+            if refusal is not None:
+                logger.warning(f"Port scan of asset {asset.name} refused: {refusal}")
+                return {'status': 'refused', 'reason': refusal}
+
         open_ports_found = 0
-        
+
         for port in ports:
-            if _scan_port(asset.ip_address, port):
+            if _scan_port(address, port):
                 # Port is open, create or update port record
-                service_info = _detect_service(asset.ip_address, port)
+                service_info = _detect_service(address, port)
                 
                 port_obj, created = AssetPort.objects.update_or_create(
                     asset=asset,
@@ -330,26 +359,36 @@ def _resolve_hostname(ip_address):
         return None
 
 
-def _scan_port(ip_address, port, timeout=1):
-    """Check if a specific port is open"""
+def _socket_family(address):
+    """The socket family of ``address``, an ``ipaddress`` address.
+
+    _scan_port and _detect_service opened AF_INET sockets whatever the
+    address: connecting one to an IPv6 address fails before a packet leaves,
+    so the scan of an IPv6 asset reported every port closed (#775).
+    """
+    return socket.AF_INET6 if address.version == 6 else socket.AF_INET
+
+
+def _scan_port(address, port, timeout=1):
+    """Check if a port is open at ``address``, which check_address returned"""
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(_socket_family(address), socket.SOCK_STREAM)
         sock.settimeout(timeout)
-        result = sock.connect_ex((ip_address, port))
+        result = sock.connect_ex((str(address), port))
         sock.close()
         return result == 0
     except Exception:
         return False
 
 
-def _detect_service(ip_address, port):
-    """Attempt to detect service running on port"""
+def _detect_service(address, port):
+    """Attempt to detect the service on a port of ``address`` (as _scan_port)"""
     service_info = {'service': '', 'version': '', 'banner': ''}
-    
+
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(_socket_family(address), socket.SOCK_STREAM)
         sock.settimeout(2)
-        sock.connect((ip_address, port))
+        sock.connect((str(address), port))
         
         # Try to grab banner
         try:
@@ -383,14 +422,29 @@ def _detect_service(ip_address, port):
     return service_info
 
 
+# Why a network of a rule was not scanned when no check refused it: the
+# broker did not take the task. A text of guardian's own, not the exception's,
+# which may name the broker and its address.
+NOT_QUEUED = "The scan of this network could not be queued."
+
+
 def _execute_network_scan(rule):
-    """Queue a network scan per network of the rule; how many were queued."""
+    """Queue a network scan per network of the rule.
+
+    Returns how many were queued, and the networks that were not: a list of
+    ``{'network': ..., 'reason': ...}``, the reason being the message
+    ``check_network`` writes for the caller.
+    """
     networks = rule.target_specification.get('networks', [])
     scan_type = rule.target_specification.get('scan_type', 'basic')
 
     queued = 0
+    skipped = []
 
     for network_range in networks:
+        # As check_network shortens what it quotes: a stored value is not
+        # always a string, nor a short one.
+        named = str(network_range).strip()[:64]
         try:
             # Nothing is queued for a range the task would refuse.
             scan_network(network_range)
@@ -398,6 +452,7 @@ def _execute_network_scan(rule):
             logger.warning(
                 f"Discovery rule {rule.name}: {network_range!r} not scanned: {refused}"
             )
+            skipped.append({'network': named, 'reason': str(refused)})
             continue
         try:
             discover_assets.delay(
@@ -408,8 +463,9 @@ def _execute_network_scan(rule):
             queued += 1
         except Exception as e:
             logger.error(f"Failed to scan network {network_range}: {str(e)}")
+            skipped.append({'network': named, 'reason': NOT_QUEUED})
 
-    return queued
+    return queued, skipped
 
 
 # Cloud API (AWS, Azure, GCP) and CMDB discovery are not implemented. The

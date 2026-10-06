@@ -316,7 +316,17 @@ one renderer, JSON, and a request that accepts only `text/html` answers 406
 Creating an asset with an IP address and no known ports queues a TCP connect
 port scan (`scan_asset_ports`, queue `scanning`). `POST .../assets/<id>/scan/`
 queues the same scan on demand. Neither scans an internal address: see
-[Scan targets](#scan-targets).
+[Scan targets](#scan-targets). The scan connects over the family of the
+asset's address; before #775 it opened IPv4 sockets only, and reported every
+port of an IPv6 asset closed. `guardian-worker` needs a route to an IPv6
+address to scan it, and the networks of `docker-compose.yml` are IPv4 only:
+from a worker without IPv6, every port of an IPv6 asset still reads as
+closed, because a connection that finds no route is counted like one that is
+refused. It tries the 19 common ports. The task also
+takes a `port_range`, which no route passes: one port or a range (`443`,
+`1-1000`) of at most 1,024 ports from 1 to 65535
+(`apps/assets/networks.py`, `check_port_range`); anything else ends the task
+`refused` before a connection is made.
 
 ### Vulnerability
 
@@ -330,7 +340,13 @@ queues the same scan on demand. Neither scans an internal address: see
   on every save (`apps/vulnerabilities/signals.py`): set when the status
   becomes `resolved`, by `close/`, a `PATCH`, a bulk action or a task, and
   cleared when it stops being so (#724).
-- Unique together: `(asset, cve_id, port)`.
+- Unique together: `(asset, cve_id, port)`. The database's index does not
+  hold for a row without a port (two NULLs are two values), so the API also
+  refuses a second finding for the same asset and CVE when neither has a
+  port (`VulnerabilityCreateSerializer`, #775). Findings with neither a CVE
+  nor a port are all kept. The check is the serializer's: rows written
+  another way are not held to it, and the duplicates a deployment stored
+  before it stay.
 
 Within the team, users who lack the `view_all_vulnerabilities` permission see only the
 vulnerabilities assigned to them or created by them.
@@ -420,6 +436,13 @@ accepted and run.
   reason, and nothing queued), and again in the worker when the task runs, for
   a rule or an asset stored before the check. Guardian resolves no host name:
   it scans networks in CIDR notation and asset addresses.
+- **A rule says what its last run skipped.** The run of a discovery rule
+  queues a discovery for each network that passes the check and writes the
+  outcome on the rule, in `last_run_result`, which the API serves (#775):
+  `status`, `networks_queued`, and `networks_skipped` with the reason for
+  each network left out. A run that queued nothing is `skipped`, with
+  `reason` `no_network_queued`. Before, it was `completed`, and the reasons
+  were in `guardian-worker`'s log only.
 - **An asset is recorded wherever it is.** An inventory lists internal hosts;
   an asset at an internal address is stored, and not port scanned.
 - **`GUARDIAN_ALLOWED_INTERNAL_TARGETS`** (`guardian/scan_targets.py`) lists
@@ -431,6 +454,17 @@ accepted and run.
   `guardian` and `guardian-worker` when they start, with the variable and
   the entry in the error. `TOOLS_ALLOWED_INTERNAL_TARGETS` is the tools
   service's list and Guardian does not read it.
+- **An IPv4 entry covers IPv4 addresses only.** The same hosts written as
+  IPv4-mapped IPv6 addresses are not covered: with `10.20.0.0/16` listed, a
+  discovery of `::ffff:10.20.3.0/120` and a port scan of an asset stored at
+  `::ffff:10.20.3.4` are still refused. This is the shared policy's design
+  (`tests/shared/target_policy_vectors.json`), so that a range is open only
+  in the spelling the operator wrote. To allow the mapped spelling, list it
+  as well: `::ffff:10.20.0.0/112` for `10.20.0.0/16` (the IPv6 prefix length
+  is 96 plus the IPv4 one). The reverse holds: a mapped entry does not cover
+  the IPv4 spelling. The API stores an asset's IPv4-mapped address as the
+  IPv4 address it carries, so this concerns the networks of a discovery and
+  assets written another way.
 
 ```bash
 GUARDIAN_ALLOWED_INTERNAL_TARGETS=192.168.50.0/24,10.20.0.0/16

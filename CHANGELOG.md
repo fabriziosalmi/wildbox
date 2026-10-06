@@ -54,6 +54,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   meet the burst and not the rate. The deployment guide, the gateway's
   README and the comment in `.env.example` describe it; the bursts
   themselves are unchanged (#776).
+- **guardian refuses a second finding for the same asset and CVE when
+  neither has a port.** `POST vulnerabilities/` answered 201 twice: the
+  unique set `(asset, cve_id, port)` did not hold for a missing port,
+  which the serializer's validator skips and the database's unique index
+  takes for a value of its own each time. The second request now answers
+  the `400` a duplicate with a port gets. Findings with neither a CVE nor
+  a port are all kept, as before. The duplicates a deployment already
+  holds stay as they are: the check is the API's, and a database
+  constraint is left for a minor release (#775).
+- **A port scan of an IPv6 asset connects over IPv6.** guardian opened
+  IPv4 sockets whatever the asset's address, so the scan of an IPv6 asset
+  completed with every port closed. It now connects over the family of
+  the address the scan target check returned; an internal IPv6 address is
+  refused before a socket is opened, as an IPv4 one is. The worker needs
+  an IPv6 route to reach such an asset: the stack's Docker networks are
+  IPv4 only, and from a worker without one the scan still finds no open
+  port (#775).
+- **A discovery rule says what its last run skipped.** A rule whose
+  networks were all refused by the scan target check (one stored before
+  0.12.0, or before the operator narrowed
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS`) ended `completed` with
+  `networks_queued: 0`, and the reason was in `guardian-worker`'s log
+  only. The rule's record now has `last_run_result`, read-only: the
+  status, the number of discoveries queued, and each network left out
+  with the reason. A run that queued nothing is `skipped`, with `reason`
+  `no_network_queued`, and the task's result says the same. One nullable
+  column is added to guardian's database at start (#775).
+- **`scan_asset_ports` bounds its `port_range`.** The task parsed the
+  argument without a limit: `1-4000000000` was that many connection
+  attempts in one task. It now takes one port or a range of at most 1,024
+  ports from 1 to 65535, and ends `refused`, with nothing dialed, for
+  anything else. No route passes the argument (#775).
+
+### Documentation
+
+- An IPv4 entry of `GUARDIAN_ALLOWED_INTERNAL_TARGETS` or
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` does not cover the same range written
+  as IPv4-mapped IPv6 addresses (`::ffff:10.20.3.4`), by design. The
+  deployment guide, the two services' READMEs and `.env.example` now say
+  so, and how to list the mapped range (#775).
 
 ### CI
 

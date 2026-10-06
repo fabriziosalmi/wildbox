@@ -37,9 +37,14 @@ operator narrowed the list), where the scan would run.
 Recording an asset is not scanning it: an asset at an internal address is
 stored like any other, which is what an inventory is for. It is not port
 scanned.
+
+The ports of a scan are bounded like the addresses of a discovery (#775):
+``check_port_range`` takes one port or a range of at most ``MAX_SCAN_PORTS``,
+each a TCP port number, and refuses anything else before a socket is opened.
 """
 
 import ipaddress
+import re
 
 from django.conf import settings
 from open_security_shared.target_policy import (
@@ -57,6 +62,18 @@ MAX_SCAN_ADDRESSES = MAX_TARGET_ADDRESSES
 
 #: The most networks one discovery rule lists.
 MAX_RULE_NETWORKS = 32
+
+#: The most ports one port scan tries. A port that does not answer costs the
+#: scan its connection timeout, one second, and a task has thirty minutes
+#: (CELERY_TASK_TIME_LIMIT): 1,024 unanswered ports are seventeen of them.
+MAX_SCAN_PORTS = 1024
+
+#: The highest TCP port number.
+MAX_PORT = 65535
+
+# "443" or "1-1000": the digits 0 to 9 only, so that int() is never handed a
+# sign, an underscore, a space inside the number or a digit of another script.
+_PORT_RANGE = re.compile(r"([0-9]{1,5})(?:-([0-9]{1,5}))?")
 
 #: What a discovery does with a host that answers: record it ("basic"), or
 #: also scan its ports ("comprehensive").
@@ -148,3 +165,35 @@ def check_address(value):
     if not scan_policy().allows(address):
         return None, f"{address} is {_INTERNAL}"
     return address, None
+
+
+def check_port_range(value):
+    """``(ports, None)`` if a port scan may try ``value``, else ``(None, why)``.
+
+    ``value`` is one port (``"443"``) or a range with both ends (``"1-1000"``)
+    of at most MAX_SCAN_PORTS ports, each from 1 to MAX_PORT. It was parsed
+    with ``int`` and nothing else: ``"1-4000000000"`` was four thousand million
+    connection attempts in one task, ``"0-70000"`` handed the socket ports
+    that do not exist, and anything that is not a number failed the task
+    with a ValueError (#775). As for ``check_address``, the refusal is a
+    message written here and returned, not raised.
+    """
+    text = value.strip() if isinstance(value, str) else ""
+    match = _PORT_RANGE.fullmatch(text)
+    if match is None:
+        return None, (
+            "A port range is one port or two joined by a hyphen, for example "
+            "443 or 1-1000."
+        )
+    first = int(match.group(1))
+    last = int(match.group(2)) if match.group(2) is not None else first
+    if not 1 <= first <= MAX_PORT or not 1 <= last <= MAX_PORT:
+        return None, f"A port is a number from 1 to {MAX_PORT}."
+    if first > last:
+        return None, f"The port range {first}-{last} ends before it starts."
+    if last - first + 1 > MAX_SCAN_PORTS:
+        return None, (
+            f"The port range {first}-{last} has more than {MAX_SCAN_PORTS} ports, "
+            "the most one port scan tries. Split it into smaller ranges."
+        )
+    return range(first, last + 1), None
