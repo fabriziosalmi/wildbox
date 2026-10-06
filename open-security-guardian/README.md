@@ -502,9 +502,13 @@ docker compose logs -f guardian guardian-worker guardian-beat
 
 Run the unit tests from this directory; `pytest.ini` selects
 `guardian.settings_test`, which uses an in-memory SQLite database unless
-`DATABASE_URL` is set:
+`DATABASE_URL` is set. The image holds no test tool: install the ones CI
+uses on top of the lock, as the `Unit Tests` job does:
 
 ```bash
+pip install ../open-security-shared
+pip install -r requirements.txt
+pip install pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0 pytest-django==4.5.2
 pytest
 ```
 

@@ -31,9 +31,14 @@ langchain-classic==1.0.8
 langchain-anthropic==1.4.6
 httpx==0.28.1
 python-dotenv==1.2.2
-pytest==9.0.3
-pytest-asyncio==1.3.0
-black==26.5.1
+
+# No test runner and no linter: the lock made from this file is what the
+# image installs. pytest, pytest-asyncio and black were named here, so the
+# image shipped them with everything they bring (#788). The unit-test job
+# installs pytest and its plugins on top of this lock
+# (.github/workflows/test.yml), at the versions
+# tests/ci-tools/requirements.in gives; the Code Quality job installs the
+# linters from that lock.
 
 # The service calls install_observability() and monitoring/prometheus.yml lists
 # it as a scrape target, but without this package the shared helper falls back

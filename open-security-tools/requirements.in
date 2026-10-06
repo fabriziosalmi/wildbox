@@ -38,6 +38,12 @@ flower==2.0.1
 prometheus-client>=0.20,<1.0.0
 PyMySQL==1.2.0
 pg8000==1.31.5
-pytest==9.0.3
-pytest-asyncio==1.3.0
-httpx==0.28.1
+
+# No test runner: the lock made from this file is what the image installs.
+# pytest and pytest-asyncio were named here, so the image shipped them with
+# everything they bring; so was httpx, which no module of the service
+# imports: it is what fastapi.testclient.TestClient needs, in the unit tests
+# (#788). The unit-test job installs pytest, its plugins and httpx on top of
+# this lock (.github/workflows/test.yml), at the versions
+# tests/ci-tools/requirements.in gives. To run the tests by hand, see the
+# README.

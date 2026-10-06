@@ -125,6 +125,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Its limit was 10 and its comment said "observed max 0.4 min", from
   when it ran `tests/shared` alone. It took 4.1 to 5.8 minutes over the
   last ten runs on main and 5 min 51 s on #782.
+### Fixed
+
+- **cspm and guardian can reconnect to the Celery result backend**
+  (#788). Both locked redis-py 5.0.1 beside Celery 5.3.1, with Redis as
+  the result backend. That release of redis-py, and no other, named
+  `Connection.register_connect_callback` with a leading underscore, and
+  Celery calls the public name when it finds the pub/sub connection of
+  its result consumer closed with nothing subscribed: the reconnection
+  raised `AttributeError`, logged as `Exception ignored in
+  AsyncResult.__del__` when a result was dropped after Redis had closed
+  the connection. Both services now lock redis-py 5.0.8, the newest 5.0
+  release; nothing else in either lock moved. No Celery release calls
+  the other name, so Celery stays where it was. tools and agents lock
+  redis-py 5.2.1 and were not affected.
+
+### Removed
+
+- **Six more images no longer contain their test tools** (#788). The
+  locks of guardian, data, identity, agents, tools and responder named
+  `pytest` and its plugins and, between them, `black`, `flake8`, `isort`,
+  `mypy`, `pre-commit` and `django-stubs`, so each image installed them
+  with everything they bring: in guardian's and data's, the packages
+  `pre-commit` uses to build Python and Node.js environments. They are
+  gone from the six `requirements.in` and from the locks: guardian's
+  went from 83 packages to 52, data's from 67 to 36, identity's from 63
+  to 47, agents' from 81 to 71, tools' from 72 to 65 and responder's
+  from 44 to 35, and no version of a package that stays moved. `httpx`
+  left the locks of data and tools with them: no module of either
+  service imports it, and only the `TestClient` of their unit tests
+  used it. To run a service's tests by hand, install
+  `pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0` after
+  `requirements.txt`, with `pytest-django==4.5.2` for guardian and
+  `httpx==0.28.1` for data and tools. A command that ran one of the
+  tools inside a container, such as `docker compose exec identity
+  pytest`, no longer finds it.
+
+### CI
+
+- **The unit-test jobs install what each suite needs beside the test
+  runner** (#788). With no test tool left in a service's lock, the two
+  jobs that run guardian's suite install `pytest-django`, and the legs of
+  data and tools install `httpx`, each on top of the lock and at the
+  version `tests/ci-tools/requirements.in` pins; `pytest-django` is
+  added to that file and to its lock.
+  `tests/scripts/test_requirements_are_imported.py` now fails when a
+  lock names a test runner, a linter or a package only those bring, when
+  a service's tests import a module that neither its lock nor the job
+  provides, and when the job names a tool the CI tools lock does not pin
+  at that version.
 
 ## [0.12.1] - 2026-10-06
 
