@@ -499,6 +499,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report that failed because its file could not be written says so in
   `error_message` without the text of the operating system's error,
   which names the path too.
+- **multidict, Mako, seroval and source-map-js move to releases without
+  the advisories GitHub reported on 6 October 2026** (eleven Dependabot
+  alerts). `multidict` 6.7.1, installed in the cspm, data, guardian,
+  sensor and tools images, kept a reference to one key and one value
+  for every element in the union and in the subtraction of an items
+  view, so memory grew and was never returned (GHSA-54p9-h82j-f925).
+  The five locks now pin 6.9.1. guardian's lock alone would have
+  allowed 7.0.0, a new major that aiohttp 3.14 does not accept yet; it
+  stays on the version the other four run. No Wildbox code uses either
+  operator on a multidict, nor do aiohttp 3.14.3, yarl 1.24.5,
+  aiohttp-cors 0.7.0 and gql 4.0.0, the packages that bring it in; the
+  advisory's own probe counts 100,000 leaked references on 6.7.1 and
+  none inside each rebuilt image. `Mako` 1.4.1 in the data image
+  becomes 1.4.3, the version identity already ran (GHSA-5639-2j2p-m4mx,
+  a path traversal in `TemplateLookup` on Windows; Alembic, the only
+  caller, opens its templates by file name, and the image is Linux). In
+  the dashboard `source-map-js` 1.2.1 becomes 1.2.2
+  (GHSA-68fv-2mgg-jv7q) and `seroval` 1.5.6 becomes 1.6.8
+  (GHSA-p6vx-979v-rg4c, critical, and GHSA-jp82-f5mq-hwhp, both in
+  `fromJSON()`). solid-js 1.9.15, which the React Query devtools bring
+  in, accepts `seroval` 1.5 only, and that line has no fixed release:
+  `package.json` overrides `seroval` and `seroval-plugins` to `^1.6.3`
+  until a solid-js release accepts it. Neither package was in the
+  dashboard image: the devtools are rendered in development only,
+  nothing calls `fromJSON()`, and the standalone output holds no code
+  of solid-js, seroval or source-map-js, before or after.
 
 ### Removed
 
