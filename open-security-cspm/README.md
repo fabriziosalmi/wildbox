@@ -366,6 +366,11 @@ A category has one spelling in the catalog, written with `and`
 fails when two categories differ only by `&` for `and`, case or spacing.
 The `category` filter takes either: `Logging & Monitoring`, the spelling two
 of the three CloudTrail checks had up to 0.12.0, still finds all three.
+The five checks of the IAM service are one category,
+`Identity and Access Management`; until 0.12.2 two of them were in a
+category of their own, `Access Management`, a name the filter still takes
+and answers with all five. `Access Control` (the policy of a KMS key, an S3
+bucket or a Lambda function) is a different category and stays.
 
 ### Compliance report of one scan
 

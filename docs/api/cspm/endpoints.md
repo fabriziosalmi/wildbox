@@ -187,8 +187,14 @@ service has never had, gives `200` with
 `{"total_checks": 0, "checks": [], "providers": [], "categories": []}`, not an
 error.
 
-A category has one spelling, written with `and`: the catalog has 10, among them
-`Logging and Monitoring` and `Identity and Access Management`. Up to 0.12.0 each of
+A category has one spelling, written with `and`: the catalog has 9, among them
+`Logging and Monitoring` and `Identity and Access Management`. Until 0.12.2 there
+was a tenth, `Access Management`, with two of the five checks of the IAM service
+(`AWS_IAM_005`, `AWS_IAM_006`) while the other three were in
+`Identity and Access Management`: the five are in that one now, and
+`category=Access%20Management` still finds them, all five. `Access Control` is
+another category and is unchanged: a resource's own policy (a KMS key, an S3
+bucket, a Lambda function). Up to 0.12.0 each of
 those two was also spelled with `&` on some of its checks, so `categories` listed
 both spellings and the filter gave the checks of the one asked for. The `category`
 filter also takes `&` for `and` and any spacing: `category=Logging%20%26%20Monitoring`,
