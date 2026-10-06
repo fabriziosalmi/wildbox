@@ -53,7 +53,7 @@ The tools service is additionally single-instance by design; see the note on
 **Acknowledged Downsides:**
 
 - **Resource consumption:** ~4-8GB RAM baseline (see hardware requirements below)
-- **Operational complexity:** 11 containers to monitor
+- **Operational complexity:** 18 containers in the default stack (see `docs/SERVICE_LIFECYCLE.md`)
 - **Network overhead:** Inter-service HTTP calls add latency
 - **Overkill for small deployments:** Solo users may not need full suite
 
@@ -318,8 +318,8 @@ Use **Docker Compose** for development and small-scale deployments. Provide **Ku
 
 For enterprise deployments:
 
-1. **Kubernetes:** See `k8s/` directory (planned Q1 2026)
-2. **Docker Swarm:** Lightweight alternative (documented)
+1. **Kubernetes:** not provided; the repository has no manifests
+2. **Docker Swarm:** not documented
 3. **Nomad:** HashiCorp shops (community-contributed)
 
 ### Hardware Recommendations

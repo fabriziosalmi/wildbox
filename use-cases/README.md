@@ -9,8 +9,9 @@ Worked examples of Wildbox for specific security operations scenarios.
 Directory: [web-attack-detection/](web-attack-detection/)
 Components: sensor, gateway, data service
 
-Ingests nginx access logs through the sensor and inspects them for common web
-attack patterns:
+Ingests nginx access logs through the sensor and stores them as telemetry
+events, in which these common web attack patterns can be looked for (Wildbox
+does not detect them itself):
 
 - SQL injection
 - Cross-site scripting (XSS)

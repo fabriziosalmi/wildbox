@@ -102,8 +102,8 @@ everything else to HTTPS:
 curl -s http://localhost/health
 ```
 
-Each backend also answers `/health` on its own port, bound to `127.0.0.1`
-only; the loop on the [Service ports](ports.md#checking-the-stack) page checks
+Each backend also answers `/health` on its own port (guardian: `/health/`,
+with the slash), bound to `127.0.0.1` only; the loop on the [Service ports](ports.md#checking-the-stack) page checks
 all of them.
 
 ---
@@ -183,8 +183,9 @@ docker compose --profile monitoring up -d    # Prometheus and Alertmanager
 
 - **A service is unhealthy**: `docker compose ps` shows which;
   `docker compose logs <service>` shows why.
-- **The stack refuses to start with "... is required"**: a secret is missing
-  from `.env`. Run `make validate-secrets`.
+- **The stack refuses to start with "... is required" or "set it in .env to
+  production ..."**: a secret, or `ENVIRONMENT`, is missing from `.env`. Run
+  `make validate-secrets`.
 - **Login returns 400**: wrong credentials. Check `INITIAL_ADMIN_EMAIL` and
   `INITIAL_ADMIN_PASSWORD` in `.env`; the admin account is created from them
   on the identity service's first start.

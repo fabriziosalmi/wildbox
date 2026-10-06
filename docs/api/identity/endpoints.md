@@ -58,8 +58,11 @@ where `ADMIN_EMAIL` and `ADMIN_PASSWORD` come from.
 fastapi-users route `POST /api/v1/auth/jwt/logout` (gateway:
 `POST /auth/jwt/logout`), with
 `Authorization: Bearer <token>`. Has the gateway refuse the token's `jti`
-and adds it to a blacklist until the token would have expired. Returns 200
-whether or not the token was already revoked; 401 without a bearer token;
+and adds it to a blacklist until the token would have expired.
+`POST /api/v1/auth/logout` returns 200 whether or not the token was already
+revoked. `POST /api/v1/auth/jwt/logout` returns 204 with no body, and 401 for
+a token that is already revoked, because it authenticates the token first.
+Both return 401 without a bearer token;
 400 for a token without a `jti` (issued before the release that added it),
 which expires on its own; 503 when the gateway did not confirm the
 revocation or the blacklist could not be written, in which case the token is
@@ -90,7 +93,7 @@ All under `/api/v1/auth` (fastapi-users):
 | PUT | `/api/v1/admin/me/password` | Change password; same body as below |
 | POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password`; answers a new `access_token` and ends the account's other sessions |
 | DELETE | `/api/v1/admin/me/account` | Deactivate own account; body `password`, `confirm_deletion` |
-| GET | `/api/v1/admin/me/activity` | Own recent activity; `team_memberships` oldest first, the first being the team the session works in |
+| GET | `/api/v1/admin/me/activity` | Own account summary, not an activity log: `user_id`, `email`, `created_at`, `team_memberships` (oldest first, the first being the team the session works in), `active_api_keys` and `account_status`; `last_login` is always null |
 
 Despite the `/admin` prefix, the `/admin/me/...` routes act on the caller's own
 account and need only a valid token.
@@ -282,6 +285,7 @@ gateway does not confirm, nothing changes and the answer is 503.
 | --- | --- | --- |
 | GET | `/health` | Health check |
 | GET | `/` | Service information |
+| GET | `/metrics` | Prometheus exposition, scraped by `monitoring/prometheus.yml`; not routed by the gateway |
 | POST | `/internal/authorize` | Token and API-key validation for the gateway; requires `X-Gateway-Secret` and is not routed by the gateway |
 | POST | `/internal/team-contacts` | For guardian's worker: the address and role of the active members of one team, selected by `user_ids` or by `roles`. Requires `X-Guardian-Contacts-Secret` (`GUARDIAN_CONTACTS_SECRET`, not the gateway's secret) and is not routed by the gateway |
 

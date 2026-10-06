@@ -101,6 +101,11 @@ refused, whatever key it carries:
 - when guardian itself has no `GATEWAY_INTERNAL_SECRET`: `503` with
   `"code": "GATEWAY_SECRET_NOT_CONFIGURED"`.
 
+With `DEBUG` false guardian redirects plain HTTP to HTTPS before it looks at
+any of this (`SECURE_SSL_REDIRECT` in `guardian/settings.py`), so a request
+sent to port 8013 without `X-Forwarded-Proto: https` answers `301`, not
+`403`. The gateway sends that header on every request.
+
 Django REST Framework authenticates with the gateway headers only
 (`GatewayHeaderAuthentication` in `guardian/settings.py`). Before #633 guardian
 also accepted its own API keys in `X-API-Key` on its port, as an administrator,
@@ -279,7 +284,7 @@ otherwise:
 | `DELETE` | `<resource>/{id}/` | Delete |
 
 Custom actions keep the Python method name in their path, underscores included
-(for example `test_connection/`, `run_now/`).
+(for example `cleanup_logs/`, `run_now/`).
 
 ### What an action's answer means
 
@@ -365,7 +370,8 @@ Asset fields accepted on create include `name` (required), `description`,
 `iot_device`, `cloud_instance`, `container`, `application`, `database`, `other`),
 `status` (`active`, `inactive`, `decommissioned`, `maintenance`, `unknown`),
 `ip_address`, `hostname`, `fqdn`, `criticality` (`critical`, `high`, `medium`, `low`,
-`unknown`), `tags` and `metadata`. Two assets cannot share an `ip_address`. Creating
+`unknown`), `tags` and `metadata`. Two assets of the same team cannot share an
+`ip_address` (`400` on `ip_address`); an address another team uses is free. Creating
 an asset that has an `ip_address` and no ports also queues a port scan, unless the
 address is an [internal one](#scan-targets).
 
@@ -447,7 +453,9 @@ vulnerability's `evidence` or `references` fields.
 A vulnerability needs `title`, `description` and `asset` (an asset ID); `cve_id`
 is optional (before #724 a request without it answered `400`, so send `"cve_id":
 ""` to an older guardian). Guardian keeps one finding for an asset, a CVE and a
-port: a second one answers `400`. The answer to the creation carries the new
+port: a second one with the same `port` answers `400`. The rule does not hold
+when `port` is omitted: two findings for the same asset and CVE without a
+port are both accepted. The answer to the creation carries the new
 record's `id` (since #724). `severity`
 is one of `critical`, `high`, `medium`, `low`, `info`; `status` is one of `open`,
 `in_progress`, `resolved`, `accepted`, `false_positive`, `duplicate`; `priority` is
@@ -716,9 +724,12 @@ Custom actions (all `GET`):
 Prefix: `integrations/`. These are records: guardian stores them and does nothing
 with them. It does not contact an external system, run a synchronization, receive
 or send a webhook, or deliver through a notification channel, and nothing writes
-integration logs. The notifications guardian does send (alert rules, SLA
-violations, compliance reminders) are e-mails to the recipients of the rule,
-vulnerability or assessment concerned; none uses a notification channel.
+integration logs. The notifications guardian does send (alert rules,
+scheduled reports, SLA violations, vulnerability assignments, compliance
+notifications) are e-mails: to the addresses the alert rule or the report
+schedule names, to the vulnerability's assignee, and otherwise to the owners
+and admins of the team (always for a compliance notification, which names
+nobody; never for an assignment). None uses a notification channel.
 
 | Resource | Path | Notes |
 | --- | --- | --- |
@@ -792,7 +803,7 @@ Prefix: `reports/`.
 | Report templates | `reports/templates/` | Standard routes |
 | Report schedules | `reports/schedules/` | Standard routes |
 | Reports | `reports/reports/` | Standard routes |
-| Dashboards | `reports/dashboards/` | Standard routes |
+| Dashboards | `reports/dashboards/` | Standard routes. A caller sees the team's dashboards that are public in the team (`is_public`, `false` unless set), their own, and those shared with them; any other answers `404`, for `owner` and `admin` too |
 | Widgets | `reports/widgets/` | Standard routes |
 | Report metrics | `reports/metrics/` | Read-only (list and retrieve) |
 | Alert rules | `reports/alerts/` | Standard routes |
@@ -850,9 +861,10 @@ curl -s --cacert "$CA" -OJ "$BASE/reports/reports/<report-id>/download/" \
 
 ## Task status
 
-Actions that queue background work (`assets/assets/{id}/scan/`,
-`assets/assets/discover/`, `reports/alerts/check_all/`) return a `task_id`. Read the
-task's state with:
+Four actions answer with a `task_id`: `assets/assets/{id}/scan/`,
+`assets/assets/discover/`, `assets/discovery-rules/{id}/execute/` and
+`reports/alerts/check_all/`. (Report generation answers the report record
+instead: poll `reports/reports/{id}/`.) Read the task's state with:
 
 ```bash
 curl -s --cacert "$CA" "$BASE/tasks/<task-id>/" \

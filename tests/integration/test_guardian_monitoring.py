@@ -555,7 +555,8 @@ class TestGuardianMonitoring:
                 timeout=TIMEOUT,
             )
             assert finding.status_code == 201, finding.text[:300]
-            # The create response carries no id; the asset has only this one.
+            # Read through the list: the asset has only this one. (The create
+            # response carries the id too, since #724.)
             listing = _assert_page(
                 requests.get(
                     VULNERABILITIES,

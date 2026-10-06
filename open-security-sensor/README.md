@@ -122,7 +122,7 @@ Without `--config`, the sensor reads the first file that exists among
 | `--validate-config` | Load and validate the configuration, then exit |
 | `--test-connection` | Posts an empty batch with the configured key and prints the gateway's answer |
 | `--status` | Asks the running sensor's local API and prints what it answers; see below |
-| `--debug` | Enable debug logging |
+| `--debug` | Accepted and has no effect. For debug logging set `logging.level: DEBUG` or `SENSOR_LOGGING_LEVEL=DEBUG` |
 | `--version`, `-v` | Print the version and exit |
 
 `--status` asks the local API of the sensor this configuration describes
@@ -387,8 +387,11 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
 - The offset moves when the gateway has answered for a line's batch, not
   when the line is read. Lines still in the sensor when it stops, or is
   killed, are read again at the next start: a gateway outage that outlasts
-  the sensor loses nothing. A line the sensor dropped for good (its batch
-  was refused with a 4xx, or no API key was set) counts as done.
+  the sensor loses nothing. A line the sensor dropped for good (the data
+  service refused the event itself, or no API key was set) counts as done.
+  A 401, a 403 or any other answer about the request keeps the batch and
+  moves no position; see
+  [When the gateway takes nothing](#when-the-gateway-takes-nothing).
 - The position is written to `<data_dir>/log-positions.json` at most once a
   second while it moves, and when the sensor stops. A sensor that is killed
   therefore sends again the lines accepted since the last write: delivery is
@@ -578,7 +581,7 @@ no host log. The sensor process, uid 999 and not root, can read:
 - its configuration, `/etc/security-sensor/config.yaml`, read-only;
 - the `sensor_logs` volume (`/var/log/security-sensor`, its own log) and the
   `sensor_data` volume (`/var/lib/security-sensor`, where it keeps its read
-  positions);
+  positions and the file monitor's baseline);
 - `/host/proc/stat`, `/host/proc/meminfo`, the host's load average file under
   `/host/proc` and `/host/sys/class/net`, read-only;
 - in the root `docker-compose.yml`, the gateway's certificate in
@@ -804,8 +807,10 @@ sensor --HTTPS, X-API-Key--> gateway /api/v1/data/ingest --> data service
 ```
 
 It authenticates with an identity personal API key. The gateway checks the
-key at identity on every batch, refuses it once it is revoked or expired or
-its member has left the team, and forwards the batch with the key's team; the
+key on every batch, against identity's answer, which it keeps for a short
+time and never past the key's expiry; it refuses the key once it is revoked
+or expired or its member has left the team, and forwards the batch with the
+key's team; the
 data service stores the events under that team and shows them to that team
 only. A batch names no team, and one it claims is ignored.
 
@@ -843,8 +848,10 @@ The key (`wsk_...`) is shown once. A `data:ingest` key can post telemetry to
 `/api/v1/data/ingest` and nothing else: the gateway answers every other route
 with 403 `insufficient_scope`. A key with the `write` or `data:write` scope can
 ingest too, but can also write everything else that scope allows. The gateway
-is where scopes are enforced: the data service only learns the key's user and
-team, not its scopes (#637).
+enforces the scopes and forwards them to the data service
+(`X-Wildbox-Auth-Type`, `X-Wildbox-Scopes`), which checks them again: its
+ingest route requires `data:ingest`, every other route `read` or `write`
+(#637).
 
 ### 3. Configure the sensor
 
@@ -951,10 +958,11 @@ An event leaves the sensor unsent, and is counted, in these cases only:
 | `events_dropped_oversize` | Serialized, it is larger than a batch may be (8 MiB, or `buffer_max_bytes` if that is less) |
 | `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN), or making it into what is sent failed with any other error, which the log line names |
 | `events_dropped_unconfigured` | No API key is set: everything collected is discarded |
-| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues, in the processor's hands, or in a collector that was waiting for room on the first queue) are in no counter: the sensor's last log lines say how many there were |
+| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped, and its collector cannot produce it again (an osquery answer, a unified-log entry, or any event collected without `data_dir`). An event its collector reads again after the restart is counted under `events_returned_to_source` instead, which is not a drop. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues, in the processor's hands, or in a collector that was waiting for room on the first queue) are in no counter: the sensor's last log lines say how many there were |
 
 `events_dropped` is their sum, and `events_received` equals
-`events_forwarded` plus `events_dropped` plus the events in the buffer. The
+`events_forwarded` plus `events_dropped` plus `events_returned_to_source`
+(0 until the sensor stops) plus the events in the buffer. The
 counters, the buffer's fill and bounds and the time of the next attempt are
 under `data_forwarder` in `GET /api/v1/components`. The sensor logs each
 refused batch, each oversize or unserializable event, and once a minute the
@@ -969,7 +977,8 @@ The sender sends one batch at a time and the next one when the gateway has
 answered, at least 20 ms after the previous request. What limits it is the
 gateway:
 
-- nginx admits 100 requests a second from one address; 20 ms between
+- nginx admits 100 requests a second from one address
+  (`GATEWAY_RATE_LIMIT_PER_SECOND`, the gateway's default); 20 ms between
   requests keeps a sensor at half of that.
 - The gateway counts every request of a **team** against one budget,
   `RATE_LIMIT_PER_HOUR` (10,000 by default), enforced per minute: 166
@@ -1100,6 +1109,7 @@ since the sensor started:
 | `last_activity` | When the last event was collected; `null` before the first |
 | `uptime_seconds` | Seconds since the sensor started |
 | `memory_mb`, `cpu_percent`, `over_limits` | The sensor's own process, as measured every 5 seconds; absent until the first measurement. `over_limits` is true while it uses more than `performance.max_memory_mb` or `performance.max_cpu_percent`, and for 30 seconds after: the sensor logs a warning and slows nothing down |
+| `delivery_state`, `delivery_since` | `ok`, or why no batch reaches the data service, and since when; see [When the gateway takes nothing](#when-the-gateway-takes-nothing) |
 | `timestamp` | When the answer was made |
 
 `events_collected` equals `events_forwarded` + `events_dropped` +
@@ -1107,9 +1117,10 @@ since the sensor started:
 processor is in none of the four: it is logged, and counted under `errors`
 with the sender's.
 
-`GET /api/v1/dashboard/metrics` answers `online_endpoints`, `alerts` (1 for
-errors, 1 more while the sensor is over its resource limits), `last_activity`
-and, under `endpoint_details`, the host name, the operating system, the
+`GET /api/v1/dashboard/metrics` answers `total_endpoints` (always 1),
+`online_endpoints`, `alerts` (1 for errors, 1 more while the sensor is over
+its resource limits, 1 more while it is not delivering), `delivery_state`,
+`last_activity` and, under `endpoint_details`, the host name, the operating system, the
 uptime, `cpu_percent`, `memory_mb` and the three event counters. It no
 longer answers `disk_usage`, `network_connections`, `process_count`,
 `cpu_usage`, `memory_usage`, `agent_version` or `trends_change`: the sensor

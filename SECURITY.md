@@ -85,9 +85,11 @@ The guides on the documentation site are the reference; in short:
 Authentication (details in
 [Authentication and sessions](https://www.wildbox.io/guides/authentication/)):
 
-- Every API request is authenticated at the gateway, which validates JWTs and
-  API keys with the identity service; each backend rejects requests that do
-  not carry the gateway's `GATEWAY_INTERNAL_SECRET`.
+- Every request to a service API is authenticated at the gateway, which
+  validates JWTs and API keys with the identity service; each of those
+  backends rejects requests that do not carry the gateway's
+  `GATEWAY_INTERNAL_SECRET`. Identity's own routes are passed through and
+  authenticated by identity, from the bearer token.
 - JWT access tokens are signed with HS256, last 30 minutes and cannot be
   refreshed. Logout revokes the token in Redis and drops it from the
   gateway's authorization cache.

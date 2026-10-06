@@ -489,9 +489,6 @@ For questions about workflow design:
 
 - Check existing workflows for examples
 - Review n8n documentation
-- Ask in the team Discord channel
+- Ask in [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
 - Create a GitHub issue for complex problems
 
----
-
-_Last updated: January 26, 2025_
