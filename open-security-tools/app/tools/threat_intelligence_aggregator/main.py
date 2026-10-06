@@ -107,7 +107,7 @@ class ThreatIntelligenceAggregator:
                         return None
                         
         except RUN_ERRORS as e:
-            print(f"VirusTotal API error: {e}")
+            print(f"VirusTotal API error: {type(e).__name__}")
             return None
     
     def _parse_virustotal_response(self, data: dict, indicator: str) -> ThreatIntelligenceSource:
@@ -168,7 +168,7 @@ class ThreatIntelligenceAggregator:
                         return self._parse_alienvault_response(data, indicator)
                         
         except RUN_ERRORS as e:
-            print(f"AlienVault API error: {e}")
+            print(f"AlienVault API error: {type(e).__name__}")
             return None
     
     def _parse_alienvault_response(self, data: dict, indicator: str) -> ThreatIntelligenceSource:
@@ -214,7 +214,7 @@ class ThreatIntelligenceAggregator:
                         return self._parse_threatcrowd_response(data, indicator)
                         
         except RUN_ERRORS as e:
-            print(f"ThreatCrowd API error: {e}")
+            print(f"ThreatCrowd API error: {type(e).__name__}")
             return None
     
     def _parse_threatcrowd_response(self, data: dict, indicator: str) -> ThreatIntelligenceSource:

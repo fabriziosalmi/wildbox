@@ -11,6 +11,7 @@ from datetime import datetime
 
 from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
+from ...log_safety import host_of
 from .schemas import CookieScannerInput, CookieScannerOutput
 logger = logging.getLogger(__name__)
 
@@ -75,15 +76,15 @@ class CookieSecurityScanner:
                     
         except aiohttp.ClientConnectorCertificateError as e:
             results["error"] = certificate_error_message(e, url)
-            logger.warning(results["error"])
+            logger.warning(f"TLS certificate could not be verified for {host_of(url)}")
         except asyncio.TimeoutError:
-            logger.error(f"Timeout scanning cookies for {url}")
+            logger.error(f"Timeout scanning cookies for {host_of(url)}")
             results["error"] = "Request timeout"
         except aiohttp.ClientError as e:
-            logger.error(f"Client error scanning cookies for {url}: {e}")
+            logger.error(f"Client error scanning cookies for {host_of(url)}: {type(e).__name__}")
             results["error"] = f"Client error: {str(e)}"
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error scanning cookies for {url}: {e}")
+            logger.error(f"Error scanning cookies for {host_of(url)}: {type(e).__name__}")
             results["error"] = f"Unexpected error: {str(e)}"
         
         return results
@@ -145,7 +146,7 @@ class CookieSecurityScanner:
             return cookie_info
             
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error parsing cookie header: {e}")
+            logger.error(f"Error parsing cookie header: {type(e).__name__}")
             return None
     
     def _identify_cookie_issues(self, cookie_info: Dict[str, Any]) -> None:
@@ -303,7 +304,7 @@ async def scan_cookies(request: CookieScannerInput) -> CookieScannerOutput:
         )
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Cookie scan failed: {e}")
+        logger.error(f"Cookie scan failed: {type(e).__name__}")
         return CookieScannerOutput(
             success=False,
             target_url=request.target_url,

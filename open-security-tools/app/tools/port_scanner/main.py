@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 from ...standardized_schemas import NetworkPort
+from ...log_safety import host_of
 from .schemas import PortScannerInput, PortScannerOutput, PortScanResult
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,10 @@ async def scan_port_async(target: str, port: int, timeout: int) -> PortScanResul
         writer.close()
         await writer.wait_closed()
         state = "open"
-        logger.debug(f"Port {port} is open on {target}")
+        logger.debug(f"Port {port} is open on {host_of(target)}")
     except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
         state = "closed"
-        logger.debug(f"Port {port} is closed on {target}: {type(e).__name__}")
+        logger.debug(f"Port {port} is closed on {host_of(target)}: {type(e).__name__}")
     
     service = SERVICE_MAP.get(port)
     return PortScanResult(success=True, port=port, state=state, service=service)
@@ -100,13 +101,13 @@ async def execute_tool(input_data: PortScannerInput) -> PortScannerOutput:
     safe_target = validate_target(input_data.target)
     safe_timeout = validate_timeout(input_data.timeout)
     
-    logger.info(f"Starting port scan on {safe_target}")
+    logger.info(f"Starting port scan on {host_of(safe_target)}")
     
     try:
         # Resolve target if it's a domain
         try:
             target_ip = socket.gethostbyname(safe_target)
-            logger.info(f"Resolved {safe_target} to {target_ip}")
+            logger.info(f"Resolved {host_of(safe_target)} to {target_ip}")
         except socket.gaierror:
             target_ip = safe_target
             logger.info(f"Using IP address directly: {target_ip}")
@@ -130,7 +131,7 @@ async def execute_tool(input_data: PortScannerInput) -> PortScannerOutput:
             if isinstance(result, PortScanResult):
                 valid_results.append(result)
             else:
-                logger.warning(f"Port scan failed: {result}")
+                logger.warning(f"Port scan failed: {type(result).__name__}")
         
         # Filter to only include open ports in final results
         open_ports = [result for result in valid_results if result.state == "open"]
@@ -152,7 +153,7 @@ async def execute_tool(input_data: PortScannerInput) -> PortScannerOutput:
         )
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Port scan failed: {e}")
+        logger.error(f"Port scan failed: {type(e).__name__}")
         return PortScannerOutput(success=False, target=input_data.target, error_message=str(e))
 
 # Tool metadata

@@ -131,7 +131,7 @@ async def fetch_contract_info(address: str, blockchain: str, api_key: Optional[s
             return None
             
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        print(f"Error fetching contract info: {e}")
+        print(f"Error fetching contract info: {type(e).__name__}")
         return None
 
 async def fetch_etherscan_contract_info(address: str, blockchain: str, api_key: str) -> Optional[Dict]:

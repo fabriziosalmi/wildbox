@@ -8,6 +8,7 @@ from urllib.parse import urlparse, parse_qs, urlencode
 from ...tool_errors import RUN_ERRORS
 from ...input_validation import InputSanitizer
 from ...safe_http import guarded_requests_session
+from ...log_safety import host_of
 from .schemas import SQLInjectionScannerInput, SQLInjectionScannerOutput, SQLInjectionResult
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ def execute_tool(input_data: SQLInjectionScannerInput, user_id: str = None) -> S
     # any address is not public, or when it does not resolve (fail closed).
     target_url = security_validator.validate_url(input_data.target_url)
     InputSanitizer.validate_url(target_url)
-    logger.info(f"SQL injection scan of {target_url} for user {user_id}")
+    logger.info(f"SQL injection scan of {host_of(target_url)} for user {user_id}")
     
     timestamp = datetime.now()
     results = []
