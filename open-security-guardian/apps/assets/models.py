@@ -323,7 +323,13 @@ class AssetDiscoveryRule(models.Model):
     enabled = models.BooleanField(default=True)
     last_run = models.DateTimeField(null=True, blank=True)
     next_run = models.DateTimeField(null=True, blank=True)
-    
+    # What the last run did (#775): its status, how many network scans it
+    # queued, and each network it did not queue with the reason. Written by
+    # execute_discovery_rule and by nothing else; null until the rule has run.
+    # A run that queued nothing used to be told apart from one that swept
+    # every network only in the worker's log.
+    last_run_result = models.JSONField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)

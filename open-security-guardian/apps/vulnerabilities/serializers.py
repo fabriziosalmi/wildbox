@@ -82,6 +82,34 @@ class VulnerabilityCreateSerializer(TeamScopedModelSerializer):
         # without it answered 400 (#724).
         extra_kwargs = {'cve_id': {'required': False, 'default': ''}}
 
+    def validate(self, attrs):
+        """One finding for an asset and a CVE without a port, too (#775).
+
+        The unique set (asset, cve_id, port) did not hold when ``port`` was
+        omitted: DRF's validator skips a set with a None in it, and the
+        database's unique index takes two NULLs for two values, on SQLite
+        and on PostgreSQL. So a second finding for the same asset and CVE
+        answered 201, where one with a port answers 400.
+
+        A finding that is not a CVE (``cve_id`` empty) and has no port is
+        left alone: guardian has nothing to tell two of them apart by, and
+        an asset has more than one misconfiguration.
+        """
+        attrs = super().validate(attrs)
+        if (
+            attrs.get('port') is None
+            and attrs.get('cve_id')
+            and Vulnerability.objects.filter(
+                asset=attrs['asset'], cve_id=attrs['cve_id'], port__isnull=True
+            ).exists()
+        ):
+            # The answer a duplicate with a port gets, from DRF's validator.
+            raise serializers.ValidationError(
+                "The fields asset, cve_id, port must make a unique set.",
+                code='unique',
+            )
+        return attrs
+
     def validate_cvss_v3_score(self, value):
         """Validate CVSS score is within valid range"""
         if value is not None and (value < 0.0 or value > 10.0):

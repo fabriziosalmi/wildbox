@@ -26,7 +26,9 @@ ITERATIONS="${REVOCATION_ITERATIONS:-50}"
 # Requests sent after each logout; more than the gateway has workers, so every
 # worker is asked at least once in practice.
 PROBES="${REVOCATION_PROBES:-12}"
-# Not /api/v1/auth/: its 5 r/s zone would answer the probes with 429.
+# An authenticated route. The test configuration sets no per-address limit
+# on it (see wildbox_gateway_test.conf): the probes below are sent one after
+# another, faster than a deployment's 100 a second.
 ROUTE="/api/v1/tools/echo"
 
 PASS=0

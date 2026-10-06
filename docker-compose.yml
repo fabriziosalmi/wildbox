@@ -415,7 +415,6 @@ services:
       - GATEWAY_RATE_LIMIT_PER_SECOND=${GATEWAY_RATE_LIMIT_PER_SECOND:-100}
       - GATEWAY_AUTH_RATE_LIMIT_PER_SECOND=${GATEWAY_AUTH_RATE_LIMIT_PER_SECOND:-5}
       - GATEWAY_STATIC_RATE_LIMIT_PER_SECOND=${GATEWAY_STATIC_RATE_LIMIT_PER_SECOND:-500}
-      - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
       # The origins whose pages may call the API from a browser (#712). The
       # gateway answers their preflights and names them in its responses;
       # it reads the same setting the services do. The default is the

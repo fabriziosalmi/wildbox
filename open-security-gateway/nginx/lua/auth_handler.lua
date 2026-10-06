@@ -68,8 +68,7 @@ local function get_config()
         return {
             identity_service_url = os.getenv("IDENTITY_SERVICE_URL") or "http://open-security-identity:8001",
             gateway_secret = os.getenv("GATEWAY_INTERNAL_SECRET") or "",
-            cache_ttl = tonumber(os.getenv("AUTH_CACHE_TTL")) or CACHE_TTL,
-            debug_mode = os.getenv("GATEWAY_DEBUG") == "true"
+            cache_ttl = tonumber(os.getenv("AUTH_CACHE_TTL")) or CACHE_TTL
         }
     end
 
@@ -80,8 +79,7 @@ local function get_config()
         local config = {
             identity_service_url = os.getenv("IDENTITY_SERVICE_URL") or "http://open-security-identity:8001",
             gateway_secret = os.getenv("GATEWAY_INTERNAL_SECRET") or "",
-            cache_ttl = tonumber(os.getenv("AUTH_CACHE_TTL")) or CACHE_TTL,
-            debug_mode = os.getenv("GATEWAY_DEBUG") == "true"
+            cache_ttl = tonumber(os.getenv("AUTH_CACHE_TTL")) or CACHE_TTL
         }
 
         -- Cache config for 1 hour
