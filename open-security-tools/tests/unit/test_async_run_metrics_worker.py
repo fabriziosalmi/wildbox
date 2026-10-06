@@ -15,11 +15,9 @@ hard kill the text the API serves at ``/metrics``.
 
 import os
 import re
-import subprocess
 import sys
 import time
 import uuid
-from pathlib import Path
 
 import pytest
 
@@ -31,194 +29,10 @@ pytest.importorskip("celery")
 from app import async_metrics  # noqa: E402
 from app.async_metrics import AsyncRunCounts  # noqa: E402
 from prometheus_client.parser import text_string_to_metric_families  # noqa: E402
+from worker_stack import PROBE  # noqa: E402  (tests/unit/support, see conftest)
 
-SERVICE_ROOT = Path(__file__).resolve().parents[2]
-SUPPORT = Path(__file__).resolve().parent / "support"
-TASK = "app.tasks.execute_tool_async"
-PROBE = "metrics_probe"
-
-
-class Stack:
-    """A running worker, a client to send it tasks, and the counts it writes."""
-
-    def __init__(self, client_app, counts, queue, node, log_path):
-        self.app = client_app
-        self.counts = counts
-        self.queue = queue
-        self.node = node
-        self.log_path = log_path
-
-    def send(self, tool=PROBE, input_data=None, user_id=None, **options):
-        return self.app.send_task(
-            TASK,
-            kwargs={
-                "tool_name": tool,
-                "input_data": input_data or {},
-                "user_id": user_id or str(uuid.uuid4()),
-            },
-            queue=self.queue,
-            **options,
-        )
-
-    def probe(self, behaviour, seconds=0.0, **options):
-        return self.send(
-            input_data={"behaviour": behaviour, "seconds": seconds}, **options
-        )
-
-    def meta(self, result):
-        return self.app.backend.get_task_meta(result.id)
-
-    def state(self, result, among, seconds=60):
-        """Wait for the task to reach one of ``among``; return its meta."""
-        deadline = time.monotonic() + seconds
-        meta = self.meta(result)
-        while meta["status"] not in among and time.monotonic() < deadline:
-            time.sleep(0.1)
-            meta = self.meta(result)
-        assert meta["status"] in among, (meta, self.log())
-        return meta
-
-    def outcomes(self):
-        return dict(self.counts.read().outcomes)
-
-    def settled(self, before, expected, seconds=30):
-        """Wait until the outcome counts grew by exactly ``expected``.
-
-        Then wait a little longer and look again: the count must stay there,
-        which is what "counted once" means.
-        """
-
-        def grown():
-            now = self.outcomes()
-            return {
-                key: now.get(key, 0) - before.get(key, 0)
-                for key in set(now) | set(before)
-                if now.get(key, 0) != before.get(key, 0)
-            }
-
-        deadline = time.monotonic() + seconds
-        while grown() != expected and time.monotonic() < deadline:
-            time.sleep(0.1)
-        assert grown() == expected, self.log()
-        time.sleep(1.0)
-        assert grown() == expected, self.log()
-
-    def log(self):
-        """The end of the worker's log, for a failure message."""
-        return self.log_since(0)[-4000:]
-
-    def mark(self):
-        """Where the worker's log ends now."""
-        return len(self.log_since(0))
-
-    def log_since(self, mark):
-        try:
-            text = self.log_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return ""
-        return text[mark:]
-
-    def logged(self, mark, wanted, seconds=30):
-        """Wait for the worker to log ``wanted`` after ``mark``; return that log.
-
-        The worker writes its log after it stores a task's state, so a line
-        about a task can follow the state the test waited for.
-        """
-        deadline = time.monotonic() + seconds
-        text = self.log_since(mark)
-        while wanted.lower() not in text.lower() and time.monotonic() < deadline:
-            time.sleep(0.1)
-            text = self.log_since(mark)
-        assert wanted.lower() in text.lower(), text[-4000:]
-        return text
-
-
-@pytest.fixture(scope="module")
-def stack(redis_url, tmp_path_factory):
-    import redis
-    from celery import Celery
-
-    run = uuid.uuid4().hex[:12]
-    queue = f"wildbox-tools-test-{run}"
-    node = f"probe-{run}@localhost"
-    outcomes_key = f"wildbox:tools:test-{run}:async-outcomes"
-    consumed_key = f"wildbox:tools:test-{run}:async-consumed"
-    workdir = tmp_path_factory.mktemp("worker")
-    log_path = workdir / "worker.log"
-
-    patch = pytest.MonkeyPatch()
-    patch.setattr(async_metrics, "OUTCOMES_KEY", outcomes_key)
-    patch.setattr(async_metrics, "CONSUMED_KEY", consumed_key)
-
-    client = redis.Redis.from_url(redis_url, decode_responses=True)
-    client_app = Celery(f"client-{run}", broker=redis_url, backend=redis_url)
-    client_app.conf.update(
-        task_serializer="json",
-        accept_content=["json"],
-        result_serializer="json",
-        broker_connection_retry_on_startup=True,
-    )
-
-    with open(log_path, "w", encoding="utf-8") as log:
-        worker = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "celery",
-                "-A",
-                "async_worker_app:celery_app",
-                "worker",
-                "--pool=prefork",
-                "--concurrency=1",
-                # Every task in a child of its own: a count kept in a child
-                # would never get past one.
-                "--max-tasks-per-child=1",
-                "--loglevel=info",
-                "--without-gossip",
-                "--without-mingle",
-                "-Q",
-                queue,
-                "-n",
-                node,
-            ],
-            # Not the service directory: a developer's .env there is not ours
-            # to read.
-            cwd=str(workdir),
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            env={
-                "PATH": os.environ.get("PATH", ""),
-                "PYTHONPATH": os.pathsep.join([str(SERVICE_ROOT), str(SUPPORT)]),
-                "API_KEY": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
-                "REDIS_URL": redis_url,
-                "TOOLS_TEST_EXTRA_TOOLS": str(SUPPORT / "tools"),
-                "TOOLS_TEST_OUTCOMES_KEY": outcomes_key,
-                "TOOLS_TEST_CONSUMED_KEY": consumed_key,
-                "TOOLS_TEST_QUEUE": queue,
-            },
-        )
-    running = Stack(
-        client_app, AsyncRunCounts(client, queue=queue), queue, node, log_path
-    )
-    try:
-        deadline = time.monotonic() + 90
-        ready = False
-        while not ready and time.monotonic() < deadline:
-            assert worker.poll() is None, running.log()
-            replies = client_app.control.inspect(destination=[node], timeout=1).ping()
-            ready = bool(replies and node in replies)
-        assert ready, running.log()
-        yield running
-    finally:
-        worker.terminate()
-        try:
-            worker.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            worker.kill()
-        patch.undo()
-        client.delete(outcomes_key, consumed_key, queue)
-        client_app.close()
-        client.close()
+# The worker these tests send tasks to is the ``stack`` fixture of conftest.py:
+# one for the session, started from support/async_worker_app.py.
 
 
 # --- the two ends the child never sees ----------------------------------------
@@ -247,7 +61,13 @@ def test_a_task_killed_at_the_hard_time_limit_is_counted_as_a_timeout(
     from fastapi.testclient import TestClient
 
     monkeypatch.setattr(settings, "redis_url", "redis://configured")
-    monkeypatch.setattr(async_metrics, "_counts", (os.getpid(), stack.counts))
+    monkeypatch.setattr(async_metrics, "OUTCOMES_KEY", stack.outcomes_key)
+    monkeypatch.setattr(async_metrics, "CONSUMED_KEY", stack.consumed_key)
+    monkeypatch.setattr(
+        async_metrics,
+        "_counts",
+        (os.getpid(), AsyncRunCounts(stack.redis, queue=stack.queue)),
+    )
     text = TestClient(create_app()).get("/metrics").text
 
     scraped = {
@@ -283,7 +103,7 @@ def test_a_task_cancelled_while_it_runs_is_counted_as_cancelled(stack):
 
 def test_a_task_cancelled_while_it_waits_is_counted_and_was_consumed(stack):
     before = stack.outcomes()
-    consumed = stack.counts.read().consumed
+    consumed = stack.consumed()
 
     # One child: the second task waits behind the first, and is cancelled there.
     blocker = stack.probe("sleep", seconds=3)
@@ -294,13 +114,13 @@ def test_a_task_cancelled_while_it_waits_is_counted_and_was_consumed(stack):
 
     stack.settled(before, {(PROBE, "completed"): 1, (PROBE, "cancelled"): 1})
     # The blocker's start, and the task the worker took only to drop it.
-    assert stack.counts.read().consumed == consumed + 2
+    assert stack.consumed() == consumed + 2
 
 
 def test_a_task_whose_process_died_is_counted_when_it_does_end(stack, tmp_path):
     """Celery puts such a task back on the queue; that is not an end."""
     before = stack.outcomes()
-    consumed = stack.counts.read().consumed
+    consumed = stack.consumed()
     mark = stack.mark()
 
     result = stack.send(
@@ -313,7 +133,7 @@ def test_a_task_whose_process_died_is_counted_when_it_does_end(stack, tmp_path):
     assert meta["result"]["status"] == "completed"
     # Not a failure for the attempt that died, and two starts.
     stack.settled(before, {(PROBE, "completed"): 1})
-    assert stack.counts.read().consumed == consumed + 2
+    assert stack.consumed() == consumed + 2
 
 
 # --- the ends the task reports itself -------------------------------------------
@@ -331,7 +151,7 @@ def test_a_task_stopped_at_the_soft_time_limit_is_counted_as_a_timeout(stack):
 
 def test_completed_runs_are_counted_across_children_that_are_replaced(stack):
     before = stack.outcomes()
-    consumed = stack.counts.read().consumed
+    consumed = stack.consumed()
     mark = stack.mark()
 
     results = [stack.probe("return") for _ in range(3)]
@@ -340,7 +160,7 @@ def test_completed_runs_are_counted_across_children_that_are_replaced(stack):
         assert meta["result"]["status"] == "completed"
 
     stack.settled(before, {(PROBE, "completed"): 3})
-    assert stack.counts.read().consumed == consumed + 3
+    assert stack.consumed() == consumed + 3
     # Three tasks, each in a child that was started for it.
     children = set(re.findall(r"ForkPoolWorker-(\d+)", stack.log_since(mark)))
     assert len(children) >= 3, children
@@ -357,7 +177,7 @@ def test_a_tool_that_raises_is_counted_as_failed(stack):
 
 def test_a_task_that_fails_after_its_retries_is_counted_once(stack):
     before = stack.outcomes()
-    consumed = stack.counts.read().consumed
+    consumed = stack.consumed()
 
     # RuntimeError is not a type the task catches: two retries, then FAILURE.
     result = stack.probe("crash")
@@ -366,7 +186,7 @@ def test_a_task_that_fails_after_its_retries_is_counted_once(stack):
     assert "RuntimeError" in repr(meta["result"])
     stack.settled(before, {(PROBE, "failed"): 1})
     # Three starts of one task: a retry is consumed again, not failed again.
-    assert stack.counts.read().consumed == consumed + 3
+    assert stack.consumed() == consumed + 3
 
 
 def test_a_task_that_never_starts_its_tool_is_refused_not_failed(stack):
@@ -404,35 +224,35 @@ def test_a_tool_name_that_is_no_tool_is_one_label(stack):
 
 def test_tasks_nobody_takes_stay_in_the_queue_length(stack):
     def replied(replies):
-        return bool(replies) and all("ok" in reply[stack.node] for reply in replies)
+        return bool(replies) and all(
+            "ok" in reply[stack.worker.node] for reply in replies
+        )
 
-    consumed = stack.counts.read().consumed
-    assert stack.counts.read().queued == 0
+    consumed = stack.consumed()
+    assert stack.queued() == 0
 
     # The worker is up and stops reading its queue: what a worker that lost
     # its broker connection, or a stopped one, looks like from outside.
     assert replied(
         stack.app.control.cancel_consumer(
-            stack.queue, destination=[stack.node], reply=True, timeout=10
+            stack.queue, destination=[stack.worker.node], reply=True, timeout=10
         )
     )
     try:
         results = [stack.probe("return") for _ in range(2)]
         time.sleep(2.0)
 
-        reading = stack.counts.read()
-        assert reading.queued == 2
-        assert reading.consumed == consumed
+        assert stack.queued() == 2
+        assert stack.consumed() == consumed
         assert {stack.meta(result)["status"] for result in results} == {"PENDING"}
     finally:
         assert replied(
             stack.app.control.add_consumer(
-                stack.queue, destination=[stack.node], reply=True, timeout=10
+                stack.queue, destination=[stack.worker.node], reply=True, timeout=10
             )
         )
 
     for result in results:
         stack.state(result, {"SUCCESS"})
-    reading = stack.counts.read()
-    assert reading.queued == 0
-    assert reading.consumed == consumed + 2
+    assert stack.queued() == 0
+    assert stack.consumed() == consumed + 2

@@ -111,8 +111,17 @@ def as_user(api, user_id, team_id=TEAM, role="member"):
     api.caller = GatewayUser(user_id=user_id, team_id=team_id, role=role, auth_type="session")
 
 
+# Input each tool's own model accepts: the submission validates it (#743). It
+# used to queue anything, and one test here sent base64_tool the input of
+# hash_generator.
+VALID_INPUT = {
+    TOOL: {"input_text": "wildbox"},
+    "base64_tool": {"operation": "encode", "data": "wildbox"},
+}
+
+
 def submit(api, tool=TOOL):
-    response = api.post(f"/api/tools/{tool}/async", json={"input_text": "wildbox"})
+    response = api.post(f"/api/tools/{tool}/async", json=VALID_INPUT[tool])
     assert response.status_code == 202, response.text
     return response.json()["task_id"]
 
