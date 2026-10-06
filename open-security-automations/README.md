@@ -142,7 +142,7 @@ from the n8n container.
 | ------ | ------------ |
 | `scripts/import_workflows.sh [file]` | imports every workflow (or one file) into the running container with the n8n CLI |
 | `scripts/export_workflows.sh` | exports every workflow from n8n to `backups/workflows/<timestamp>/` |
-| `scripts/backup_n8n.sh` | backs up n8n's data directory and database |
+| `scripts/backup_n8n.sh` | written for the standalone file below: it looks for a container named `wildbox-automations-n8n` (`N8N_CONTAINER_NAME`) and archives a Docker volume named `wildbox-automations_n8n_data`. It does not back up the `automations` service of the root stack, whose container is `open-security-automations` and whose data is the directory `open-security-automations/n8n-data` |
 
 The import and export scripts take the container name from `N8N_CONTAINER`
 (default `open-security-automations`). They used n8n's REST API with HTTP

@@ -178,7 +178,6 @@ Ports, service names and bindings are listed in one place:
 ```bash
 make lock             # recompile every service's hash-pinned requirements.txt
 make lock-security    # move only packages with known advisories
-make test             # identity and guardian test suites, inside the running containers
 ```
 
 Unit tests run per service; see `.github/workflows/test.yml` for the exact

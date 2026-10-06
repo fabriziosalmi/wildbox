@@ -2,7 +2,7 @@
 
 The web interface of the Wildbox suite: a Next.js application that signs a
 user in and drives the backend services (identity, data, tools, guardian,
-responder, cspm) through the Wildbox gateway.
+responder, cspm, agents) through the Wildbox gateway.
 
 ## Pages
 
@@ -29,8 +29,8 @@ The routes under `src/app/`:
 Notes:
 
 - **Cloud security** is reachable by URL but is not in the sidebar
-  (`src/components/main-layout.tsx`), and its pages show a "Coming in Future
-  Release" notice. The scan form offers only the providers the cspm service
+  (`src/components/main-layout.tsx`), and its pages show an "AWS only"
+  notice. The scan form offers only the providers the cspm service
   lists at `GET /api/v1/cspm/providers`; on this version that is AWS only.
 - **Response runs**: the responder has no endpoint that lists runs, so
   `/response/runs` shows the runs started from this browser and a run named
@@ -106,6 +106,7 @@ Axios client per gateway prefix; it never calls a service port directly:
 | `guardianClient`  | `/api/v1/guardian/...`                   | guardian  |
 | `responderClient` | `/api/v1/responder/...`                  | responder |
 | `cspmClient`      | `/api/v1/cspm/...`                       | cspm      |
+| `agentsClient`    | `/api/v1/agents/...`                     | agents    |
 
 In the root `docker-compose.yml` stack, the gateway serves both the dashboard
 and the API on one origin (`https://localhost`, self-signed certificate in
@@ -227,14 +228,14 @@ src/
 │   ├── api/admin/analytics/route.ts
 │   ├── layout.tsx, providers.tsx, page.tsx, globals.css
 │   ├── error.tsx, global-error.tsx, not-found.tsx
-│   └── admin/ api-docs/ auth/ cloud-security/ dashboard/ response/
-│       settings/ threat-intel/ toolbox/ vulnerabilities/
+│   └── admin/ ai-analysis/ api-docs/ auth/ cloud-security/ dashboard/
+│       response/ settings/ threat-intel/ toolbox/ vulnerabilities/
 ├── components/
 │   ├── ui/              # Radix-based UI primitives
 │   ├── toolbox/         # Tool form, runner, task panel, result view
 │   ├── auth-provider.tsx, main-layout.tsx, theme-provider.tsx, json-view.tsx
 ├── hooks/               # use-auth, use-threat-lookup, use-responder-playbooks, ...
-├── lib/                 # api-client, tools-api, tool-schema, password-policy, utils
+├── lib/                 # api-client, agents-api, tools-api, tool-schema, password-policy, utils
 ├── types/
 └── proxy.ts             # Route guard (Next.js 16 proxy, formerly middleware)
 ```

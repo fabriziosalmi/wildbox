@@ -36,9 +36,12 @@ page lists them.
 
 ## The Stack Does Not Start
 
-### Compose stops with "... is required"
+### Compose stops with "... is required" or "set it in .env to production ..."
 
-A required secret is missing from `.env`. Generate the file, or check it:
+A required variable is missing from `.env`: a secret (`... is required`), or
+`ENVIRONMENT` (`set it in .env to production, or to development for a
+development stack`), which Compose requires of every stack. Generate the
+file, or check it:
 
 ```bash
 make generate-secrets    # writes .env; asks before replacing one

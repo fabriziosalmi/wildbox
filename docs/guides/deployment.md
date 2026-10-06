@@ -34,7 +34,7 @@ sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow 22/tcp     # SSH; restrict to your addresses if you can
 sudo ufw allow 443/tcp    # HTTPS through the gateway
-sudo ufw allow 80/tcp     # optional: /health and the redirect to HTTPS
+sudo ufw allow 80/tcp     # optional: /health; the redirect on this port names https://api.wildbox.local, not your host
 sudo ufw enable
 ```
 
@@ -93,8 +93,9 @@ at `/etc/ssl/wildbox/`:
 - `open-security-gateway/ssl/wildbox.crt`: certificate, with the full chain
 - `open-security-gateway/ssl/wildbox.key`: private key
 
-If neither file exists when the gateway starts, it generates a self-signed
-development certificate there. For a real deployment, put your certificate in
+If either file is missing when the gateway starts, it generates a
+self-signed development certificate and key there, replacing the one that is
+present. For a real deployment, put your certificate in
 place before the first start, for example from Let's Encrypt:
 
 ```bash
@@ -116,9 +117,8 @@ gateway: `docker compose restart gateway`.
 ## 4. Start the Stack
 
 `make start-prod` composes `docker-compose.yml` with `docker-compose.prod.yml`
-(`restart: always`, log rotation, tuned connection limits, and network
-segmentation: only the gateway and the dashboard share the public-facing
-network, and PostgreSQL and Redis sit on an internal network reachable only
+(`restart: always`, log rotation, and network segmentation: only the
+gateway, the dashboard and the sensor share the public-facing network, and PostgreSQL and Redis sit on an internal network reachable only
 by the services that use them; the map is at the top of
 `docker-compose.prod.yml`). To check it on a host:
 `python3 scripts/check_network_segmentation.py config`, and with the stack
@@ -135,12 +135,21 @@ start, and the identity service creates the first administrator from
 `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`. Nothing needs to be created
 by hand.
 
+With the production overlay, give every `docker compose` command in this
+guide the files you started the stack with,
+`-f docker-compose.yml -f docker-compose.prod.yml`, or set
+`COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` once in the shell.
+Without them Compose reads `docker-compose.yml` alone and recreates the
+services it touches from that file: on the flat development network and
+without the overlay's settings.
+
 Optional services:
 
 ```bash
-docker compose --profile automations up -d   # n8n workflows
-docker compose --profile monitoring up -d    # Prometheus and Alertmanager (section 7)
-docker compose --profile backup up -d        # scheduled PostgreSQL backups
+PROD="-f docker-compose.yml -f docker-compose.prod.yml"
+docker compose $PROD --profile automations up -d   # n8n workflows
+docker compose $PROD --profile monitoring up -d    # Prometheus and Alertmanager (section 7)
+docker compose $PROD --profile backup up -d        # scheduled PostgreSQL and Redis backups
 ```
 
 ### The dashboard's browser settings
@@ -728,8 +737,9 @@ make restore-drill   # prove the PostgreSQL backup restores
 ```
 
 Both work on the default stack with nothing but Docker on the host. They run
-`pg_dump`, `pg_restore`, `psql` and `redis-cli` inside the stack's own
-containers with `docker compose exec`, so the database port stays
+`pg_dump`, `pg_restore` and `psql`, and the backup `redis-cli`, inside the
+stack's own containers with `docker compose exec` (Redis is not part of the
+drill), so the database port stays
 unpublished, no client tools are installed, and no password is passed on a
 command line. Set `COMPOSE_FILE` (and `COMPOSE_PROJECT_NAME`, if you use one)
 the way you start the stack; `ENV_FILE` names the env file when it is not
@@ -899,8 +909,9 @@ docker compose --profile monitoring up -d
 
 With the production overlay, give every `docker compose` command in this
 section the same `-f docker-compose.yml -f docker-compose.prod.yml` you
-started the stack with; without them Compose recreates the two services on
-the development network.
+started the stack with; without them Compose reads `docker-compose.yml`
+alone, and an `up -d` that names no service recreates the whole stack from
+it, on the development network.
 
 | Service | Address | What it does |
 | --- | --- | --- |
