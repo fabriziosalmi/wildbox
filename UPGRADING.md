@@ -4,6 +4,87 @@ This file records changes that an **existing deployment** has to act on. A fresh
 install needs none of it: `make generate-secrets` and the
 [Quick Start](https://www.wildbox.io/guides/quickstart/) cover everything here.
 
+## Upgrading to 0.12.1
+
+From 0.12.0 nothing is required: rebuild the images and recreate the
+containers.
+
+```bash
+git fetch --tags && git checkout v0.12.1
+docker compose build
+docker compose up -d
+```
+
+Use the same `-f` files, or `COMPOSE_FILE`, you start the stack with. No
+setting is added or removed. guardian applies one migration at start
+(`assets.0004`, a column that may be empty); no other service has a schema
+change, and 0.12.0 runs on the migrated database, so going back to 0.12.0
+is a checkout and a rebuild.
+
+Coming from 0.11.2 or earlier, follow
+[Upgrading to 0.12.0](#upgrading-to-0120) with `v0.12.1` checked out in its
+step 2. This section then adds nothing to do.
+
+What you may notice:
+
+- **identity: a login lockout in progress at the upgrade ends with it.**
+  The lockout's Redis keys are named with a keyed digest of the address,
+  not with the address as it was typed, and the keys of earlier releases
+  are not read; they expire by themselves within the lockout period. To
+  lift a lock by hand, `redis-cli DEL "login:lockout:<address>"` no longer
+  finds the key: `docs/guides/authentication.md` has the new command.
+- **cspm:** a Redis that does not answer is a `503` after 3 seconds, where
+  the request used to wait, and `/health` answers within 4 seconds. A
+  deployment that set `socket_timeout` or `socket_connect_timeout` in the
+  query string of `REDIS_URL` keeps its values. The compliance percentages
+  of a scan (`GET /api/v1/cspm/scans/{id}/compliance`, and a report's
+  `summary.compliance_frameworks`) are over the passed and failed results:
+  a scan with skipped or failed-to-run checks reads higher than before, one
+  in which every check ran reads the same. A scan canceled while a worker
+  ran it stays `cancelled`. `categories` of `GET /api/v1/cspm/checks` lists
+  `Logging and Monitoring` and `Identity and Access Management` once each;
+  the `category` filter takes the spelling with `&` too.
+- **guardian:** `POST vulnerabilities/` answers `400` for a second finding
+  on the same asset and CVE without a `port`, as it did with one. A
+  discovery rule has `last_run_result`, which names the networks a run
+  skipped and why. A port scan of an IPv6 asset connects over IPv6; on a
+  default stack, whose Docker networks are IPv4 only, it still finds no
+  route and reports the ports closed. A path without its trailing slash is
+  redirected with a `Location` that is a path, so the client stays on the
+  host and port it called.
+- **gateway:** `GATEWAY_DEBUG` in `.env` is ignored. The image has no
+  compiler, `make`, `envsubst` or `unzip`.
+- **sensor:** the image has no `pytest`, `black`, `flake8` or `mypy`; the
+  local API sends no CORS header; the start-up line `Platform:` is one
+  short line; a stop takes at most 28 seconds, still inside the 30 the
+  Compose files give.
+- **data:** a `DATABASE_URL` that is not PostgreSQL's is refused with a
+  message that says so (it could not work before); a source in `error` is
+  scheduled when the scheduler starts, not ten minutes later.
+- **identity and data:** the log line of a database error has the class,
+  the SQLSTATE and the constraint, not the database's message, which can
+  hold a value.
+- **`scripts/restore_postgres.sh --overwrite-live-databases`** removes, and
+  lists, the tables, views and sequences made after the backup, so a
+  database holds what its archive holds. The work directory (`TMPDIR`)
+  needs room for the largest archive once more. Going back to 0.11.2 no
+  longer needs the databases dropped and created first
+  ([Going back to 0.11.2](#going-back-to-0112)).
+
+Optional. `collection_runs.error_message` and `sources.last_error` of the
+data service, written before 0.12.0, can hold a feed's URL and with it a
+key (section 22 of "Upgrading to 0.12.0"). To blank the values that hold a
+URL and leave the others, on the data service's database:
+
+```sql
+UPDATE sources
+   SET last_error = 'Removed: the stored error text held a URL'
+ WHERE last_error LIKE '%://%';
+UPDATE collection_runs
+   SET error_message = 'Removed: the stored error text held a URL'
+ WHERE error_message LIKE '%://%';
+```
+
 ## Upgrading to 0.12.0
 
 From 0.11.2: the changes an existing deployment has to act on. Coming from
@@ -196,7 +277,9 @@ docker compose up -d
 Use your `POSTGRES_USER` for `-U`. Everything written since the backup is
 lost.
 
-**Drop and create each database before the restore**, as above.
+**With the scripts of 0.12.0, drop and create each database before the
+restore**, as above. From 0.12.1 the restore removes what was made after
+the backup, and the `for` loop is not needed (it does no harm). 0.12.0's
 `restore_postgres.sh` restores what the archive holds into the database
 that is there, and leaves a table made after the backup: the one this
 release adds (`core_teammembershiprevocation`, in guardian) would stay.
