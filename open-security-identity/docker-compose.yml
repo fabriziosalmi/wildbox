@@ -43,7 +43,7 @@ services:
       - ./scripts:/app/scripts
 
   postgres:
-    image: postgres:15
+    image: postgres:15@sha256:724292da1f2e50bdccfc3302ce75bbba7f4a6076701b588cc795fcac65683550
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -56,7 +56,7 @@ services:
   # Local Redis for standalone development
   # When using main stack, identity service connects to wildbox-redis:6379/0
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     ports:
       - "127.0.0.1:6384:6379"
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16 --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}

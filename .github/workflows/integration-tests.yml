@@ -71,7 +71,9 @@ jobs:
       - name: Install test dependencies
         timeout-minutes: 5
         run: |
-          pip install --quiet pytest pytest-asyncio requests httpx python-dotenv psycopg2-binary
+          # pytest, requests, httpx, python-dotenv and psycopg2-binary, at
+          # the versions of the CI tools lock, hash-checked (#726).
+          pip install --quiet --require-hashes -r tests/ci-tools/requirements.txt
 
       - name: Generate secrets
         # Every required variable, generated the way a fresh install does it.

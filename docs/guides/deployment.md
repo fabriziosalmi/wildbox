@@ -1011,8 +1011,12 @@ in `monitoring/prometheus.yml` to its address.
 
 ### Logs
 
-Container logs are rotated by the production overlay for the services it
-configures; read them with `docker compose logs <service>`.
+The production overlay rotates the container log of every service, Prometheus
+and Alertmanager included: files of 10 MB, five kept for the application
+services and three for PostgreSQL, Redis, the dashboard, Flower, the backup
+loop, Prometheus and Alertmanager. Read them with
+`docker compose logs <service>`. Without the overlay (`docker compose up` on
+`docker-compose.yml` alone) Docker's defaults apply and nothing is rotated.
 
 ---
 

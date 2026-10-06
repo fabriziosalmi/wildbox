@@ -67,23 +67,39 @@ API_KEY=<openssl rand -hex 32>
 
 #### Docker Images
 
-✅ **DO:**
+✅ **DO:** name the version and the digest of its image index.
 
 ```yaml
-image: ollama/ollama:0.4.7
-image: n8nio/n8n:1.74.0
-image: grafana/grafana:11.4.0
-image: prom/prometheus:v2.55.1
+image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+image: prom/prometheus:v3.13.4@sha256:87861b8cf91579109319ebc300f3f1060e6da9c05d6ae8ad15a20c879e84e32e
 ```
 
 ❌ **DON'T:**
 
 ```yaml
-image: ollama/ollama:latest
 image: n8nio/n8n:latest
+image: redis:7-alpine
+image: redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
 ```
 
-**Rationale:** `:latest` tags are mutable and can introduce breaking changes without warning.
+**Rationale:** every tag is mutable. `:latest` moves with each release, and a
+version tag such as `7-alpine` is published again with every rebuild upstream,
+so the same Compose file runs different code on two hosts. The digest fixes
+the bytes; the tag next to it says which version they are and lets Dependabot's
+`docker-compose` ecosystem propose the next one. `scripts/check_container_hygiene.py`
+fails on a Compose image without both.
+
+The digest is the one of the image index, which covers every platform, not of
+one platform's manifest:
+
+```bash
+docker buildx imagetools inspect redis:7-alpine --format '{{json .Manifest}}'
+```
+
+The `mediaType` it prints must be an image index (or a manifest list), and its
+`digest` is what goes after `@`. The digest of a single platform's manifest is
+a different value: an image pinned to it cannot be pulled on any other
+architecture.
 
 #### Python Dependencies
 

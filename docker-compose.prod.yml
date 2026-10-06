@@ -373,11 +373,19 @@ services:
         max-file: "3"
 
   # ---------------------------------------------------------------------------
-  # Services with no other production settings: networks (see the map at the
-  # top of this file) and ENVIRONMENT. Every service the base file passes
-  # ENVIRONMENT to gets production here, whatever .env says: five did, and
-  # the rest ran this overlay with the value of .env, or as development when
-  # .env had none (#736).
+  # Services with few or no other production settings: networks (see the map
+  # at the top of this file), ENVIRONMENT and log rotation.
+  #
+  # Every service the base file passes ENVIRONMENT to gets production here,
+  # whatever .env says: five did, and the rest ran this overlay with the
+  # value of .env, or as development when .env had none (#736).
+  #
+  # Every service has a `logging` block. Without one Docker's json-file driver
+  # keeps a container's whole output in a single file that is never rotated,
+  # and ten services had none: Prometheus and Alertmanager, the tools worker
+  # and Flower, the data API and its scheduler, CSPM, the sensor, n8n and the
+  # backup loop (#726). tests/scripts/test_production_logging.py fails when a
+  # service of docker-compose.yml has no rotation here.
   # ---------------------------------------------------------------------------
   tools-worker:
     networks: !override
@@ -385,6 +393,11 @@ services:
         aliases:
           - open-security-tools-worker
       egress: {}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - ENVIRONMENT=production
 
@@ -392,6 +405,11 @@ services:
     networks: !override
       - data
       - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - ENVIRONMENT=production
 
@@ -440,6 +458,11 @@ services:
           # The gateway's data_service upstream and prometheus.
           - open-security-data
       data: {}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - ENVIRONMENT=production
 
@@ -447,6 +470,11 @@ services:
     networks: !override
       - data
       - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - ENVIRONMENT=production
 
@@ -457,6 +485,11 @@ services:
           # The gateway's cspm_service upstream and prometheus.
           - open-security-cspm
       data: {}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - ENVIRONMENT=production
 
@@ -482,12 +515,22 @@ services:
   sensor:
     networks: !override
       - frontend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - ENVIRONMENT=production
 
   automations:
     networks: !override
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - ENVIRONMENT=production
 
@@ -495,10 +538,20 @@ services:
     networks: !override
       - data
       - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   prometheus:
     networks: !override
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # The same segment as prometheus, which sends it the alerts and scrapes it
   # (#658). backend has a route out, which is how a notification reaches a
@@ -506,6 +559,11 @@ services:
   alertmanager:
     networks: !override
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # Production network segmentation; see the map at the top of this file.
 networks:

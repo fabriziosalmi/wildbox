@@ -1,12 +1,19 @@
 # Open Security Sensor - Docker Compose Configuration
 #
-# NOTE: This file is for standalone development of the sensor service.
-# When running the full Wildbox stack, use the main docker-compose.yml.
-
-version: '3.8'
+# Runs the sensor on its own, from a full repository checkout (the image
+# build reads ../open-security-shared). When running the full Wildbox stack,
+# use the main docker-compose.yml.
+#
+# The sensor is the only service here. This file used to add a Redis nothing
+# in the sensor connects to, and a `monitoring` profile of Prometheus and
+# Grafana that scraped a /metrics endpoint the sensor does not have, loaded a
+# rule file that was not mounted and provisioned dashboards from a directory
+# that does not exist (#726). It also attached the sensor to an external
+# `security-suite` network that had to be created by hand and that nothing
+# else joins. To put the sensor on another stack's network, name that network
+# in a docker-compose.override.yml.
 
 services:
-  # Open Security Sensor
   sensor:
     build:
       context: .
@@ -23,8 +30,7 @@ services:
     # to 10 seconds on what it still holds, and the log positions are
     # written. Docker's default, 10 seconds, would kill it in the middle.
     stop_grace_period: 30s
-    
-    # Environment variables
+
     environment:
       - SENSOR_LOGGING_LEVEL=INFO
       # Key for the local API, as in the root docker-compose.yml. Unset, every
@@ -37,7 +43,7 @@ services:
       - SENSOR_DATA_LAKE_API_KEY
       - SENSOR_DATA_LAKE_CA_BUNDLE
       - PYTHONPATH=/app
-    
+
     # Configuration volume. Same file as the root docker-compose.yml: it binds
     # the local API to 0.0.0.0:8004 inside the container, which is what the
     # port mapping below publishes. ./config.yaml binds 127.0.0.1, which is
@@ -59,34 +65,21 @@ services:
       - /proc/meminfo:/host/proc/meminfo:ro
       - /proc/loadavg:/host/proc/loadavg:ro
       - /sys/class/net:/host/sys/class/net:ro
-    
-    # Network configuration
+
     ports:
       # Loopback only: the local API can read host telemetry, mutate the
       # agent config and run osquery.
       - "127.0.0.1:8004:8004"
-    
-    # Security context
+
     security_opt:
       - no-new-privileges:true
-    
+
     # No added capabilities. SYS_PTRACE allowed dumping the memory of any
     # host process (with pid: host) and DAC_READ_SEARCH bypassed every
     # filesystem read permission check on the mounted host paths.
     cap_drop:
       - ALL
-    
-    
-    # Networks
-    networks:
-      - sensor-network
-      - security-suite
-    
-    # Dependencies
-    depends_on:
-      - redis
-    
-    # Health check
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
@@ -94,100 +87,8 @@ services:
       retries: 3
       start_period: 10s
 
-  # Local Redis for standalone development
-  # When using main stack, sensor service operates without Redis dependency
-  redis:
-    image: redis:7-alpine
-    container_name: sensor-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
-    volumes:
-      - redis_data:/data
-    
-    ports:
-      - "127.0.0.1:6379:6379"
-    
-    networks:
-      - sensor-network
-    
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Optional: Prometheus for metrics
-  prometheus:
-    image: prom/prometheus:v2.55.1
-    container_name: sensor-prometheus
-    restart: unless-stopped
-    
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    
-    ports:
-      - "127.0.0.1:9090:9090"
-    
-    networks:
-      - sensor-network
-    
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    
-    profiles:
-      - monitoring
-
-  # Optional: Grafana for visualization
-  grafana:
-    image: grafana/grafana:11.4.0
-    container_name: sensor-grafana
-    restart: unless-stopped
-    
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-      - GF_USERS_ALLOW_SIGN_UP=false
-    
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    
-    ports:
-      - "127.0.0.1:3000:3000"
-    
-    networks:
-      - sensor-network
-    
-    depends_on:
-      - prometheus
-    
-    profiles:
-      - monitoring
-
 volumes:
   sensor_logs:
     driver: local
   sensor_data:
     driver: local
-  redis_data:
-    driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
-    driver: local
-
-networks:
-  sensor-network:
-    driver: bridge
-    name: sensor-network
-  
-  # External network for connecting to other security suite components
-  security-suite:
-    external: true
-    name: security-suite

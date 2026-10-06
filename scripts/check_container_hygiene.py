@@ -12,10 +12,15 @@ per-service ones, those under .github/) and refuses, per service:
 socket     a bind mount of a container runtime socket (docker.sock and the
            like) or of a directory that holds one. ``:ro`` does not help: it
            restricts the socket file, not the API behind it.
-image      an ``image:`` that does not name a version: no tag, ``latest``, or
-           a tag with no digit in it (``nginx:alpine``). A digest
-           (``@sha256:``) is accepted. A service that also has ``build:`` is
-           skipped: there ``image:`` names what the build produces.
+image      an ``image:`` that is not pinned by version and digest
+           (``redis:7-alpine@sha256:...``): no tag, ``latest``, a tag with no
+           digit in it (``nginx:alpine``), or a tag without the digest of the
+           image it named when it was written. A tag is published again with
+           every rebuild upstream, so a tag alone lets the same file run
+           different code on two hosts (#726); Dependabot's ``docker-compose``
+           ecosystem proposes the new digest. A service that also has
+           ``build:`` is skipped: there ``image:`` names what the build
+           produces.
 privilege  ``privileged``, ``cap_add``, ``devices``, the host's network, PID,
            IPC, user or cgroup namespace, or an unconfined seccomp or
            AppArmor profile.
@@ -47,6 +52,18 @@ pipe-to-shell  a download fed to an interpreter (``curl ... | sh``) or
 download       ``curl``, ``wget`` or ``ADD <url>`` with nothing in the same
                instruction that checks the result (``sha256sum -c``,
                ``gpg --verify``, ``cosign verify``, ``ADD --checksum=``).
+architecture   ``curl`` or ``wget`` of a URL that names one machine
+               (``Linux-64bit``, ``amd64``, ``arm64``) in a ``RUN`` that never
+               asks which platform it is building for. The tools image
+               downloaded the x86-64 Trivy on every platform, so an arm64
+               image shipped a binary it could not run (#726).
+
+os-packages    ``apt-get install`` without ``--no-install-recommends``, which
+               also installs every package the named ones recommend; an
+               ``apt-get update`` whose package lists are not removed in the
+               same ``RUN`` (``rm -rf /var/lib/apt/lists/*``), since a later
+               instruction cannot take them out of the layer; ``apk add``
+               without ``--no-cache``, for the same reason (#726).
 
 Not checked: ``apt-get install`` and ``apk add`` without versions. A pinned
 OS package stops receiving security fixes and breaks the build when the
@@ -57,8 +74,8 @@ A deliberate exception goes in scripts/container_hygiene_allowlist.txt as
 ``rule  file  subject  # reason``, where the subject is what the finding
 prints in brackets. An entry without a reason, or one that no longer matches
 a finding, is an error, so the list cannot go stale. The Compose rules and
-``download`` can be allow-listed; ``base-image``, ``pip``, ``npm`` and
-``pipe-to-shell`` cannot.
+``download`` can be allow-listed; ``base-image``, ``pip``, ``npm``,
+``pipe-to-shell``, ``os-packages`` and ``architecture`` cannot.
 
 Usage: python scripts/check_container_hygiene.py [--root DIR] [--allowlist FILE]
 """
@@ -155,21 +172,39 @@ def load_compose(text: str) -> dict[str, Any] | None:
     return None
 
 
-def image_problem(reference: str) -> str | None:
-    """Say why an image reference does not name a version, or None when it does."""
+def image_problem(reference: str, digest: bool = False) -> str | None:
+    """Say why an image reference is not pinned, or None when it is.
+
+    A reference must name a version. With ``digest`` it must also carry the
+    digest of that version (``name:1.2.3@sha256:...``): a tag can be
+    published again, so the same file would run different code, and without
+    the tag neither a reader nor Dependabot can tell which line the digest
+    follows.
+    """
     resolved = expand_defaults(str(reference).strip())
     if "$" in resolved:
         return "the tag comes from a variable with no default, so it cannot be verified"
-    if re.search(r"@sha256:[0-9a-f]{64}$", resolved):
+    resolved, at, pinned = resolved.partition("@")
+    if at and not re.fullmatch(r"sha256:[0-9a-f]{64}", pinned):
+        return f"'@{pinned}' is not a SHA-256 digest"
+    if at and not digest:
         return None
     name = resolved.rsplit("/", 1)[-1]
     if ":" not in name:
+        if at:
+            return "has a digest and no tag; name the version the digest is of"
         return "has no tag, which is :latest; name a version"
     tag = name.rsplit(":", 1)[1]
     if tag == "latest":
         return "floats with upstream; name a version"
     if not re.search(r"\d", tag):
         return f"the tag '{tag}' names no version and floats with upstream"
+    if digest and not at:
+        return (
+            f"the tag '{tag}' can be published again with other content; add "
+            "the digest of the image index (@sha256:..., as `docker buildx "
+            "imagetools inspect` prints it)"
+        )
     return None
 
 
@@ -259,7 +294,7 @@ def check_compose(path: str, text: str) -> list[Finding]:
                 )
 
         if "image" in service and "build" not in service:
-            problem = image_problem(service["image"])
+            problem = image_problem(service["image"], digest=True)
             if problem:
                 reference = str(service["image"])
                 add("image", name, reference, f"runs {reference}: {problem}", reference)
@@ -634,6 +669,116 @@ def npm_problem(command: Sequence[str]) -> str | None:
     return "resolves versions at build time; use `npm ci` (or --frozen-lockfile)"
 
 
+_APT = frozenset({"apt-get", "apt", "aptitude"})
+# apt options that take a value, so the value is not the subcommand.
+_APT_VALUE_OPTIONS = frozenset({"-o", "--option", "-c", "--config-file", "-t"})
+_APT_INSTALLS = frozenset({"install", "build-dep", "dist-upgrade", "full-upgrade"})
+_NO_RECOMMENDS = re.compile(r"APT::Install-Recommends=[\"']?(0|false|no)\b", re.I)
+_APT_LISTS = "/var/lib/apt/lists"
+_APK_CACHE = "/var/cache/apk"
+_CACHE_MOUNT = re.compile(r"--mount=(\S*type=cache\S*)")
+
+
+def _subcommand(words: Sequence[str], value_options: frozenset[str]) -> str:
+    """The first word of a command's arguments that is not an option."""
+    rest = list(words)
+    while rest:
+        word = rest.pop(0)
+        if not word.startswith("-"):
+            return word
+        if word in value_options and rest:
+            rest.pop(0)
+    return ""
+
+
+def _removes(command: Sequence[str], directory: str) -> bool:
+    """Whether the command is an ``rm -r`` of ``directory`` or its contents."""
+    if os.path.basename(command[0]) != "rm":
+        return False
+    recursive = any(
+        word in ("--recursive", "-R") or re.match(r"^-[A-Za-z]*[rR]", word)
+        for word in command[1:]
+        if word.startswith("-")
+    )
+    targets = [word.rstrip("/*") for word in command[1:] if not word.startswith("-")]
+    return recursive and any(
+        directory == target or directory.startswith(target + "/") for target in targets
+    )
+
+
+def _cache_mounted(value: str, directory: str) -> bool:
+    """Whether a ``RUN --mount=type=cache`` keeps ``directory`` out of the layer."""
+    for mount in _CACHE_MOUNT.findall(value):
+        for field in mount.split(","):
+            key, _, target = field.partition("=")
+            if key in ("target", "dst", "destination"):
+                target = target.rstrip("/")
+                if directory == target or directory.startswith(target + "/"):
+                    return True
+    return False
+
+
+def package_problems(
+    commands: Sequence[Sequence[str]], value: str
+) -> list[tuple[str, str]]:
+    """(command, problem) for the apt and apk commands of one RUN script.
+
+    ``apt-get install`` pulls in every package its targets recommend unless
+    it is told not to, so an image ships compilers' documentation, mail
+    agents and X libraries nobody asked for, each with its own advisories.
+    ``apt-get update`` writes the package lists, some tens of megabytes that
+    are stale the day after: removed in a later instruction they are still
+    in the layer that made them.
+    """
+    problems: list[tuple[str, str]] = []
+    last = {"apt": -1, "apk": -1}  # the last command that wrote an index
+    shown = {"apt": "", "apk": ""}
+    cleaned = {"apt": -1, "apk": -1}
+    for position, command in enumerate(commands):
+        program = os.path.basename(command[0])
+        text = " ".join(command)
+        if program in _APT:
+            action = _subcommand(command[1:], _APT_VALUE_OPTIONS)
+            if (
+                action in _APT_INSTALLS
+                and "--no-install-recommends" not in command
+                and not _NO_RECOMMENDS.search(text)
+            ):
+                problems.append(
+                    (
+                        text,
+                        f"{program} {action} without --no-install-recommends "
+                        "also installs every package the named ones recommend",
+                    )
+                )
+            if action == "update":
+                last["apt"], shown["apt"] = position, text
+        elif program == "apk":
+            action = _subcommand(command[1:], frozenset({"-X", "--repository"}))
+            if action in ("add", "update", "upgrade") and "--no-cache" not in command:
+                last["apk"], shown["apk"] = position, text
+        if _removes(command, _APT_LISTS):
+            cleaned["apt"] = position
+        if _removes(command, _APK_CACHE):
+            cleaned["apk"] = position
+    if last["apt"] > cleaned["apt"] and not _cache_mounted(value, _APT_LISTS):
+        problems.append(
+            (
+                shown["apt"],
+                f"leaves the package lists in the layer; end the same RUN with "
+                f"`rm -rf {_APT_LISTS}/*`",
+            )
+        )
+    if last["apk"] > cleaned["apk"] and not _cache_mounted(value, _APK_CACHE):
+        problems.append(
+            (
+                shown["apk"],
+                "leaves the package index in the layer; use `apk add --no-cache`",
+            )
+        )
+    return problems
+
+
 _URL = re.compile(r"https?://[^\s\"'\\)<>|;&]+")
 _LOCAL_URL = re.compile(r"https?://(localhost|127\.\d+\.\d+\.\d+|\[::1\])([:/]|$)")
 _INTERPRETERS = r"(?:(?:ba|z|da|a|k)?sh|python[\d.]*|perl|ruby|node)"
@@ -648,6 +793,19 @@ _VERIFIED = re.compile(
     r"|\bcosign\s+verify"
 )
 _DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
+# A URL that names the machine its file runs on, in the spellings release
+# assets use: trivy_0.72.0_Linux-64bit.tar.gz, tool_linux_amd64.deb, ...
+_ONE_ARCHITECTURE = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"(amd64|x86[_-]64|x64|64bit|arm64|aarch64|armv[5-8][a-z]*|armhf|i[36]86|ppc64le|s390x|riscv64)"
+    r"(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+# What a script that chooses by platform reads.
+_PLATFORM_AWARE = re.compile(
+    r"TARGETARCH|TARGETPLATFORM|TARGETVARIANT|BUILDARCH"
+    r"|dpkg\s+--print-architecture|\buname\s+-m\b|\barch\b|apk\s+--print-arch"
+)
 _ARG_REFERENCE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 
 
@@ -715,15 +873,25 @@ def check_dockerfile(path: str, text: str) -> list[Finding]:
                         f"{keyword} --from={source} copies from an image that is "
                         "not pinned by digest",
                     )
-            if keyword == "ADD" and "--checksum=" not in value:
+            if keyword == "ADD":
                 for url in _URL.findall(value):
-                    add(
-                        "download",
-                        instruction,
-                        url,
-                        f"ADD {url} has no --checksum=sha256:..., so the build "
-                        "takes whatever the URL serves",
-                    )
+                    if "--checksum=" not in value:
+                        add(
+                            "download",
+                            instruction,
+                            url,
+                            f"ADD {url} has no --checksum=sha256:..., so the "
+                            "build takes whatever the URL serves",
+                        )
+                    named = _ONE_ARCHITECTURE.search(url)
+                    if named:
+                        add(
+                            "architecture",
+                            instruction,
+                            url,
+                            f"ADD {url} fetches the {named.group(1)} build "
+                            "whatever the platform the image is built for",
+                        )
 
         elif keyword == "RUN":
             script = run_script(value)
@@ -737,7 +905,10 @@ def check_dockerfile(path: str, text: str) -> list[Finding]:
                     "its SHA-256 first",
                 )
             verified = bool(_VERIFIED.search(script))
-            for command in shell_commands(script):
+            commands = shell_commands(script)
+            for shown, problem in package_problems(commands, value):
+                add("os-packages", instruction, shown, problem)
+            for command in commands:
                 shown = " ".join(command)
                 pip = pip_arguments(command)
                 if pip is not None:
@@ -749,17 +920,31 @@ def check_dockerfile(path: str, text: str) -> list[Finding]:
                 if problem:
                     add("npm", instruction, shown, problem)
                     continue
-                if os.path.basename(command[0]) in ("curl", "wget") and not verified:
-                    for url in _URL.findall(shown):
-                        if not _LOCAL_URL.match(url):
-                            add(
-                                "download",
-                                instruction,
-                                url,
-                                f"downloads {url} and nothing in the same RUN "
-                                "checks it (sha256sum -c); a URL that names a "
-                                "version can still serve other bytes",
-                            )
+                if os.path.basename(command[0]) not in ("curl", "wget"):
+                    continue
+                for url in _URL.findall(shown):
+                    if _LOCAL_URL.match(url):
+                        continue
+                    if not verified:
+                        add(
+                            "download",
+                            instruction,
+                            url,
+                            f"downloads {url} and nothing in the same RUN "
+                            "checks it (sha256sum -c); a URL that names a "
+                            "version can still serve other bytes",
+                        )
+                    named = _ONE_ARCHITECTURE.search(url)
+                    if named and not _PLATFORM_AWARE.search(script):
+                        add(
+                            "architecture",
+                            instruction,
+                            url,
+                            f"downloads the {named.group(1)} build whatever the "
+                            "platform the image is built for; choose the asset "
+                            "by TARGETARCH (or dpkg --print-architecture), with "
+                            "a checksum for each, and fail on any other",
+                        )
     return findings
 
 

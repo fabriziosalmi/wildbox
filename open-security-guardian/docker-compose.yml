@@ -8,7 +8,7 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:15-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     environment:
       POSTGRES_DB: guardian
       POSTGRES_USER: guardian
@@ -26,7 +26,7 @@ services:
   # Local Redis for standalone development
   # When using main stack, guardian service connects to wildbox-redis:6379/1
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     ports:
       - "127.0.0.1:6380:6379"
     volumes:

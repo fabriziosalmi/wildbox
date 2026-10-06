@@ -54,7 +54,7 @@ jobs:
           node-version: '22'
 
       - name: Install markdownlint-cli
-        run: npm install -g markdownlint-cli
+        run: npm install -g markdownlint-cli@0.49.1
 
       - name: Run markdownlint
         run: markdownlint '**/*.md' --config .markdownlint.json --ignore node_modules --ignore .git
@@ -73,7 +73,7 @@ jobs:
           node-version: '22'
 
       - name: Install cspell
-        run: npm install -g cspell
+        run: npm install -g cspell@10.3.6
 
       - name: Run spell checker
         run: cspell "**/*.md" --config .cspell.json
@@ -92,7 +92,7 @@ jobs:
           node-version: '22'
 
       - name: Install markdown-link-check
-        run: npm install -g markdown-link-check
+        run: npm install -g markdown-link-check@3.15.0
 
       - name: Check links in README
         run: markdown-link-check README.md --config .markdown-link-check.json
@@ -143,7 +143,7 @@ jobs:
           node-version: '22'
 
       - name: Install alex
-        run: npm install -g alex
+        run: npm install -g alex@11.0.1
 
       - name: Run alex
         run: alex '**/*.md' --quiet || true

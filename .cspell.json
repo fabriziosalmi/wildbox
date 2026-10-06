@@ -801,7 +801,11 @@
     "setuptools",
     "resty",
     "unhashed",
-    "unrouted"
+    "unrouted",
+    "TARGETARCH",
+    "SASL",
+    "libc",
+    "pyyaml"
   ],
   "ignoreWords": [
     "APIKEY",
