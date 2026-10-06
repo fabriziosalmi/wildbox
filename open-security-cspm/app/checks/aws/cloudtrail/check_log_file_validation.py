@@ -26,7 +26,7 @@ class CheckLogFileValidation(BaseCheck):
                        "Log file validation helps detect if logs have been tampered with after delivery.",
             provider=CloudProvider.AWS,
             service="CloudTrail",
-            category="Logging & Monitoring",
+            category="Logging and Monitoring",
             severity=CheckSeverity.MEDIUM,
             compliance_frameworks=[
                 "CIS AWS Foundations Benchmark v1.4.0 - 3.2",

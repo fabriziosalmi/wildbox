@@ -27,7 +27,7 @@ class CheckPasswordPolicy(BaseCheck):
                        "and password rotation policies.",
             provider=CloudProvider.AWS,
             service="IAM",
-            category="Identity & Access Management",
+            category="Identity and Access Management",
             severity=CheckSeverity.HIGH,
             compliance_frameworks=[
                 "CIS AWS Foundations Benchmark v1.4.0 - 1.5",

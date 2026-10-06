@@ -187,6 +187,15 @@ service has never had, gives `200` with
 `{"total_checks": 0, "checks": [], "providers": [], "categories": []}`, not an
 error.
 
+A category has one spelling, written with `and`: the catalog has 10, among them
+`Logging and Monitoring` and `Identity and Access Management`. Up to 0.12.0 each of
+those two was also spelled with `&` on some of its checks, so `categories` listed
+both spellings and the filter gave the checks of the one asked for. The `category`
+filter also takes `&` for `and` and any spacing: `category=Logging%20%26%20Monitoring`,
+a value kept from an earlier answer, gives the same three checks as
+`category=logging%20and%20monitoring`. A scan's report and the team's findings do
+not carry a check's category, so nothing stored holds the old spelling.
+
 Without a filter the route lists the 22 AWS checks in
 `open-security-cspm/app/checks/aws/`, which the
 [CSPM README](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-cspm/README.md#checks)

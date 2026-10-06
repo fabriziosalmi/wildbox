@@ -357,6 +357,12 @@ check carries. The filters `provider`, `category` and `severity` compare
 without regard to case; a value that matches no check, such as
 `provider=gcp`, gives an empty list.
 
+A category has one spelling in the catalog, written with `and`
+(`Logging and Monitoring`, `Identity and Access Management`); a unit test
+fails when two categories differ only by `&` for `and`, case or spacing.
+The `category` filter takes either: `Logging & Monitoring`, the spelling two
+of the three CloudTrail checks had up to 0.12.0, still finds all three.
+
 ### Compliance report of one scan
 
 **GET** `/api/v1/scans/{scan_id}/compliance`

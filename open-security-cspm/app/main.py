@@ -31,7 +31,7 @@ from . import connections
 from open_security_shared.errors import error_response, get_request_id, http_exception_handler
 from .utils import (
     _estimate_scan_duration, _summarize_compliance, _compliance_findings,
-    _count_failed_by_severity,
+    _count_failed_by_severity, category_key,
 )
 
 # Configure logging
@@ -665,7 +665,8 @@ async def list_checks(
     The three filters compare without regard to case, and a value that
     matches no check gives an empty list. A ``provider`` other than ``aws``,
     ``gcp`` and ``azure`` used to answer 500, where ``gcp``, which has no
-    check either, answered an empty list (#766).
+    check either, answered an empty list (#766). ``category`` also takes
+    ``&`` for ``and`` and any spacing (#778, utils.category_key).
     """
     try:
         # Get available checks
@@ -676,7 +677,8 @@ async def list_checks(
             checks = [c for c in checks if c["provider"].lower() == provider.lower()]
 
         if category:
-            checks = [c for c in checks if c["category"].lower() == category.lower()]
+            wanted = category_key(category)
+            checks = [c for c in checks if category_key(c["category"]) == wanted]
 
         if severity:
             checks = [c for c in checks if c["severity"].lower() == severity.lower()]

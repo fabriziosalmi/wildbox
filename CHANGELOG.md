@@ -81,6 +81,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes nothing, and a completed scan's report, status and index entry
   are written together. A scan cancelled while it ran stays cancelled,
   and has no report.
+- **cspm's check categories have one spelling each** (#778). Two of the
+  three CloudTrail checks were in `Logging & Monitoring` and the third
+  in `Logging and Monitoring`; two IAM checks in `Identity and Access
+  Management` and the third in `Identity & Access Management`.
+  `GET /api/v1/checks` listed both spellings in `categories`, and its
+  `category` filter gave the checks of the one asked for and left the
+  others out. Both categories are spelled with `and` now, the form that
+  needs no escaping beyond its spaces in a query string, and a unit test
+  fails when two categories of the catalog differ only by `&` for `and`,
+  case or spacing. The filter compares the same way, so a value in the
+  old spelling still finds its checks, all three of them. Reports and
+  findings do not carry a check's category: nothing stored changes.
 
 ## [0.12.0] - 2026-10-06
 
