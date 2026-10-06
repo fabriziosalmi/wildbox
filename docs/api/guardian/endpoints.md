@@ -317,12 +317,12 @@ Custom actions:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `assets/assets/{id}/scan/` | Queues a port scan of the asset's `ip_address`. Returns `message` and `task_id`; `400` if the asset has no IP address |
+| `POST` | `assets/assets/{id}/scan/` | Queues a port scan of the asset's `ip_address`. Returns `message` and `task_id`; `400` with `error` if the asset has no IP address, or has an [internal one](#scan-targets), and then nothing is queued |
 | `POST` | `assets/assets/{id}/add_software/` | Adds a software record to the asset (`201`) |
 | `POST` | `assets/assets/{id}/add_port/` | Adds a port record to the asset (`201`) |
 | `POST` | `assets/assets/{id}/add_tag/` | Body `{"tag": "..."}` |
 | `DELETE` | `assets/assets/{id}/remove_tag/` | Body `{"tag": "..."}` |
-| `POST` | `assets/assets/discover/` | Body `{"network_range": "192.0.2.0/24", "scan_type": "basic"}`; queues a discovery of that network and returns `task_id`. `network_range` is a network in CIDR notation, or one address, of at most 1,024 addresses (a `/22` of IPv4); `scan_type` is `basic` (the default) or `comprehensive`, which also scans the ports of the hosts found. Anything else answers `400` on that field and queues nothing |
+| `POST` | `assets/assets/discover/` | Body `{"network_range": "192.0.2.0/24", "scan_type": "basic"}`; queues a discovery of that network and returns `task_id`. `network_range` is a network in CIDR notation, or one address, of at most 1,024 addresses (a `/22` of IPv4); `scan_type` is `basic` (the default) or `comprehensive`, which also scans the ports of the hosts found. Anything else answers `400` on that field and queues nothing, and so does a network with an [internal address](#scan-targets) in it |
 | `GET` | `assets/assets/statistics/` | Totals by type, criticality and status |
 | `POST` | `assets/groups/{id}/apply_rules/` | Applies the group's assignment rules |
 | `POST` | `assets/groups/{id}/add_assets/` | Adds assets to the group |
@@ -366,7 +366,8 @@ Asset fields accepted on create include `name` (required), `description`,
 `status` (`active`, `inactive`, `decommissioned`, `maintenance`, `unknown`),
 `ip_address`, `hostname`, `fqdn`, `criticality` (`critical`, `high`, `medium`, `low`,
 `unknown`), `tags` and `metadata`. Two assets cannot share an `ip_address`. Creating
-an asset that has an `ip_address` and no ports also queues a port scan.
+an asset that has an `ip_address` and no ports also queues a port scan, unless the
+address is an [internal one](#scan-targets).
 
 ```bash
 curl -s --cacert "$CA" -X POST "$BASE/assets/assets/" \
@@ -377,6 +378,38 @@ curl -s --cacert "$CA" -X POST "$BASE/assets/assets/" \
 curl -s --cacert "$CA" "$BASE/assets/assets/?criticality=high&ordering=name" \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+### Scan targets
+
+Guardian's worker connects to what a discovery or a port scan names, and it runs
+inside the stack's networks. So an internal address is not scanned (since #748):
+
+- **Refused**: private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), loopback,
+  link-local, multicast, reserved, shared (`100.64.0.0/10`) and documentation
+  addresses, the cloud metadata addresses, and the IPv6 ranges of the same kinds,
+  an IPv4 address written inside an IPv6 one included (`::ffff:10.0.0.1`).
+- **A network is refused whole** when any address of it is internal: `203.0.112.0/22`
+  is refused for the `/24` at `203.0.113.0`.
+- **Where**: `discover/` answers `400` on `network_range`; creating or changing a
+  discovery rule answers `400` on `target_specification`; `scan/` answers `400` with
+  `error`. Nothing is queued. The worker checks again when the task runs: a rule or
+  an asset stored before this version keeps its network or address, and its runs
+  skip it.
+- **An asset is still recorded.** `POST assets/assets/` accepts any `ip_address`, as
+  an inventory must; an asset at an internal address is not port scanned when it is
+  created.
+
+The refusal says what to ask for:
+
+```json
+{"network_range": ["10.0.0.0/24 includes 10.0.0.0, an internal address (private, loopback, link-local, multicast, reserved or cloud metadata). guardian scans an internal address only if the operator of this deployment lists its range in GUARDIAN_ALLOWED_INTERNAL_TARGETS."]}
+```
+
+`GUARDIAN_ALLOWED_INTERNAL_TARGETS` is the operator's setting, empty by default; a
+network is then accepted when every internal address of it is inside a listed range.
+See [Internal targets of Guardian's scans](../../guides/deployment.md#internal-targets-of-guardians-scans).
+The tools service applies the same policy to its network tools, with a setting of
+its own.
 
 ---
 

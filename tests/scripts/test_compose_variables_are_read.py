@@ -28,6 +28,7 @@ documentation, not in this tree.
 
 import ast
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -55,24 +56,12 @@ READ_BY_THE_RUNTIME = {
     "TZ": "the C library",
 }
 
-# Variables a Compose file passes that the service's code does not read. The
-# cross-service cleanup (#665) removed every one but the gateway's, which
-# #756 settles with the gateway's other settings. An entry that no longer
-# applies fails the test, so the list cannot outlive what it lists; a new
-# unread variable fails it too.
-KNOWN_UNREAD = {
-    "docker-compose.yml": {
-        "gateway": {
-            "ENVIRONMENT",
-            "GATEWAY_LOG_LEVEL",
-            "NGINX_ENVSUBST_OUTPUT_DIR",
-            "WILDBOX_ENV",
-        },
-    },
-    "docker-compose.prod.yml": {
-        "gateway": {"ENVIRONMENT", "LOG_LEVEL"},
-    },
-}
+# Variables a Compose file passes that the service's code does not read. None
+# is left: the cross-service cleanup removed the ones this test first listed
+# (#665), and #756 the gateway's. A new unread variable fails the test; it is
+# removed from the Compose file, or the code is made to read it, and nothing
+# is added here without the reason beside it.
+KNOWN_UNREAD = {}
 
 SKIPPED_DIRECTORIES = {
     "node_modules",
@@ -342,6 +331,10 @@ def test_the_services_built_here_are_found():
         ("api", "GATEWAY_INTERNAL_SECRET"),  # os.getenv in the shared package
         ("api", "USER_PERMISSIONS_FILE"),  # os.getenv in the service
         ("gateway", "GATEWAY_INTERNAL_SECRET"),  # os.getenv in Lua
+        # ${...} in the script the entrypoint runs (#756)
+        ("gateway", "GATEWAY_RATE_LIMIT_PER_SECOND"),
+        ("gateway", "GATEWAY_AUTH_RATE_LIMIT_PER_SECOND"),
+        ("gateway", "GATEWAY_STATIC_RATE_LIMIT_PER_SECOND"),
         ("guardian", "ALLOWED_HOSTS"),  # Django settings
         ("dashboard", "NEXT_PUBLIC_GATEWAY_URL"),  # process.env
     ],
@@ -351,7 +344,17 @@ def test_a_variable_the_code_reads_is_seen_as_read(service, name):
 
 
 @pytest.mark.parametrize(
-    "name", ["WORKERS", "ENABLE_METRICS", "METRICS_PORT", "NO_SUCH_SETTING"]
+    "name",
+    [
+        "WORKERS",
+        "ENABLE_METRICS",
+        "METRICS_PORT",
+        "NO_SUCH_SETTING",
+        # What Compose passed the gateway until #756, read by nothing in it.
+        "WILDBOX_ENV",
+        "GATEWAY_LOG_LEVEL",
+        "NGINX_ENVSUBST_OUTPUT_DIR",
+    ],
 )
 @pytest.mark.parametrize("service", ["api", "identity", "gateway", "dashboard"])
 def test_a_variable_nothing_reads_is_seen_as_unread(service, name):
@@ -412,20 +415,74 @@ def test_the_example_env_file_does_not_offer_them():
 # --- what the rule above cannot see (#665) ---------------------------------------
 
 
-def test_a_shared_module_a_service_does_not_import_reads_nothing_for_it():
-    """guardian imports ``open_security_shared.scopes`` and no more: what
-    ``security_middleware`` reads, guardian does not read."""
-    contexts = build_contexts()
-    _, _, imported = names_read_in(contexts["guardian"])
+def test_a_shared_module_a_service_does_not_import_reads_nothing_for_it(
+    tmp_path, monkeypatch
+):
+    """guardian imported ``open_security_shared.scopes`` and passed for reading
+    ``ENVIRONMENT`` because another module of the package, one it does not
+    import, reads it. A package of two modules, and a service that imports
+    one: the service reads what that module reads, and what the modules it
+    imports from the package read, and nothing of the other."""
+    module = sys.modules[__name__]
+    shared = tmp_path / "open-security-shared"
+    shared.mkdir()
+    (shared / "__init__.py").write_text(
+        '_EXPORTS = {"install": "errors"}\n', encoding="utf-8"
+    )
+    (shared / "scopes.py").write_text(
+        "from .headers import NAME\n"
+        "import os\n"
+        'SECRET = os.getenv("GATEWAY_INTERNAL_SECRET")\n',
+        encoding="utf-8",
+    )
+    (shared / "headers.py").write_text(
+        'import os\nNAME = os.getenv("AUTH_HEADER")\n', encoding="utf-8"
+    )
+    (shared / "middleware.py").write_text(
+        'import os\nMODE = os.getenv("ENVIRONMENT")\n', encoding="utf-8"
+    )
+    (shared / "errors.py").write_text(
+        'import os\nLEVEL = os.getenv("ERROR_DETAIL")\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(module, "SHARED", shared)
+    service = tmp_path / "open-security-example"
+    service.mkdir()
+    (service / "auth.py").write_text(
+        "from open_security_shared.scopes import SECRET\n", encoding="utf-8"
+    )
+
+    _, _, imported = names_read_in(service)
 
     assert imported == {"scopes"}
-    assert "ENVIRONMENT" in shared_names({"security_middleware"})
-    assert "ENVIRONMENT" not in shared_names(imported)
+    assert is_read("GATEWAY_INTERNAL_SECRET", service)
+    # Through the module that scopes imports from the package.
+    assert is_read("AUTH_HEADER", service)
+    # Read by a module of the package this service does not import.
+    assert "ENVIRONMENT" in shared_names({"middleware"})
+    assert not is_read("ENVIRONMENT", service)
+    assert not is_read("ERROR_DETAIL", service)
+
+    # A name the package exports lazily loads the module that defines it.
+    lazy = tmp_path / "open-security-lazy"
+    lazy.mkdir()
+    (lazy / "main.py").write_text(
+        "from open_security_shared import install\n", encoding="utf-8"
+    )
+    assert is_read("ERROR_DETAIL", lazy)
+    assert not is_read("ENVIRONMENT", lazy)
+
+
+def test_guardian_is_not_given_what_only_another_service_reads():
+    """The case this was found in, on the tree: guardian's code reads no
+    ENVIRONMENT, and no Compose file gives it one."""
+    contexts = build_contexts()
+
     assert not is_read("ENVIRONMENT", contexts["guardian"])
-    # A service that imports a module reads what that module reads, and what
-    # the modules it imports from the package read.
-    assert "GATEWAY_INTERNAL_SECRET" in shared_names({"gateway_auth"})
-    assert is_read("GATEWAY_INTERNAL_SECRET", contexts["api"])
+    assert is_read("ENVIRONMENT", contexts["identity"])
+    for file in COMPOSE_FILES:
+        services = compose(file).get("services") or {}
+        for service in ("guardian", "guardian-worker", "guardian-beat"):
+            assert "ENVIRONMENT" not in environment_names(services.get(service))
 
 
 def test_a_lazy_export_of_the_shared_package_names_its_module():

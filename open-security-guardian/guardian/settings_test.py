@@ -25,5 +25,16 @@ os.environ.setdefault("DJANGO_DEBUG", "True")
 # by the tests that stand one in (tests/unit/identity_stub.py).
 os.environ.setdefault("EMAIL_HOST", "smtp.test.invalid")
 os.environ.setdefault("DEFAULT_FROM_EMAIL", "guardian@test.invalid")
+# A deployment whose operator allows a lab, so that the suite exercises
+# discoveries and scans: the documentation ranges (RFC 5737, RFC 3849), which
+# the scan target policy refuses like any other address that is not public
+# (#748) and which route nowhere. The fixtures and the tests name networks in
+# them. Nothing else internal is allowed; a test of a deployment that allows
+# nothing, which is the default, empties settings.SCAN_ALLOWED_INTERNAL_TARGETS
+# (tests/unit/test_scan_target_policy.py).
+os.environ.setdefault(
+    "GUARDIAN_ALLOWED_INTERNAL_TARGETS",
+    "192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,2001:db8::/32",
+)
 
 from guardian.settings import *  # noqa: F401,F403,E402

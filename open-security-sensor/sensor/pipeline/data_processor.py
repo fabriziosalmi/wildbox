@@ -6,6 +6,15 @@ This module processes raw telemetry data from collectors, performing:
 - Enrichment with additional context
 - Normalization to standard formats
 - Filtering and noise reduction
+
+The hand-off (#754). An event is the processor's from the moment a worker
+takes it off the input queue until the worker says ``task_done()`` for it,
+which it does once the event is on the output queue, filtered, failed, or
+kept in ``interrupted`` because the processor was stopped with it. The input
+queue counts it as unfinished for all that time, so ``input_queue.join()``
+returns exactly when nothing collected is still on its way through here: that
+is what the agent's stop waits on, and not a look at the queue's size and at
+a counter, which had a moment in which both said nothing was left.
 """
 
 import asyncio
@@ -19,7 +28,12 @@ import platform
 
 from sensor import __version__ as SENSOR_VERSION
 from sensor.core.config import SensorConfig
-from sensor.pipeline.delivery import attach_delivery, settle, take_delivery
+from sensor.pipeline.delivery import (
+    Delivery,
+    attach_delivery,
+    settle,
+    take_delivery,
+)
 from sensor.utils.platform import get_platform_info
 
 logger = logging.getLogger(__name__)
@@ -53,9 +67,15 @@ class DataProcessor:
         self.input_queue = input_queue
         self.output_queue = output_queue
         self.running = False
-        # Events a worker has taken from the input queue and not yet passed
-        # on or filtered: in neither queue for that moment.
+        # Events a worker has taken from the input queue and not finished
+        # with: in neither queue. For the statistics; whether anything is
+        # left is asked of input_queue.join(), see the module's description.
         self.in_flight = 0
+        # What the workers held when the processor was stopped: one entry
+        # per event, its Delivery or None. Those events are not passed on,
+        # and not settled: the agent counts them with what the queues hold.
+        self.interrupted: List[Optional[Delivery]] = []
+        self._workers: List[asyncio.Task] = []
 
         # Processor statistics
         self.stats = {
@@ -87,53 +107,79 @@ class DataProcessor:
         self.running = True
         
         # Start processing tasks
-        for i in range(self.config.performance.worker_threads):
+        self._workers = [
             asyncio.create_task(self._process_events())
-        
+            for _ in range(self.config.performance.worker_threads)
+        ]
+
         logger.info(f"Data processor started with {self.config.performance.worker_threads} workers")
-    
+
     async def stop(self):
-        """Stop data processing"""
+        """Stop data processing: end the workers, and wait until they have.
+
+        A worker that is waiting for an event ends there. One that holds an
+        event (in an enrichment, or waiting for room on the output queue)
+        is stopped with it, and the event is kept in ``interrupted``. They
+        used to be left running: a worker went on for up to a second, and
+        one that held an event put it on the output queue after everything
+        that reads that queue had stopped, where it was lost without a
+        count.
+        """
         logger.info("Stopping data processor")
         self.running = False
-    
+        workers, self._workers = self._workers, []
+        for worker in workers:
+            worker.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+
     async def _process_events(self):
         """Main event processing loop"""
         while self.running:
-            try:
-                # Get event from input queue with timeout
-                event = await asyncio.wait_for(self.input_queue.get(), timeout=1.0)
-                
-                # Process the event
-                self.in_flight += 1
-                try:
-                    # What the collector wants to be told about this event;
-                    # it is not part of the event (sensor.pipeline.delivery).
-                    delivery = take_delivery(event)
-                    processed_event = await self._process_single_event(event)
+            # Awaited as it is, and not through asyncio.wait_for: on Python
+            # 3.11 that runs the get in a task of its own, and the event had
+            # left the queue two turns of the event loop before this worker
+            # had it (#754). Cancelled here, nothing has been taken.
+            event = await self.input_queue.get()
+            await self._finish(event)
 
-                    if processed_event:
-                        # Forward to output queue
-                        attach_delivery(processed_event, delivery)
-                        await self.output_queue.put(processed_event)
-                        self.stats['events_processed'] += 1
-                    else:
-                        # It goes no further: the sensor has finished with it.
-                        self.stats['events_filtered'] += 1
-                        settle(delivery)
-                finally:
-                    self.in_flight -= 1
-                
-            except asyncio.TimeoutError:
-                # No events available, continue
-                continue
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error processing event: {e}")
-                self.stats['errors'] += 1
-                await asyncio.sleep(0.1)
-    
+    async def _finish(self, event: Dict[str, Any]):
+        """Do everything the processor does with one event it has taken, and
+        tell the input queue when that is done, whichever way it ends."""
+        self.in_flight += 1
+        # What the collector wants to be told about this event; it is not
+        # part of the event (sensor.pipeline.delivery).
+        delivery = take_delivery(event)
+        try:
+            processed_event = await self._process_single_event(event)
+
+            if processed_event:
+                # Forward to output queue
+                attach_delivery(processed_event, delivery)
+                await self.output_queue.put(processed_event)
+                self.stats['events_processed'] += 1
+            else:
+                # It goes no further: the sensor has finished with it.
+                self.stats['events_filtered'] += 1
+                settle(delivery)
+        except asyncio.CancelledError:
+            # Stopped with the event in hand. A put that is cancelled has
+            # put nothing, so the event is in neither queue: it is counted
+            # here, once, and not settled (its collector reads it again
+            # after the restart, if it can).
+            self.interrupted.append(delivery)
+            raise
+        except Exception as e:
+            # Dropped for good, and counted: its collector may move past
+            # it. The Delivery used to be forgotten here, which kept a log
+            # file's position before this line for as long as the sensor
+            # ran.
+            logger.error(f"Error processing event: {e}")
+            self.stats['errors'] += 1
+            settle(delivery)
+        finally:
+            self.in_flight -= 1
+            self.input_queue.task_done()
+
     async def _process_single_event(self, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process a single event"""
         try:

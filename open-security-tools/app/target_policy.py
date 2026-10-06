@@ -6,6 +6,13 @@ CIDR range, a DNS server or a container image instead, and connect to it
 with raw sockets, a database driver, dnspython or a subprocess. This module
 is the policy for those inputs.
 
+What is internal, what the allowlist covers and how a host is parsed are
+decided by ``open_security_shared.target_policy``, the implementation this
+service shares with guardian's asset discovery and port scans (#748). What
+is here is this service's side of it: which input fields of which tool are
+targets and what kind of value each holds, the setting the allowlist is
+read from, the words of a refusal, and the three paths that enforce it.
+
 The policy
 ==========
 
@@ -15,8 +22,8 @@ operator allows it (below):
 * IP addresses that are private, loopback, link-local, unspecified,
   multicast, reserved or shared (100.64.0.0/10), or that are not globally
   reachable for another reason (``InputSanitizer._is_blocked_ip``, the
-  check the URL guard uses), including an IPv4 address embedded in an
-  IPv6 one (IPv4-mapped, 6to4, NAT64);
+  check the URL guard uses, which is the shared module's), including an
+  IPv4 address embedded in an IPv6 one (IPv4-mapped, 6to4, NAT64);
 * a CIDR range or an address range with any such address in it;
 * a host name that resolves to any such address (every answer is checked,
   as ``GuardedResolver`` does), or that does not resolve at all;
@@ -87,36 +94,35 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-import socket
-from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
-from typing import Dict, FrozenSet, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple
+
+from open_security_shared import target_policy as shared_policy
+from open_security_shared.target_policy import (  # noqa: F401 - re-exported
+    MAX_TARGET_ADDRESSES,
+    Allowlist,
+    IPAddress,
+    IPNetwork,
+    Reason,
+    Refusal,
+    TargetPolicy,
+    is_internal_name,
+)
+from open_security_shared.target_policy import (  # noqa: F401 - re-exported
+    embedded_ipv4 as _embedded_ipv4,
+)
 
 from .input_validation import InputSanitizer
-from .url_guard import is_local_hostname, parse_host
 
 logger = logging.getLogger(__name__)
 
 ALLOWLIST_ENV = "TOOLS_ALLOWED_INTERNAL_TARGETS"
 
-# The largest range a single input may name: a /22 in IPv4, a /118 in IPv6.
-# network_scanner sweeps at most 1024 hosts (its MAX_HOSTS) and
-# iot_security_scanner 256, so nothing a tool scans is lost; a larger request
-# is refused instead of being expanded (a /8 is 16 million addresses, an IPv6
-# /64 more than memory holds).
-MAX_TARGET_ADDRESSES = 1024
-
-# Name suffixes that never belong to a public host: RFC 6761 (localhost),
-# RFC 6762 (local), RFC 8375 (home.arpa), the private-use TLD ICANN reserved
-# in 2024 (internal), and the common localdomain.
-_INTERNAL_SUFFIXES = (".localhost", ".local", ".internal", ".localdomain", ".home.arpa")
-
-# NAT64 well-known prefix (RFC 6052): the low 32 bits are an IPv4 address.
-_NAT64_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
-
-IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
-IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+# MAX_TARGET_ADDRESSES, the largest range a single input may name (a /22 in
+# IPv4, a /118 in IPv6), is the shared module's: network_scanner sweeps at
+# most 1024 hosts (its MAX_HOSTS) and iot_security_scanner 256, so nothing a
+# tool scans is lost; a larger request is refused instead of being expanded.
 
 
 class TargetRefused(ValueError):
@@ -202,18 +208,6 @@ REVIEWED_NON_TARGET_FIELDS: Dict[Tuple[str, str], str] = {
 # --- the allowlist ------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class Allowlist:
-    networks: Tuple[IPNetwork, ...] = ()
-    names: FrozenSet[str] = frozenset()
-
-    def covers_address(self, addr: IPAddress) -> bool:
-        return any(addr in net for net in self.networks if net.version == addr.version)
-
-    def __bool__(self) -> bool:
-        return bool(self.networks or self.names)
-
-
 def parse_allowlist(raw: Optional[str]) -> Allowlist:
     """Parse the operator allowlist. Raise ValueError naming a bad entry.
 
@@ -221,32 +215,7 @@ def parse_allowlist(raw: Optional[str]) -> Allowlist:
     a CIDR range (host bits must be zero, so a typo such as 10.0.0.1/8 is
     caught), an IP address, or an ASCII host name.
     """
-    networks: List[IPNetwork] = []
-    names = set()
-    for entry in (raw or "").split(","):
-        entry = entry.strip()
-        if not entry:
-            continue
-        try:
-            networks.append(ipaddress.ip_network(entry, strict=True))
-            continue
-        except ValueError as exc:
-            if "/" in entry or ":" in entry:
-                raise ValueError(
-                    f"{ALLOWLIST_ENV}: {entry!r} is not a valid CIDR range or IP address ({exc})"
-                ) from exc
-        try:
-            parsed = parse_host(entry)
-        except ValueError as exc:
-            raise ValueError(
-                f"{ALLOWLIST_ENV}: {entry!r} is not a CIDR range, an IP address "
-                f"or a host name ({exc})"
-            ) from exc
-        if parsed.ip is not None:  # pragma: no cover - ip_network took it above
-            networks.append(ipaddress.ip_network(parsed.ip))
-        else:
-            names.add(parsed.host)
-    return Allowlist(networks=tuple(networks), names=frozenset(names))
+    return shared_policy.parse_allowlist(raw, ALLOWLIST_ENV)
 
 
 @lru_cache(maxsize=8)
@@ -271,60 +240,20 @@ def current_allowlist() -> Allowlist:
 # --- address checks ------------------------------------------------------------
 
 
-def _embedded_ipv4(addr: IPAddress) -> Optional[ipaddress.IPv4Address]:
-    if addr.version != 6:
-        return None
-    if addr.ipv4_mapped is not None:
-        return addr.ipv4_mapped
-    if addr.sixtofour is not None:
-        return addr.sixtofour
-    if addr in _NAT64_PREFIX:
-        return ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF)
-    return None
+def _is_blocked(addr: IPAddress) -> bool:
+    # Looked up on each call: the URL guard, app.safe_http and this policy
+    # classify an address through the one name, InputSanitizer._is_blocked_ip.
+    return InputSanitizer._is_blocked_ip(addr)
+
+
+def _policy(allowlist: Allowlist) -> TargetPolicy:
+    """The shared decision, for this allowlist and this service's classifier."""
+    return TargetPolicy(allowlist, blocked=_is_blocked)
 
 
 def is_internal_address(addr: IPAddress) -> bool:
     """True for an address the policy refuses unless it is allow-listed."""
-    if InputSanitizer._is_blocked_ip(addr):
-        return True
-    embedded = _embedded_ipv4(addr)
-    return embedded is not None and InputSanitizer._is_blocked_ip(embedded)
-
-
-def _address_allowed(addr: IPAddress, allowlist: Allowlist) -> bool:
-    return not is_internal_address(addr) or allowlist.covers_address(addr)
-
-
-def is_internal_name(host: str) -> bool:
-    """True for a name that only an internal resolver can answer for.
-
-    ``host`` is the canonical form returned by ``parse_host``.
-    """
-    host = host.lower().rstrip(".")
-    return (
-        "." not in host
-        or is_local_hostname(host)
-        or host in InputSanitizer.BLOCKED_HOSTNAMES
-        or host.endswith(_INTERNAL_SUFFIXES)
-    )
-
-
-def _resolve(host: str) -> List[IPAddress]:
-    """Every address ``host`` resolves to. Raise TargetRefused if none."""
-    try:
-        infos = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-    except (socket.gaierror, UnicodeError, OSError) as exc:
-        raise TargetRefused(_unresolvable(host)) from exc
-    addresses: List[IPAddress] = []
-    for _family, _type, _proto, _canon, sockaddr in infos:
-        try:
-            # An IPv6 sockaddr may carry a zone ("fe80::1%eth0"); drop it.
-            addresses.append(ipaddress.ip_address(str(sockaddr[0]).split("%", 1)[0]))
-        except ValueError as exc:
-            raise TargetRefused(_unresolvable(host)) from exc
-    if not addresses:
-        raise TargetRefused(_unresolvable(host))
-    return addresses
+    return shared_policy.is_internal_address(addr, _is_blocked)
 
 
 def _unresolvable(host: str) -> str:
@@ -354,53 +283,43 @@ def check_host(value: str, allowlist: Optional[Allowlist] = None) -> List[IPAddr
     """
     if allowlist is None:
         allowlist = current_allowlist()
-    try:
-        parsed = parse_host(value)
-    except ValueError as exc:
-        raise TargetRefused(f"Target {value!r} is not a valid host: {exc}") from exc
-
-    if parsed.ip is not None:
-        if not _address_allowed(parsed.ip, allowlist):
-            raise TargetRefused(_refused_address(value))
-        return [parsed.ip]
-
-    host = parsed.host
-    if host in allowlist.names:
-        # Allowed by name: whatever it resolves to. Still resolved, so a
-        # caller that connects gets an address to dial.
-        return _resolve(host)
-    if is_internal_name(host):
+    addresses, refusal = _policy(allowlist).check_host(value)
+    if refusal is None:
+        return addresses
+    if refusal.reason is Reason.INVALID:
+        raise TargetRefused(f"Target {value!r} is not a valid host: {refusal.detail}")
+    if refusal.reason is Reason.INTERNAL_ADDRESS:
+        raise TargetRefused(_refused_address(value))
+    if refusal.reason is Reason.INTERNAL_NAME:
         raise TargetRefused(
-            f"Target host '{host}' is an internal or deployment service name "
+            f"Target host '{refusal.host}' is an internal or deployment service name "
             f"(network target policy; operators can allow internal targets "
             f"with {ALLOWLIST_ENV})"
         )
-    addresses = _resolve(host)
-    if not all(_address_allowed(addr, allowlist) for addr in addresses):
-        raise TargetRefused(_unresolvable(host))
-    return addresses
+    raise TargetRefused(_unresolvable(refusal.host))
 
 
-def _addresses_of_network(net: IPNetwork, value: str) -> Iterator[IPAddress]:
-    if net.num_addresses > MAX_TARGET_ADDRESSES:
+def _refuse_range(refusal: Optional[Refusal], value: str) -> None:
+    """Raise TargetRefused for the refusal of a range, in this service's words."""
+    if refusal is None:
+        return
+    if refusal.reason is Reason.TOO_LARGE:
         raise TargetRefused(
-            f"Target range '{value}' has {net.num_addresses} addresses; at most "
+            f"Target range '{value}' has {refusal.count} addresses; at most "
             f"{MAX_TARGET_ADDRESSES} may be scanned in one request"
         )
-    return iter(net)
+    raise TargetRefused(
+        f"Target range '{value}' includes {refusal.address}, a private, loopback, "
+        f"link-local, multicast, reserved or otherwise internal address "
+        f"(network target policy; operators can allow internal targets "
+        f"with {ALLOWLIST_ENV})"
+    )
 
 
 def _check_addresses(
     addresses: Iterable[IPAddress], value: str, allowlist: Allowlist
 ) -> None:
-    for addr in addresses:
-        if not _address_allowed(addr, allowlist):
-            raise TargetRefused(
-                f"Target range '{value}' includes {addr}, a private, loopback, "
-                f"link-local, multicast, reserved or otherwise internal address "
-                f"(network target policy; operators can allow internal targets "
-                f"with {ALLOWLIST_ENV})"
-            )
+    _refuse_range(_policy(allowlist).refuse_addresses(addresses), value)
 
 
 def _reject_space_and_control(value: str) -> None:
@@ -418,7 +337,7 @@ def check_ip(value: str, allowlist: Allowlist) -> None:
         addr = ipaddress.ip_address(value)
     except ValueError as exc:
         raise TargetRefused(f"Target {value!r} must be an IP address") from exc
-    if not _address_allowed(addr, allowlist):
+    if not _policy(allowlist).allows(addr):
         raise TargetRefused(_refused_address(value))
 
 
@@ -432,7 +351,7 @@ def check_cidr(value: str, allowlist: Allowlist) -> None:
         ) from exc
     # ip_network accepts what it prints back; "010.0.0.1/24" and friends
     # are already refused by the ipaddress module itself.
-    _check_addresses(_addresses_of_network(net, value), value, allowlist)
+    _refuse_range(_policy(allowlist).refuse_network(net), value)
 
 
 def check_network(value: str, allowlist: Allowlist) -> None:

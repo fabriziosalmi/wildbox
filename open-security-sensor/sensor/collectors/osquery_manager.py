@@ -7,11 +7,12 @@ Runs the sensor's query packs through ``osqueryi``, one query at a time, every
 - the processes running, with their user
 - the sockets processes hold open
 - the users logged in
-- system inventory and configuration
+- system inventory and configuration, every
+  ``performance.inventory_interval`` seconds
 
 Each answer is a picture of the host at the moment of the query, not a stream
 of events. osquery's event tables (``process_events``, ``socket_events``,
-``user_events``) are not queried (#745). They are filled by the event
+``user_events``, and on Windows ``windows_events``) are not queried (#745). They are filled by the event
 publishers of a long-running osquery. Through osqueryi, in the sensor's
 image, each answers no row and says "is event-based but events are
 disabled", with ``--disable_events=false`` as without. The sensor ran those
@@ -29,6 +30,7 @@ import asyncio
 import json
 import logging
 import shutil
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
@@ -66,6 +68,9 @@ class OsqueryManager:
         self.queries_failed = 0
         self.last_error: Optional[str] = None
         self._task: Optional[asyncio.Task] = None
+        # For each query of a pack that has an interval, as "<pack>.<query>":
+        # the monotonic time before which it is not asked again.
+        self._not_before: Dict[str, float] = {}
         # One osqueryi at a time: the collection cycle and the local API's
         # /api/v1/query do not start them side by side.
         self._query_lock = asyncio.Lock()
@@ -76,11 +81,12 @@ class OsqueryManager:
     def _build_query_packs(self) -> Dict[str, Dict[str, Any]]:
         """Build osquery query packs based on configuration.
 
-        Every query of every pack runs once per collection cycle. A pack's
-        name is the first part of its events' type ("process_events.
-        process_tree"), which the pipeline and the data service's event
-        types are keyed on: the names stay, though no pack reads an event
-        table.
+        Every query of a pack runs once per collection cycle, unless the
+        pack has an ``interval``: then each of its queries runs again that
+        many seconds after it last answered. A pack's name is the first
+        part of its events' type ("process_events.process_tree"), which the
+        pipeline and the data service's event types are keyed on: the names
+        stay, though no pack reads an event table.
         """
         packs = {}
 
@@ -133,18 +139,15 @@ class OsqueryManager:
                     'query': 'SELECT * FROM sudoers;',
                     'description': 'Sudo configuration'
                 }
-            elif is_windows():
-                # Unverified. windows_events is an event table too, and no
-                # Windows osquery was at hand to see whether osqueryi
-                # answers it: left as it was rather than removed on a guess.
-                user_queries['logon_events'] = {
-                    'query': '''
-                        SELECT datetime, eventid, source, data
-                        FROM windows_events
-                        WHERE channel = 'Security' AND eventid IN (4624, 4625, 4634, 4647);
-                    ''',
-                    'description': 'Windows logon events'
-                }
+            # No logon_events on Windows (#754). The query read
+            # windows_events, which is an event table like the three the
+            # module's description names (osquery's
+            # specs/windows/windows_events.table: event_subscriber=True),
+            # and filtered on a column, channel, that the table does not
+            # have (it is called source there): it could only fail. Read
+            # from the specification, not seen on a Windows host. Logons
+            # are read from the Security log by a log source of type
+            # windows_event, which keeps its position.
 
             packs['user_events'] = {'queries': user_queries}
 
@@ -186,7 +189,11 @@ class OsqueryManager:
                     }
                 })
 
-            packs['system_inventory'] = {'queries': inventory_queries}
+            packs['system_inventory'] = {
+                # Not at every cycle: see _collect_results.
+                'interval': self.config.performance.inventory_interval,
+                'queries': inventory_queries,
+            }
 
         return packs
 
@@ -236,9 +243,26 @@ class OsqueryManager:
             try:
                 # Execute queries and collect results
                 for pack_name, pack_config in self.query_packs.items():
+                    # A pack with an interval (the inventory) is not asked
+                    # at every cycle (#754). In the sensor's own image its
+                    # seven answers were 36.0 of the 36.9 kB a cycle
+                    # produced, and six of them were the same, byte for
+                    # byte, ten seconds later: some 7,000 copies a day of
+                    # the list of installed packages.
+                    interval = pack_config.get('interval') or 0
                     for query_name, query_config in pack_config['queries'].items():
+                        name = f"{pack_name}.{query_name}"
+                        if time.monotonic() < self._not_before.get(name, 0.0):
+                            continue
                         try:
-                            results = await self.execute_query(query_config['query'])
+                            asked = time.monotonic()
+                            results = await self._ask(query_config['query'])
+                            if results is None:
+                                # It failed: asked again at the next cycle,
+                                # not an interval later.
+                                continue
+                            if interval:
+                                self._not_before[name] = asked + interval
 
                             if results:
                                 event = {
@@ -281,6 +305,19 @@ class OsqueryManager:
 
         async with self._query_lock:
             return await self._run_osqueryi(query)
+
+    async def _ask(self, query: str) -> Optional[List[Dict[str, Any]]]:
+        """One query of the cycle: its rows, or None when it failed (a
+        query that answers no row has not failed)."""
+        if not self.running:
+            raise RuntimeError("osquery manager is not running")
+
+        async with self._query_lock:
+            # One osqueryi at a time: a failure counted meanwhile is this
+            # query's.
+            failed = self.queries_failed
+            rows = await self._run_osqueryi(query)
+            return rows if self.queries_failed == failed else None
 
     async def _run_osqueryi(self, query: str) -> List[Dict[str, Any]]:
         """One osqueryi: its rows, or none when it fails, takes too long or

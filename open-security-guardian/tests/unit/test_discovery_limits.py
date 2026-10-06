@@ -79,12 +79,21 @@ def queued():
 
 
 def test_the_bound_is_the_tools_services():
-    """One number for "how much may be scanned in one request" on the platform."""
+    """One number for "how much may be scanned in one request" on the platform.
+
+    It was a copy of the tools service's, checked against its source. Both
+    services now take it from the module they share (#748).
+    """
+    from open_security_shared import target_policy
+
+    assert MAX_SCAN_ADDRESSES is target_policy.MAX_TARGET_ADDRESSES
+    assert MAX_SCAN_ADDRESSES == 1024
     policy = GUARDIAN_DIR.parent / "open-security-tools" / "app" / "target_policy.py"
     if not policy.exists():
         pytest.skip("needs the repository checkout")
-    assert f"MAX_TARGET_ADDRESSES = {MAX_SCAN_ADDRESSES}\n" in policy.read_text()
-    assert MAX_SCAN_ADDRESSES == 1024
+    source = policy.read_text()
+    assert "MAX_TARGET_ADDRESSES =" not in source
+    assert "from open_security_shared.target_policy import (" in source
 
 
 @pytest.mark.parametrize(
@@ -94,7 +103,9 @@ def test_the_bound_is_the_tools_services():
         ("192.0.2.77/24", "192.0.2.0/24"),
         (" 192.0.2.0/30 ", "192.0.2.0/30"),
         ("192.0.2.9", "192.0.2.9/32"),
-        ("10.0.0.0/22", "10.0.0.0/22"),
+        # A /22, the bound. It was 10.0.0.0/22, which is internal and now
+        # refused unless the operator allows it (#748).
+        ("8.8.8.0/22", "8.8.8.0/22"),
         ("2001:db8::/118", "2001:db8::/118"),
     ],
 )
@@ -266,7 +277,14 @@ def test_a_rule_is_refused_for_what_its_runs_would_refuse(api, specification):
 
 
 @pytest.mark.django_db
-def test_a_rule_within_the_bounds_is_stored(api):
+def test_a_rule_within_the_bounds_is_stored(api, settings):
+    from guardian.scan_targets import ALLOWLIST_VARIABLE, allowed_internal_targets
+
+    # 10.0.0.0/8 is internal: the operator of this deployment allows it
+    # (#748). Without that, the rule is refused for where its networks are.
+    settings.SCAN_ALLOWED_INTERNAL_TARGETS = allowed_internal_targets(
+        {ALLOWLIST_VARIABLE: "10.0.0.0/8"}
+    )
     team = uuid.uuid4()
     networks = [f"10.0.{number * 4}.0/22" for number in range(MAX_RULE_NETWORKS)]
     specification = {"networks": networks, "scan_type": "comprehensive"}

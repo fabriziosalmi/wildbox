@@ -525,14 +525,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard image: the devtools are rendered in development only,
   nothing calls `fromJSON()`, and the standalone output holds no code
   of solid-js, seroval or source-map-js, before or after.
+- **guardian's discovery and port scans refuse internal targets** (#748).
+  A team's owner or admin could point an asset discovery, a discovery
+  rule or a port scan at any network, and `guardian-worker`, which
+  connects to it, sits inside the stack's networks: with every service
+  in `docker-compose.yml`, and on `data` (PostgreSQL, Redis, identity)
+  and `egress` in the production overlay. A discovery of the worker's
+  own loopback, of the range Docker gave the stack, of `10.0.0.0/24` or
+  of `169.254.169.254/32` was accepted, stored in a rule and dialed. The
+  tools service has refused such targets since 0.11.0 (#614); guardian
+  now applies the same policy. Private, loopback, link-local, multicast,
+  reserved, shared and cloud-metadata addresses are refused, IPv4 and
+  IPv6, an IPv4 address written inside an IPv6 one included
+  (`::ffff:10.0.0.1`, 6to4, NAT64), and a network is refused whole when
+  any address of it is internal. `assets/assets/discover/`, a discovery
+  rule that is created or changed, and `assets/assets/{id}/scan/` answer
+  400 with the reason and queue nothing; the worker checks again when
+  the task runs, for a rule or an asset stored before. An asset at an
+  internal address is still recorded, and is not port scanned.
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists the internal ranges the
+  operator allows; it is empty by default (see Changed).
 
 ### Removed
 
+- **gateway: five variables Compose passed it and nothing read** (#756).
+  `docker-compose.yml` gave the gateway `ENVIRONMENT`, `WILDBOX_ENV`,
+  `GATEWAY_LOG_LEVEL` and `NGINX_ENVSUBST_OUTPUT_DIR`, and
+  `docker-compose.prod.yml` `ENVIRONMENT` and `LOG_LEVEL`. No nginx
+  directive, Lua module or script of the gateway reads any of them: the
+  error log level is `warn` in `nginx.conf`, and the last is a setting of
+  the official nginx image's entrypoint, which this image does not use.
+  They are no longer passed, and the gateway's entries are gone from the
+  list of unread variables in
+  `tests/scripts/test_compose_variables_are_read.py`.
+- **gateway: the Compose file of its own, which could not start, and
+  what drove it** (#756). `open-security-gateway/docker-compose.yml`
+  started the gateway and a Redis it does not use on a network of their
+  own, where nginx stopped with `host not found in upstream
+  "open-security-identity:8001"`: the gateway resolves every service's
+  name when it starts. Removed with it: the `Makefile`,
+  `scripts/setup.sh` and `test/integration_test.sh`, which started that
+  file; `scripts/test_config.sh`, which reported the configuration valid
+  after checking one it had written itself; and the directory's
+  `.env.example`, which only that file read. The gateway runs in the root
+  stack; its README says how the harness runs it against stand-ins.
+- **gateway: the `per_ip` rate-limit zone** (#756), 10 MB of shared
+  memory that no location used, and a commented-out `limit_req` on the
+  tools route that said rate limiting was disabled there. It is not: the
+  server-wide limit applies to that route as to the others.
+- **The sensor's `user_events.logon_events` osquery query, on Windows**
+  (#754). It was the one event-table query #745 left, for want of a
+  Windows host to try it on. osquery's specification of the table
+  settles it without one: `windows_events` is an event subscriber's
+  table, like the three removed then, and the query filtered on a
+  `channel` column the table does not have (it has `source`), so it
+  could only fail at every cycle. Logons are read from the `Security`
+  log by a log source of type `windows_event`, which keeps its
+  position. Not run on a Windows host.
 - **Variables the root Compose files passed to containers that read
   none of them** (#665). The test added in #743 listed 26; every one
-  but the gateway's is settled here, and the test found more once it
-  stopped counting a variable as read by a service because some module
-  of the shared package the service does not import reads it.
+  but the gateway's, which #756 removed, is settled here, and the test
+  found more once it stopped counting a variable as read by a service
+  because some module of the shared package the service does not import
+  reads it.
   - dashboard: `ENVIRONMENT`, `NEXT_PUBLIC_DEBUG`, `NEXTAUTH_SECRET`
     and `NEXTAUTH_URL`; in `docker-compose.dev.yml` five
     `NEXT_PUBLIC_*_API_URL` and the two `NEXTAUTH_*`, with the
@@ -639,9 +694,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to a container is neither a field of its settings nor read by its
   code. The 26 it found that the change did not fix were listed in
   `tests/scripts/test_compose_variables_are_read.py`, by file and
-  service; they are settled by #665 (the first entry of this section,
-  and guardian's `CORS_ALLOWED_ORIGINS` under Fixed), the gateway's
-  excepted.
+  service; they are settled by #665 (an entry of this section, and
+  guardian's `CORS_ALLOWED_ORIGINS` under Fixed) and, for the gateway's,
+  by #756. The list is empty.
 - **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
   client that was its only reader.** `WildboxAPIClient.health_check()`
   had no caller, and no tool of the agent calls the responder. The
@@ -813,6 +868,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The sensor no longer loses the event it had just taken when it
+  stops** (#754). Before it stops its pipeline the sensor waits for the
+  events already collected to reach the sender. It decided that nothing
+  was left by looking, every 20 ms, at the size of its two queues and at
+  a count the processor's workers kept. A worker took an event with
+  `asyncio.wait_for(queue.get())`, which on Python 3.11 (the image's)
+  runs the `get` in a task of its own: the event left the queue in one
+  turn of the event loop, and the worker had it, and counted it, two
+  turns later. A look in between found two empty queues and nothing in
+  hand, the pipeline was stopped, and the worker put the event on a
+  queue nobody read any more, with no count and no log line. An event
+  its collector can read again (a line of a log with a saved position,
+  a file change against a saved baseline) was sent after the next
+  start; any other was lost. A trace of a failing run shows the four
+  steps in consecutive turns. This is what made
+  `test_what_was_collected_just_before_the_stop_still_reaches_the_gateway`
+  fail about once in fifty runs. Each queue now counts an event from the
+  moment it is put there until its reader says it has finished with it
+  (`task_done()`), and the stop waits on those two counts (`join()`),
+  the collectors' queue first: there is no state in which an event is
+  in neither. The worker awaits the queue directly.
+- **Events the sensor's processor holds when the sensor stops are
+  counted, and its workers end** (#754). Stopping the processor set a
+  flag that its workers read when they next came round: a worker that
+  held an event at that moment (in a reverse DNS lookup, or waiting for
+  room behind a full buffer) finished it afterwards and put it where
+  nothing read it, after the sensor had logged how many events were
+  left. The workers are now stopped with the processor and waited for;
+  what they held is in that log line, `Stopped with N events still on
+  their way to the sender`, with what the queues held, and the events of
+  a log source among them are read again after the restart. An event
+  that raises in a worker is counted under `errors` and its log line's
+  position released; it used to keep the position of its file where it
+  was for as long as the sensor ran. `events_in_pipeline` in
+  `GET /api/v1/stats` includes the events in the workers' hands and the
+  one the sender holds while its buffer is full, so the counters add up
+  without the "give or take" the README allowed for.
+- **A sensor stopped while it writes its log positions writes them
+  again** (#754). The periodic write is made in a thread; the stop
+  cancelled the task waiting for it, which had already marked the
+  positions as written. When that write then failed, the stop wrote
+  nothing, and the lines accepted since the last write were sent a
+  second time after the restart. The file monitor's baseline already
+  handled this.
 - **guardian reads `CORS_ALLOWED_ORIGINS`** (#665).
   `docker-compose.prod.yml` has always passed the deployment's
   `CORS_ORIGINS` to guardian under that name, and guardian's list of
@@ -1789,6 +1888,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **guardian scans an internal network only if
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists it** (#748). This changes a
+  deployment that uses guardian to discover or port scan its own LAN:
+  after the upgrade those requests answer 400, and a stored discovery
+  rule skips each internal network on every run (`guardian-worker` logs
+  the network and the variable). To keep scanning, set the variable in
+  `.env` to the ranges, as comma-separated CIDR ranges and IP addresses
+  (`192.168.50.0/24,10.20.0.0/16`), and recreate `guardian` and
+  `guardian-worker`. It is empty by default because no default can tell
+  a LAN from the stack: Docker takes the stack's networks from the same
+  private ranges. A discovery must lie inside the listed ranges
+  entirely, and the limit of 1,024 addresses still applies. A host name
+  is not an entry, and an entry that is not a range or an address stops
+  both containers at start-up, naming the variable and the entry. It is
+  guardian's own list: `TOOLS_ALLOWED_INTERNAL_TARGETS` is not read, and
+  a deployment where both services scan a lab sets both.
+- **One implementation of what may be scanned** (#748).
+  `open_security_shared.target_policy` now holds what the tools service
+  decided in `app/target_policy.py`: which addresses and names are
+  internal, how a host is parsed, what an allowlist covers and the limit
+  of 1,024 addresses. The tools service and guardian both use it, and
+  one file of cases, `tests/shared/target_policy_vectors.json`, is run
+  by the shared package's tests, the tools service's and guardian's. The
+  module needs the standard library only, so guardian's image installs
+  the shared package with no extra, as before. The tools service answers
+  as it did: its refusals, their wording and its setting are unchanged.
+- **The sensor asks osquery for the inventory once an hour, not every
+  ten seconds** (#754). Every query of every pack ran at every cycle
+  (`performance.query_interval`, 10 seconds), the seven of
+  `system_inventory` among them. Measured in the sensor's image, those
+  seven answers were 36.0 of the 36.9 kB one cycle produced, and six of
+  them were identical ten seconds later: about 7,000 copies a day of the
+  list of installed packages, sent and stored as events. They now run
+  when the sensor starts and every `performance.inventory_interval`
+  seconds after that (3600 by default, at most a week; 0 restores the
+  old pace), each counted from its own last answer, and one that fails
+  is asked again at the next cycle. The processes, sockets and users
+  packs still run at every cycle. `GET /api/v1/config` reports the
+  setting.
 - **No pydantic v1 form is left in the services** (#665). The
   responder and cspm declared 48 settings as
   `Field(env="REDIS_URL")`, which pydantic-settings v2 ignores: each
@@ -2064,6 +2202,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The gateway's per-address rate limits are settings** (#756).
+  `GATEWAY_RATE_LIMIT_PER_SECOND` (100), `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND`
+  (5) and `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` (500) are the requests a
+  second the gateway accepts from one client address: on every route, on
+  the login, registration and forgotten-password routes, and for the
+  dashboard's static assets. The defaults are the rates that were written
+  in `nginx.conf`, so a deployment that sets nothing is limited as before;
+  the bursts are unchanged. An operator whose users all arrive from one
+  address, behind a NAT or another proxy, can now raise a rate without
+  editing the configuration. nginx takes a zone's rate as a literal, so
+  the entrypoint writes the zones before it starts nginx
+  (`scripts/render_rate_limits.sh`). A value that is not a whole number
+  from 1 to 100000 stops the gateway at start with a message that names
+  the setting, as `RATE_LIMIT_PER_HOUR` does, and the gateway logs the
+  rates it runs with. The limits are counted by the address of the
+  connection: nothing a client sends changes them. The deployment guide
+  and the gateway's README say what each protects.
 - **The dashboard has an AI analysis page** (#727). `/ai-analysis`, in
   the sidebar, submits an indicator to the agents service and follows
   the task: queued, running with the worker's progress, failed with the
@@ -2158,6 +2313,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The integration and Playwright suites no longer meet the gateway's
+  per-address rate limit** (#756). The gateway allows one address 100
+  requests a second with a burst of 10, and 5 a second on the login and
+  registration routes. Every request of a suite comes from the runner,
+  one after another, and the stack answers in a few milliseconds: at one
+  request every 7 ms the 35th of a run got nginx's `429`, whatever the
+  test was about (`test_guardian_pagination_links`, then
+  `test_api_key_scopes_backends`). The Integration Tests, Production
+  Stack and E2E Full-Stack jobs now start their stack with the three
+  rates at 10000, and the suite checks before its first test that the
+  gateway lets its pace through, failing the run by name if it does not.
+  What had been added to live with the limit is removed: the 25 ms pause
+  between requests in the pagination test's fixture, the retry of a `429`
+  in `test_password_policy`, the same retry in the Playwright helpers for
+  login, logout and registration, which also retried identity's `429` for
+  a locked account, and the 450 ms pause between iterations of the logout
+  race spec. No test paces itself or retries a `429` for the gateway any
+  more. The chaos job keeps a deployment's rates: its load experiment
+  takes a `429` as an answer.
+- **The gateway harness tests the per-address limits at the rates a
+  deployment has** (#756). Nothing did: the suites only ever met them by
+  accident. `open-security-gateway/test/rate_limit_tests.py` runs against
+  the production image with none of the settings: a volley from one
+  address is refused past the burst and a stream is held to the rate, in
+  the `global` zone and in the `auth` zone, with bounds a rate of half or
+  twice the default fails; a refusal is nginx's `429` and the count the
+  client receives is the count nginx logs for that zone; requests
+  without a credential are counted and the ones let through answered
+  `401`; a refused method, a preflight, `/health` and an unknown API path
+  are not counted; login and registration share one counter; static
+  assets are not under the global limit; and a gateway started with the
+  rates the suites set lets through the sequences refused at the
+  defaults. `startup_config_tests.sh` checks, in the test image and the
+  production one, that a rate that is not a whole number in range stops
+  the gateway.
+- **The sensor's stop test waits for its events, not for the clock**
+  (#754).
+  `test_what_was_collected_just_before_the_stop_still_reaches_the_gateway`
+  gives nine events 0.9 seconds of work and expected all of them within
+  the two seconds the sensor allows before it stops its pipeline. Those
+  are seconds of the clock: with the event loop held for 1.5 seconds,
+  as a host that does not schedule the process holds it, the ninth
+  event is left behind at the deadline, every time, and with the CPUs
+  taken the same wait was measured at 2.6 seconds. The test now sets
+  the deadline out of reach; what the deadline leaves behind has tests
+  of its own, which hold the events instead of timing them.
+- **The sensor's statistics tests measure a stand-in, not the test
+  process** (#754). `test_agent_stats.py` started the real resource
+  monitor, which measured pytest's own process, and expected no alert:
+  true for as long as the suite, its plugins and the coverage tracer
+  stayed under `performance.max_memory_mb` (128 MB) on whatever host ran
+  them, and the test that wanted an alert set the threshold to 1 MB to
+  get one. The monitor now reads a stand-in process whose memory and
+  CPU the tests set.
 - **Path-filtered workflows follow what they build and run** (#736).
   Docker Build Validation was triggered by `open-security-*/app/**`, the
   lock, the Dockerfile, `pyproject.toml` and `manage.py`: a change to

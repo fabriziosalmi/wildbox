@@ -24,7 +24,7 @@ from .serializers import (
 )
 from .tasks import discover_assets, scan_asset_ports, update_asset_inventory
 from .filters import AssetFilter
-from .networks import SCAN_TYPES, check_network
+from .networks import SCAN_TYPES, check_address, check_network
 from apps.core.permissions import IsAssetManager, IsGatewayAdminOrReadOnly
 from apps.core.tenancy import TeamScopedViewSetMixin, record_team_task
 
@@ -61,6 +61,11 @@ class AssetViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         app records external scanner runs and has no task of its own; the
         scan guardian itself performs is ``scan_asset_ports``, the one an
         asset with an address already gets on creation.
+
+        An asset at an internal address is not scanned, unless the operator
+        allows its range (#748): the worker that would scan it sits inside
+        the stack's networks. The refusal is a message written for the
+        caller (apps/assets/networks.py), and nothing is queued.
         """
         asset = self.get_object()
 
@@ -69,6 +74,9 @@ class AssetViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
                 {'error': 'Asset has no IP address to scan'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        _, refusal = check_address(asset.ip_address)
+        if refusal is not None:
+            return Response({'error': refusal}, status=status.HTTP_400_BAD_REQUEST)
 
         task = record_team_task(scan_asset_ports.delay(str(asset.id)), asset.team_id)
 
@@ -132,7 +140,8 @@ class AssetViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         """Initiate asset discovery"""
         # Checked before anything is queued (#724): a value that is not a
         # network was only found out by the worker, after its retries, and a
-        # range of any size was accepted.
+        # range of any size was accepted. And an internal range is refused
+        # unless the operator allows it (#748).
         network, refusal = check_network(request.data.get('network_range'))
         if refusal is not None:
             return Response(
