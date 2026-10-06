@@ -91,7 +91,9 @@
   ],
   "overrides": {
     "minimatch": "^10.2.1",
-    "postcss": "$postcss"
+    "postcss": "$postcss",
+    "seroval": "^1.6.3",
+    "seroval-plugins": "^1.6.3"
   },
   "author": "Wildbox Security",
   "license": "MIT"
