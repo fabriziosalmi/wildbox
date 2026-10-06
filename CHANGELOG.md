@@ -68,6 +68,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release keeps the percentages it was stored with in its `summary`; the
   compliance route computes from the results and answers the new figure
   for the same scan.
+- **A cspm scan cancelled while it ran can no longer end as completed**
+  (#778). The API cancels a scan and the worker completes or fails it,
+  from two processes, and each read the scan's status, decided, and
+  wrote it back in separate commands. A cancellation and a completion
+  that crossed left a scan recorded as cancelled with a report stored
+  and counted in the team's figures, or one the API had answered
+  "cancelled" for that then read completed; the completion did not look
+  at the status at all, so a scan whose worker was not stopped in time
+  always ended as completed. The three now read and write in one Redis
+  transaction (`WATCH`/`MULTI`): the first to write decides, the other
+  changes nothing, and a completed scan's report, status and index entry
+  are written together. A scan cancelled while it ran stays cancelled,
+  and has no report.
 
 ## [0.12.0] - 2026-10-06
 

@@ -578,7 +578,13 @@ deletes the scan's encrypted credentials from Redis if no worker took them yet.
   before a worker restarted, is still delivered. The worker reads the scan's stored
   status before it opens a session, and returns without running a scan that reads
   `cancelled`.
-- A scan cancelled while it ran has no report: `GET .../report` answers `400`.
+- A scan cancelled while it ran has no report: `GET .../report` answers `400`. That
+  holds when the revocation does not stop the worker in time and the scan runs to
+  its end: the scan stays `cancelled` and the report is not stored.
+- **A scan ends once.** The cancellation, the worker's completion and its failure
+  each read the scan's status and write the new one in one Redis transaction
+  (`WATCH`/`MULTI`): of two that cross, the first to write decides, and the other
+  changes nothing. A completed scan's report and status are written together.
 
 ---
 

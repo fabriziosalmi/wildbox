@@ -42,6 +42,8 @@ import time
 import zlib
 from typing import Any, Dict, Iterator, Optional
 
+from redis.exceptions import WatchError
+
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -94,9 +96,9 @@ def legacy_team_index_key(team_id: str) -> str:
     return f"cspm:team:{team_id}:scans"
 
 
-def _index_scan(redis, team_id: str, scan_id: str, expires_at: float) -> None:
+def _tidy_index(redis, team_id: str) -> None:
+    """Prune the team's expired index entries and set the key's own expiry."""
     key = team_index_key(team_id)
-    redis.zadd(key, {scan_id: expires_at})
     redis.zremrangebyscore(key, "-inf", _now())
     # The key lives as long as its longest-lived entry. Taking the highest
     # score, rather than now + retention, keeps entries written under a
@@ -106,11 +108,17 @@ def _index_scan(redis, team_id: str, scan_id: str, expires_at: float) -> None:
         redis.expireat(key, int(newest[0][1]) + 1)
 
 
-def save_metadata(redis, metadata: Dict[str, Any]) -> None:
-    """Write a scan's metadata and its team index entry, with one expiry.
+def _index_scan(redis, team_id: str, scan_id: str, expires_at: float) -> None:
+    redis.zadd(team_index_key(team_id), {scan_id: expires_at})
+    _tidy_index(redis, team_id)
 
-    The only function that writes scan metadata: single scans, batch scans,
-    cancellation, completion and failure all go through it.
+
+def save_metadata(redis, metadata: Dict[str, Any]) -> None:
+    """Write a new scan's metadata and its team index entry, with one expiry.
+
+    For the scan's first record, which nothing else writes yet. Its end
+    (completed, failed, cancelled) is written by _end_scan, which reads and
+    writes in one transaction.
     """
     ttl = retention_seconds()
     expires_at = _now() + ttl
@@ -130,8 +138,7 @@ def forget_scan(redis, scan_id: str, team_id: str) -> None:
     redis.zrem(team_index_key(team_id), scan_id)
 
 
-def load_metadata(redis, scan_id: str) -> Optional[Dict[str, Any]]:
-    raw = redis.get(metadata_key(scan_id))
+def _decode_metadata(raw) -> Optional[Dict[str, Any]]:
     if not raw:
         return None
     try:
@@ -139,6 +146,10 @@ def load_metadata(redis, scan_id: str) -> Optional[Dict[str, Any]]:
     except (ValueError, TypeError):
         return None
     return metadata if isinstance(metadata, dict) else None
+
+
+def load_metadata(redis, scan_id: str) -> Optional[Dict[str, Any]]:
+    return _decode_metadata(redis.get(metadata_key(scan_id)))
 
 
 def team_scan_metadata(redis, team_id: str) -> Iterator[Dict[str, Any]]:
@@ -189,34 +200,87 @@ def load_report(redis, scan_id: str) -> Optional[Dict[str, Any]]:
     return report
 
 
+def _end_scan(
+    redis,
+    scan_id: str,
+    status: str,
+    time_field: str,
+    at: str,
+    report: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    """Give a scan in progress its final status, in one transaction (#778).
+
+    Returns None when it did. Otherwise nothing is written and the answer
+    says why: the final status the scan already has, or "missing" when its
+    metadata is gone.
+
+    The API cancels a scan and the worker completes or fails it, from two
+    processes. Each used to read the metadata, decide, and write it back in
+    separate commands, so the two could decide on the same reading: a
+    cancellation and a completion that crossed left a scan recorded as
+    cancelled with a report stored and counted in the team's figures, or
+    one answered as cancelled that then read completed. complete_scan did
+    not look at the status at all, and wrote over a cancellation.
+
+    The metadata key is watched from before it is read to the EXEC that
+    writes it: when anything wrote it in between, Redis runs none of the
+    queued commands, and the scan is read and decided on again. That second
+    reading finds the other writer's final status, so the loop ends: a
+    scan's metadata is written once at its start and once at its end.
+
+    The report of a completed scan, the metadata and the team index entry
+    are written by that one EXEC: a reader that finds "completed" finds
+    the report, and a scan that ends otherwise never has one.
+    """
+    key = metadata_key(scan_id)
+    with redis.pipeline() as pipe:
+        while True:
+            try:
+                pipe.watch(key)
+                metadata = _decode_metadata(pipe.get(key))
+                if metadata is None:
+                    return "missing"
+                if metadata.get("status") in FINAL_STATUSES:
+                    return metadata["status"]
+                metadata["status"] = status
+                metadata[time_field] = at
+                ttl = retention_seconds()
+                pipe.multi()
+                if report is not None:
+                    pipe.setex(report_key(scan_id), ttl, encode_report(report))
+                pipe.setex(key, ttl, json.dumps(metadata))
+                pipe.zadd(team_index_key(metadata["team_id"]), {scan_id: _now() + ttl})
+                pipe.execute()
+                break
+            except WatchError:
+                continue
+    _tidy_index(redis, metadata["team_id"])
+    return None
+
+
 def complete_scan(
     redis, scan_id: str, report: Dict[str, Any], completed_at: str
 ) -> bool:
-    """Store a completed scan's report and mark its metadata completed.
+    """Store a scan's report and mark it completed, if it is still in progress.
 
-    The report is written first, so a reader that sees "completed" finds it.
-    Returns False, and stores nothing, when the scan's metadata is gone: the
-    report could not be attributed to a team.
+    Returns True when it did. Returns False, and stores nothing, when the
+    scan's metadata is gone (the report could not be attributed to a team)
+    or when the scan already has a final status: a scan cancelled while it
+    ran stays cancelled, and has no report.
     """
-    metadata = load_metadata(redis, scan_id)
-    if metadata is None:
+    refused = _end_scan(redis, scan_id, "completed", "completed_at", completed_at, report)
+    if refused == "missing":
         logger.warning("Scan %s completed but has no metadata; report dropped", scan_id)
-        return False
-    redis.setex(report_key(scan_id), retention_seconds(), encode_report(report))
-    metadata["status"] = "completed"
-    metadata["completed_at"] = completed_at
-    save_metadata(redis, metadata)
-    return True
+    elif refused is not None:
+        logger.info(
+            "Scan %s completed but is already %s; report dropped", scan_id, refused
+        )
+    return refused is None
 
 
 def fail_scan(redis, scan_id: str, failed_at: str) -> None:
     """Mark a scan that is still in progress as failed."""
-    metadata = load_metadata(redis, scan_id)
-    if metadata is None or metadata.get("status") in FINAL_STATUSES:
-        return
-    metadata["status"] = "failed"
-    metadata["failed_at"] = failed_at
-    save_metadata(redis, metadata)
+    _end_scan(redis, scan_id, "failed", "failed_at", failed_at)
 
 
 def cancel_scan(redis, scan_id: str, cancelled_at: str) -> bool:
@@ -228,14 +292,8 @@ def cancel_scan(redis, scan_id: str, cancelled_at: str) -> bool:
     report. DELETE /api/v1/scans/{id} used to write "cancelled" over
     whatever the scan's status was (#766).
 
-    The metadata is read again here, not taken from the caller, so a scan
-    the worker finished while the caller was revoking its task is not
-    overwritten with what the caller read before.
+    The status is read here, in the transaction that writes it, not taken
+    from the caller: a scan the worker finished while the caller was
+    revoking its task is not overwritten with what the caller read before.
     """
-    metadata = load_metadata(redis, scan_id)
-    if metadata is None or metadata.get("status") in FINAL_STATUSES:
-        return False
-    metadata["status"] = "cancelled"
-    metadata["cancelled_at"] = cancelled_at
-    save_metadata(redis, metadata)
-    return True
+    return _end_scan(redis, scan_id, "cancelled", "cancelled_at", cancelled_at) is None

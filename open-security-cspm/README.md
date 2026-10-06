@@ -414,6 +414,14 @@ worker: Celery keeps revocations in the memory of the workers that were up,
 so the worker reads the scan's stored status before it opens a session, and
 the route deletes the scan's encrypted credentials from Redis.
 
+A scan ends once. The cancellation, the worker's completion and its failure
+each read the scan's status and write the new one in one Redis transaction
+(`WATCH`/`MULTI`, `_end_scan` in `app/scan_store.py`): of two that cross,
+the first to write decides and the other changes nothing. A scan cancelled
+while a worker ran it stays `cancelled` when the worker reaches the end all
+the same, and its report is not stored; a completed scan's report and
+status are written together.
+
 ### Health
 
 `GET /health` answers with the status code what its body says, for the
