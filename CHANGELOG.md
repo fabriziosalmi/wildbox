@@ -449,6 +449,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`ENABLE_METRICS` for identity in `docker-compose.prod.yml`, and
+  `ENABLE_METRICS` and `METRICS_PORT` in `.env.example`** (#743). No
+  code reads the first, and no Compose file passed the other two to a
+  container: every service that has a `/metrics` route always serves
+  it. A test now reads the root Compose files and the code of every
+  service built from this repository, and fails when a variable passed
+  to a container is neither a field of its settings nor read by its
+  code. The 26 it finds today and this change does not fix are listed
+  in `tests/scripts/test_compose_variables_are_read.py`, by file and
+  service; they include `CORS_ALLOWED_ORIGINS` for guardian in the
+  production overlay, which guardian does not read.
 - **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
   client that was its only reader.** `WildboxAPIClient.health_check()`
   had no caller, and no tool of the agent calls the responder. The
@@ -602,6 +613,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **agents and data report one version** (#743). Each passed one
+  version literal to the application and a second to the middleware
+  that writes the `X-API-Version` header of every response. Both now
+  read one name, as tools does. A test reads every FastAPI service's
+  application module and fails when the two are not the same name or
+  either is a literal; responder still passes one, which the test
+  lists.
+- **The visibility timeout of the tools task queue is a setting of the
+  service, and the documentation states what happens to a task whose
+  worker is killed** (#743). `open-security-tools/app/celery_app.py`
+  set no `broker_transport_options`, so the timeout was the Redis
+  transport's default, 3600 seconds, and the alert rule's comment and
+  the deployment guide said "an hour" for a value nothing set and
+  nobody had measured. It is now set, to the same value, and a test
+  fails if it stops outlasting the longest a live worker can hold a
+  task. Measured with a worker killed whole by `SIGKILL` while it ran a
+  task: the task is not returned to the queue and goes on reading
+  `running`; nothing returns it while no worker runs; a worker looks
+  for such tasks when it starts and every hundred seconds after that,
+  and returns those it finds taken longer ago than the timeout, so a
+  worker restarted at once leaves the task for a later look. The rule
+  comment, the guide and the endpoint reference say so.
+- **A tool task whose worker process keeps dying is failed, not put
+  back on the queue without end** (#743). When the process running a task
+  dies, Celery returns the task to the queue, which is right for a
+  process killed once and wrong for a tool that takes its process down
+  on every start (out of memory, a crash in native code): the task came
+  back every time, read `running` indefinitely and killed a worker process
+  on each round. A task now counts its starts in Redis, and when three
+  of them have ended with the process gone the next delivery ends it as
+  `failed` with the reason,
+  `The worker process running this task was lost 3 times; the task was
+  not started again`. It is counted once as a failure in
+  `wildbox_tool_async_executions_total`. A retry is not a lost start.
+- **A canceled tool task never runs, and reads `cancelled` at once**
+  (#743). `DELETE /api/v1/tasks/{id}` asked Celery to revoke the task,
+  which is a broadcast the workers running at that moment keep in
+  memory. For a pending task with no worker alive, or one that restarts
+  before it takes the task, nobody held it: the task ran when a worker
+  came back, and until then its owner read `pending`. The cancellation
+  is now a record in Redis, written after the ownership check and
+  before the broadcast. The task reads it first when it starts and does
+  not run, whichever worker takes it and whenever; a Redis that does
+  not answer is not read as "not canceled". The API reads it too: the
+  task and the task list say `cancelled` as soon as the owner cancels,
+  and a second `DELETE` answers 400. A task that finished before the
+  cancellation could stop it reads as it finished. A test cancels a
+  queued task and only then starts a real worker: the task is dropped,
+  counted once, and its tool leaves no trace.
+- **tools checks an asynchronous submission as it checks a synchronous
+  run, and queues nothing that fails** (#743).
+  `POST /api/v1/tools/{tool}/async` recorded an owner and queued a task
+  for whatever name and body it was given, and answered 202. The
+  synchronous route answers 404 for a name that is no tool, 422 for
+  input the tool's schema refuses and 400 for a target the network
+  target policy refuses, before a run exists; the asynchronous caller
+  read the same back from the task, as `failed`, after it had taken a
+  place in the queue and a worker. Both routes and the worker now call
+  one check, and the submission gives the answers of the synchronous
+  route, with no task created. The worker checks again when the task
+  runs, because a host name can resolve to another address by then.
+  The error a task stores for refused input names the field and the
+  kind of error; it used to be the validator's own message, which
+  quotes the value refused, and the routes logged that message too. A
+  tool name is one package name: a name with a dot in it, taken from
+  the URL, was imported as a path below the tools package. A client
+  that submitted invalid requests and read the refusal from the task
+  now gets it from the submission.
 - **tools reports one version.** `/health` and `/api` said `1.0.0` while
   the OpenAPI schema and the `X-API-Version` header of the same
   responses said `0.1.6`. All four now read the version written once in

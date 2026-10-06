@@ -6,12 +6,21 @@ from pydantic import BaseModel, Field
 
 
 class MetricsProbeInput(BaseModel):
-    behaviour: Literal["return", "raise", "crash", "sleep", "hang", "die_once"] = (
-        "return"
-    )
+    behaviour: Literal[
+        "return",
+        "raise",
+        "crash",
+        "sleep",
+        "hang",
+        "touch",
+        "die",
+        "die_once",
+        "sleep_once",
+    ] = "return"
     seconds: float = Field(default=0.0, ge=0, le=120)
-    # For "die_once": a file the first attempt creates before it dies, so
-    # that the second one knows it is the second.
+    # A file the probe writes when it starts, for the behaviours that must
+    # know whether the task was started before, and for the tests to see
+    # whether, and how often, the tool ran.
     marker: str = ""
 
 

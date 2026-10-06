@@ -193,6 +193,10 @@ class FakeRedis:
         self.ttl[key] = seconds
         return True
 
+    def incr(self, key):
+        self.kv[key] = str(int(self.kv.get(key, 0)) + 1)
+        return int(self.kv[key])
+
     def zadd(self, key, mapping):
         self.zsets.setdefault(key, {}).update(mapping)
         return len(mapping)
@@ -344,6 +348,34 @@ def redis_client(redis_url):
     client = redis.Redis.from_url(redis_url, decode_responses=True)
     yield client
     client.close()
+
+
+# --- real workers -------------------------------------------------------------
+#
+# support/worker_stack.py starts the service's own Celery app as prefork
+# workers; the tests import its names (PROBE) from there.
+SUPPORT = Path(__file__).resolve().parent / "support"
+if str(SUPPORT) not in sys.path:
+    sys.path.insert(0, str(SUPPORT))
+
+
+@pytest.fixture(scope="session")
+def stack(redis_url, tmp_path_factory):
+    """One worker of the service for the session, and the means to start more.
+
+    A test that needs a worker in a particular state (started after a task
+    was cancelled, killed while it holds one) starts its own on a queue of
+    its own with ``stack.start_worker(stack.new_queue())``.
+    """
+    pytest.importorskip("celery")
+    from worker_stack import Stack
+
+    running = Stack(redis_url, tmp_path_factory.mktemp("workers"))
+    try:
+        running.start_worker()
+        yield running
+    finally:
+        running.close()
 
 
 class InMemoryOperationLimiter:

@@ -41,7 +41,10 @@ def client():
     install_error_handlers(app)
     app.include_router(router_module.router)
     app.dependency_overrides[verify_api_key] = lambda: GatewayUser(
-        user_id=str(uuid.uuid4()), team_id=str(uuid.uuid4()), role="member", auth_type="session"
+        user_id=str(uuid.uuid4()),
+        team_id=str(uuid.uuid4()),
+        role="member",
+        auth_type="session",
     )
     return TestClient(app, raise_server_exceptions=False)
 
@@ -106,9 +109,24 @@ def test_the_submitted_values_are_not_logged_either(client, caplog):
 
 
 def test_the_reduction_is_the_one_every_service_shares():
-    # app/api/router.py had a copy of its own (#735).
+    # app/api/router.py had a copy of its own (#735). The checks before a
+    # run now live in app/prerun.py (#743), for the synchronous route, the
+    # asynchronous submission and the task: that is where the shared
+    # reduction is used, and the router keeps none.
+    from app import prerun
     from app.api import router
     from open_security_shared import errors
+    from pydantic import BaseModel, ValidationError
 
-    assert router.field_errors is errors.field_errors
+    assert prerun.field_errors is errors.field_errors
+    assert not hasattr(router, "field_errors")
     assert not hasattr(router, "input_field_errors")
+
+    class Model(BaseModel):
+        port: int
+
+    with pytest.raises(ValidationError) as refused:
+        Model(port=SECRET_LOOKING)
+    reduced = prerun.input_field_errors(refused.value)
+    assert reduced == errors.field_errors(refused.value.errors(include_url=False))
+    assert SECRET_LOOKING not in str(reduced)

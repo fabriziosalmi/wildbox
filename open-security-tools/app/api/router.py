@@ -2,16 +2,14 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, Any, List
-from open_security_shared.errors import field_errors
 from open_security_shared.gateway_auth import GatewayUser
-from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from app.auth import require_tools_execute, verify_api_key
 from app.execution_manager import execution_manager
 from app.logging_config import get_logger
+from app.prerun import PRE_RUN_REFUSALS, check_tool_input, http_error, refusal_log
 from app.security.rate_limit import UNAVAILABLE_MESSAGE, RateLimitUnavailable
-from app.target_policy import TargetRefused, enforce_target_policy
 from app.tool_loader import find_schema_classes
 
 logger = get_logger(__name__)
@@ -147,52 +145,21 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
     ):
         """Dynamically created endpoint for the security tool."""
         
-        # Validate input data using the schema
+        # The checks that come before a run, shared with the asynchronous
+        # submission and the Celery task (app/prerun.py): the input is what
+        # the tool's model accepts (422, with the fields that failed and why
+        # but not their values, #585), and the target is one a tool may be
+        # pointed at (400): not private, internal or cloud metadata, whether
+        # the tool fetches a URL or scans a host, address or range (#614).
+        # The policy resolves names, so this runs off the event loop.
         try:
-            validated_input = input_schema_class(**input_data)
-        except ValidationError as e:
-            # Which fields failed and why, so a client can point at them
-            # (#585). The submitted values are not echoed back: a field may
-            # hold a credential. The reduction is the one every service
-            # shares (open_security_shared.errors.field_errors); this module
-            # had a copy of its own (#735). The log gets the same reduction:
-            # str() of the error, which it used to get, quotes every value
-            # that was refused.
-            errors = field_errors(e.errors())
-            logger.error(
-                f"Input validation failed for {tool_name}",
-                extra={"tool": tool_name, "errors": errors},
+            checked = await run_in_threadpool(
+                check_tool_input, tool_name, tool_module, input_data
             )
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "reason": "Input validation failed",
-                    "errors": errors,
-                },
-            )
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            # The class, not the text: the text of an error raised while a
-            # model is built can quote what it was built from.
-            logger.error(
-                f"Input validation failed for {tool_name}: {type(e).__name__}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Input validation failed"
-            )
-
-        # Target policy: refuse to let a tool connect to private, internal or
-        # cloud-metadata targets, whether it fetches a URL (SSRF guard) or
-        # scans a host, address or range (#614), before the tool runs. It
-        # resolves names, so it runs off the event loop.
-        try:
-            await run_in_threadpool(enforce_target_policy, tool_name, validated_input)
-        except TargetRefused as e:
-            logger.warning(f"Refused target for {tool_name}: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
-            )
+        except PRE_RUN_REFUSALS as e:
+            logger.warning(f"Refused before the run, {tool_name}: {refusal_log(e)}")
+            raise http_error(e)
+        validated_input = checked.validated_input
 
         logger.info(f"Executing tool: {tool_name}", extra={
             "tool": tool_name,

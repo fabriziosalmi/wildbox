@@ -400,3 +400,52 @@ def test_the_worker_reads_the_queue_the_api_measures():
     assert " -Q" not in command and "--queues" not in command
     assert celery_app.conf.task_default_queue == "celery"
     assert celery_app.conf.task_routes is None
+
+
+# --- the broker's visibility timeout (#743) -------------------------------------
+
+
+def test_the_visibility_timeout_is_a_setting_of_the_service():
+    """It was kombu's default: an hour because a library said so."""
+    from app.celery_app import VISIBILITY_TIMEOUT_SECONDS, celery_app
+
+    assert VISIBILITY_TIMEOUT_SECONDS == 3600
+    assert dict(celery_app.conf.broker_transport_options) == {
+        "visibility_timeout": VISIBILITY_TIMEOUT_SECONDS
+    }
+    # And it is what a connection of the app is opened with.
+    assert celery_app.connection().transport_options["visibility_timeout"] == 3600
+
+
+def test_a_task_a_live_worker_holds_is_never_handed_to_a_second_one():
+    """The timeout outlasts the longest a worker can hold a task.
+
+    The broker gives a task to another worker when the first has held it,
+    unacknowledged, for the visibility timeout. A retry waits in the
+    worker's memory for up to retry_backoff_max and then runs for up to the
+    hard time limit; if the timeout were shorter than that, a task still
+    running would be started a second time.
+    """
+    from app.celery_app import VISIBILITY_TIMEOUT_SECONDS, celery_app
+    from app.tasks import ToolExecutionTask
+
+    longest_hold = ToolExecutionTask.retry_backoff_max + celery_app.conf.task_time_limit
+
+    assert longest_hold == 1200
+    assert VISIBILITY_TIMEOUT_SECONDS >= 2 * longest_hold
+
+
+def test_the_documentation_states_the_configured_timeout():
+    """The rule comment and the guides said "an hour" for a value nothing set."""
+    from app.celery_app import VISIBILITY_TIMEOUT_SECONDS
+
+    stated = f"{VISIBILITY_TIMEOUT_SECONDS} seconds"
+    for path in (
+        ALERT_RULES,
+        REPO_ROOT / "docs" / "guides" / "deployment.md",
+        REPO_ROOT / "docs" / "api" / "tools" / "endpoints.md",
+    ):
+        text = " ".join(path.read_text(encoding="utf-8").replace("#", " ").split())
+        assert "visibility timeout" in text, path
+        assert stated in text, path
+        assert "broker_transport_options" in text, path
