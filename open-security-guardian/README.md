@@ -321,8 +321,11 @@ asset's address; before #775 it opened IPv4 sockets only, and reported every
 port of an IPv6 asset closed. `guardian-worker` needs a route to an IPv6
 address to scan it, and the networks of `docker-compose.yml` are IPv4 only:
 from a worker without IPv6, every port of an IPv6 asset still reads as
-closed, because a connection that finds no route is counted like one that is
-refused. It tries the 19 common ports. The task also
+closed, because the scan's result counts a connection that finds no route
+like one that is refused. The worker's log tells them apart: a scan whose
+attempts ended for a reason that is not the port's (no route, a network that
+is down) writes one warning, with how many ports could not be tried and the
+name of each error. It tries the 19 common ports. The task also
 takes a `port_range`, which no route passes: one port or a range (`443`,
 `1-1000`) of at most 1,024 ports from 1 to 65535
 (`apps/assets/networks.py`, `check_port_range`); anything else ends the task
@@ -531,6 +534,25 @@ Django management commands run in the container:
 docker compose exec guardian python manage.py showmigrations
 docker compose exec guardian python manage.py shell
 ```
+
+`import_vulnerabilities` stores the findings of a file for one team:
+
+```bash
+docker compose exec guardian python manage.py import_vulnerabilities \
+  --source json --file /tmp/findings.json --team-id <team UUID>
+```
+
+`--source json` reads an object with a `vulnerabilities` list, `--source csv`
+a file with a header row. A finding is named by `title`, `description`,
+`severity`, `cvss_score`, `cve_id`, `hostname`, `port` and `protocol`; all
+but `title` may be left out. The asset is the team's asset with that
+`hostname`, created when the team has none. A finding the team already has,
+by asset, CVE and port, is skipped, or updated with `--force`; one with
+neither a CVE nor a port is always stored. A value the model does not take
+(a severity that is not one of its five, a score outside 0 to 10) stops the
+import and nothing of the file is kept. `--dry-run` checks the file and
+stores nothing. The sources `nist`, `nessus` and `openvas` are accepted and
+not implemented: they end with an error.
 
 After changing a model, create the migration in your checkout
 (`python manage.py makemigrations`) and commit it with the change; the

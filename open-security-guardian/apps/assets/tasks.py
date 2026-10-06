@@ -239,9 +239,12 @@ def scan_asset_ports(asset_id, port_range=None):
                 return {'status': 'refused', 'reason': refusal}
 
         open_ports_found = 0
+        # Attempts that ended for a reason that is not the port's: reason
+        # -> how many. Logged once below, not once a port.
+        failures = {}
 
         for port in ports:
-            if _scan_port(address, port):
+            if _scan_port(address, port, failures=failures):
                 # Port is open, create or update port record
                 service_info = _detect_service(address, port)
                 
@@ -263,10 +266,20 @@ def scan_asset_ports(asset_id, port_range=None):
                     open_ports_found += 1
                     logger.info(f"Found open port {port} on {asset.name}")
         
+        if failures:
+            # The result below cannot say it (#787): these ports are counted
+            # as scanned and are not known to be closed.
+            logger.warning(
+                f"Port scan of asset {asset.name}: {sum(failures.values())} of "
+                f"{len(ports)} ports could not be tried ("
+                + ", ".join(f"{reason} x{count}" for reason, count in sorted(failures.items()))
+                + "); they are not known to be closed"
+            )
+
         # Update asset last_seen
         asset.last_seen = timezone.now()
         asset.save(update_fields=['last_seen'])
-        
+
         logger.info(f"Port scan completed for {asset.name}. Found {open_ports_found} new open ports.")
         
         return {
@@ -315,6 +328,30 @@ def _host_is_up(ip_address, timeout=1):
     return False
 
 
+def _host_name(ip_address):
+    """The name of an asset discovered at an address no name resolves from.
+
+    ``host-`` and the address with a hyphen for each separator, a name a
+    host could have: ``host-93-184-215-14``. Only the dots were replaced, so
+    an IPv6 host was named ``host-2606:2800:21f::1``, colons and all (#788).
+    Nothing validates an asset's name or needs it unique (the team's asset
+    at an address is found by the address), but it is shown, searched and
+    exported as a host's name, and that is not one.
+
+    An IPv6 address is written in full, eight groups of four digits: the
+    short form would give ``host-2001-db8--1``, and for ``2001:db8::`` a name
+    that ends in a hyphen. An IPv4 name is what it has always been, and no
+    stored name is changed.
+    """
+    address = ipaddress.ip_address(ip_address)
+    if address.version == 6:
+        # From the number, not from a text of the address: how Python
+        # writes one that carries an IPv4 address changed between releases.
+        digits = f"{int(address):032x}"
+        return "host-" + "-".join(digits[i:i + 4] for i in range(0, 32, 4))
+    return f"host-{ip_address.replace('.', '-')}"
+
+
 def _discover_host(ip_address, scan_type, team_id=None):
     """Discover and create/update the team's asset for a host"""
     # Check if the team already has an asset at this address (#642)
@@ -328,7 +365,7 @@ def _discover_host(ip_address, scan_type, team_id=None):
         # Create new asset
         asset = Asset.objects.create(
             team_id=normalize_team_id(team_id),
-            name=hostname or f"host-{ip_address.replace('.', '-')}",
+            name=hostname or _host_name(ip_address),
             ip_address=ip_address,
             # hostname is NOT NULL: a host without a reverse DNS name made
             # the whole discovery fail and retry.
@@ -369,16 +406,47 @@ def _socket_family(address):
     return socket.AF_INET6 if address.version == 6 else socket.AF_INET
 
 
-def _scan_port(address, port, timeout=1):
-    """Check if a port is open at ``address``, which check_address returned"""
+# What a connection to a port that is not open ends with: the host refuses
+# it, or nothing answers within the timeout. connect_ex reports the socket's
+# own timeout as EAGAIN/EWOULDBLOCK and the kernel's as ETIMEDOUT.
+_PORT_NOT_OPEN = frozenset(
+    {errno.ECONNREFUSED, errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK}
+)
+
+
+def _scan_port(address, port, timeout=1, failures=None):
+    """True if the port is open at ``address``, which check_address returned.
+
+    False for a port that refuses the connection or does not answer it.
+
+    False as well for an attempt that failed for a reason that says nothing
+    about the port: no route to the host, a network that is down, no socket
+    to be had. Those were read as "closed", by an ``except Exception`` that
+    also read any error in this function as one. The result of a scan has
+    no place for them yet (#787), so the reason is counted in ``failures``,
+    by the name of its errno, for the task to log once.
+
+    The socket is closed whatever happens: when the connection raised, it
+    was left to the garbage collector (#788).
+    """
     try:
-        sock = socket.socket(_socket_family(address), socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        result = sock.connect_ex((str(address), port))
-        sock.close()
-        return result == 0
-    except Exception:
-        return False
+        with socket.socket(_socket_family(address), socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            code = sock.connect_ex((str(address), port))
+    except Exception as exc:
+        # What connect_ex raises instead of returning, or no socket at all.
+        # Named by its errno or its class, never by its text. A resolver's
+        # error carries a number of its own in errno, which is not one.
+        resolver = isinstance(exc, (socket.gaierror, socket.herror))
+        code = None if resolver else getattr(exc, 'errno', None)
+        reason = errno.errorcode.get(code, type(exc).__name__)
+    else:
+        if code == 0:
+            return True
+        reason = errno.errorcode.get(code, f"errno {code}")
+    if code not in _PORT_NOT_OPEN and failures is not None:
+        failures[reason] = failures.get(reason, 0) + 1
+    return False
 
 
 def _detect_service(address, port):
@@ -386,39 +454,38 @@ def _detect_service(address, port):
     service_info = {'service': '', 'version': '', 'banner': ''}
 
     try:
-        sock = socket.socket(_socket_family(address), socket.SOCK_STREAM)
-        sock.settimeout(2)
-        sock.connect((str(address), port))
-        
-        # Try to grab banner
-        try:
-            banner = sock.recv(1024).decode('utf-8', errors='ignore').strip()
-            service_info['banner'] = banner[:500]  # Limit banner size
-            
-            # Basic service detection based on port and banner
-            if port == 22:
-                service_info['service'] = 'ssh'
-            elif port == 80:
-                service_info['service'] = 'http'
-            elif port == 443:
-                service_info['service'] = 'https'
-            elif port == 25:
-                service_info['service'] = 'smtp'
-            elif port == 21:
-                service_info['service'] = 'ftp'
-            elif port == 3306:
-                service_info['service'] = 'mysql'
-            elif port == 5432:
-                service_info['service'] = 'postgresql'
-            
-        except socket.timeout:
-            pass
-        
-        sock.close()
-        
+        # Closed whatever happens, as in _scan_port.
+        with socket.socket(_socket_family(address), socket.SOCK_STREAM) as sock:
+            sock.settimeout(2)
+            sock.connect((str(address), port))
+
+            # Try to grab banner
+            try:
+                banner = sock.recv(1024).decode('utf-8', errors='ignore').strip()
+                service_info['banner'] = banner[:500]  # Limit banner size
+
+                # Basic service detection based on port and banner
+                if port == 22:
+                    service_info['service'] = 'ssh'
+                elif port == 80:
+                    service_info['service'] = 'http'
+                elif port == 443:
+                    service_info['service'] = 'https'
+                elif port == 25:
+                    service_info['service'] = 'smtp'
+                elif port == 21:
+                    service_info['service'] = 'ftp'
+                elif port == 3306:
+                    service_info['service'] = 'mysql'
+                elif port == 5432:
+                    service_info['service'] = 'postgresql'
+
+            except socket.timeout:
+                pass
+
     except Exception:
         pass
-    
+
     return service_info
 
 
@@ -462,7 +529,11 @@ def _execute_network_scan(rule):
             )
             queued += 1
         except Exception as e:
-            logger.error(f"Failed to scan network {network_range}: {str(e)}")
+            # The class, not the text: a broker's error names the broker
+            # and its address, and may hold the URL it was given (#788).
+            logger.error(
+                f"Failed to queue the scan of network {named!r}: {type(e).__name__}"
+            )
             skipped.append({'network': named, 'reason': NOT_QUEUED})
 
     return queued, skipped

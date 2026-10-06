@@ -536,7 +536,7 @@ for i in $(seq 1 10); do
     inflight_answer=$(cat "$inflight_out")
     rm -f "$inflight_out"
     moved=0
-    for j in $(seq 1 "$PROBES"); do
+    for _ in $(seq 1 "$PROBES"); do
         [ "$(team_status_of "$tok")" = "200 $race_b" ] && moved=$((moved + 1))
     done
     if [ "$code" != 200 ] || [ "$inflight_answer" != "403 " ] || [ "$moved" != "$PROBES" ]; then

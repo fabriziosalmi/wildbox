@@ -29,8 +29,10 @@ Redirects (#665). The paths in ``REDIRECT_FIXTURES`` answer 301 with the
 ``Location`` a Django service writes, so that tests can read what the
 gateway makes of it: a path alone, as ``APPEND_SLASH`` writes it for a
 request without its trailing slash, and an absolute URL on the name the
-gateway presents to guardian, as guardian's HTTPS redirect writes it. The
-values are constants: nothing a client sends is written into the header.
+gateway presents to guardian, as guardian's HTTPS redirect writes it. One
+more path, ``UPSTREAM_NAME_FIXTURE``, answers with an absolute URL on the
+name nginx knows the service by, for the ports in ``UPSTREAM_NAMES`` (#788).
+The values are constants: nothing a client sends is written into the header.
 
 A dropped connection (#609). For a token starting with ``drop-once-`` the
 mock closes the connection without answering the first time it sees it, as
@@ -247,6 +249,18 @@ REDIRECT_FIXTURES = {
     "/api/v1/redirect-fixture/absolute-http": "http://open-security-guardian/api/v1/redirect-fixture/absolute-http/",
 }
 
+# And a Location on the name the service has as an upstream in
+# wildbox_gateway.conf: the URL a service writes when it builds one from the
+# address nginx connects to. It is what the `proxy_redirect default` of a
+# location matches and rewrites to the location's own path (#788). By the
+# port the request arrived on, never by anything in the request.
+UPSTREAM_NAME_FIXTURE = "/api/v1/redirect-fixture/upstream-name"
+UPSTREAM_NAMES = {
+    8001: "identity_service",
+    8002: "data_service",
+    8019: "cspm_service",
+}
+
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -274,6 +288,15 @@ class Handler(BaseHTTPRequestHandler):
                 }
             },
         )
+
+    def _redirect_fixture(self):
+        """The Location this request is redirected to, or None."""
+        if self.path in REDIRECT_FIXTURES:
+            return REDIRECT_FIXTURES[self.path]
+        upstream = UPSTREAM_NAMES.get(self.server.server_address[1])
+        if self.path == UPSTREAM_NAME_FIXTURE and upstream:
+            return f"http://{upstream}{UPSTREAM_NAME_FIXTURE}/"
+        return None
 
     def _redirect(self, location):
         length = int(self.headers.get("Content-Length") or 0)
@@ -449,8 +472,8 @@ class Handler(BaseHTTPRequestHandler):
             self._authorize()
         elif self.path in ("/__mock/revoke", "/__mock/remove_member"):
             self._revoke()
-        elif self.path in REDIRECT_FIXTURES:
-            self._redirect(REDIRECT_FIXTURES[self.path])
+        elif self._redirect_fixture():
+            self._redirect(self._redirect_fixture())
         else:
             self._echo()
 
@@ -470,8 +493,8 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif self.path == "/__mock/counts":
             self._reply(200, dict(authorize_calls))
-        elif self.path in REDIRECT_FIXTURES:
-            self._redirect(REDIRECT_FIXTURES[self.path])
+        elif self._redirect_fixture():
+            self._redirect(self._redirect_fixture())
         else:
             self._echo()
 
