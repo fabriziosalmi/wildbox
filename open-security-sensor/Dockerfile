@@ -62,15 +62,14 @@ RUN ARCH=$(dpkg --print-architecture) && \
     echo "${OSQUERY_SHA256}  osquery.deb" | sha256sum -c - && \
     dpkg -i osquery.deb && \
     rm osquery.deb && \
-    # Create symlinks to make osqueryd available in PATH
-    if [ -f /opt/osquery/bin/osqueryd ]; then \
-        ln -sf /opt/osquery/bin/osqueryd /usr/local/bin/osqueryd; \
+    # osqueryi on PATH: the one osquery binary the sensor runs (it starts
+    # no osqueryd).
+    if [ -f /opt/osquery/bin/osqueryi ]; then \
         ln -sf /opt/osquery/bin/osqueryi /usr/local/bin/osqueryi; \
-    elif [ -f /usr/bin/osqueryd ]; then \
-        ln -sf /usr/bin/osqueryd /usr/local/bin/osqueryd; \
+    elif [ -f /usr/bin/osqueryi ]; then \
         ln -sf /usr/bin/osqueryi /usr/local/bin/osqueryi; \
     else \
-        echo "osqueryd not found in expected locations" && exit 1; \
+        echo "osqueryi not found in expected locations" && exit 1; \
     fi
 
 # Copy requirements and install Python dependencies

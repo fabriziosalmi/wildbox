@@ -9,12 +9,14 @@ through the Wildbox gateway, to the data service of its team (see
 The sensor runs as a single Python process (`main.py`) that starts these
 components (`sensor/core/agent.py`):
 
-- **osquery manager** (`sensor/collectors/osquery_manager.py`): runs the osquery
-  daemon with built-in query packs for process events, network connections, user
-  events and system inventory, and runs one-off queries through `osqueryi`.
+- **osquery manager** (`sensor/collectors/osquery_manager.py`): runs built-in
+  query packs through `osqueryi` (the running processes, the open sockets, the
+  logged-in users, system inventory) and one-off queries for the local API. See
+  [What osquery collects](#what-osquery-collects).
 - **File monitor** (`sensor/collectors/file_monitor.py`): polls the configured
   paths and reports created, modified and deleted files, with a SHA-256 hash for
-  files under 10 MB. See [File integrity monitoring](#file-integrity-monitoring).
+  regular files under 10 MiB, against a baseline that outlives a restart. See
+  [File integrity monitoring](#file-integrity-monitoring).
 - **Log forwarder** (`sensor/collectors/log_forwarder.py`): off by default
   (`collection.log_forwarding: false`). Follows the log files and system logs
   listed under `log_sources`, or a per-platform default set when the
@@ -119,9 +121,29 @@ Without `--config`, the sensor reads the first file that exists among
 | `--config`, `-c` | Path to the configuration file |
 | `--validate-config` | Load and validate the configuration, then exit |
 | `--test-connection` | Posts an empty batch with the configured key and prints the gateway's answer |
-| `--status` | Prints a fixed "Running" message and exits; the sensor is not queried |
+| `--status` | Asks the running sensor's local API and prints what it answers; see below |
 | `--debug` | Enable debug logging |
 | `--version`, `-v` | Print the version and exit |
+
+`--status` asks the local API of the sensor this configuration describes
+(`network.bind_address`, or the loopback address when that is every
+address, and `network.bind_port`): `GET /health`, then, with
+`network.api_key` set, `GET /api/v1/stats` for what it has collected,
+delivered and dropped and whether it is delivering. Its exit status is the
+answer:
+
+| Exit status | Meaning |
+| :--- | :--- |
+| `0` | A sensor answers and is running. That it is `NOT delivering to the data service`, and since when, is printed, not signaled |
+| `1` | No sensor answers, the one that answers is starting or stopping, or the configuration does not load |
+| `2` | It cannot be told: the local API is off (`network.enable_api: false`), or what answers is not a sensor |
+
+```bash
+docker compose exec sensor python main.py --config /etc/security-sensor/config.yaml --status
+```
+
+The two requests go to that address only: no proxy from the environment is
+used and no redirect is followed, and the key is not printed.
 
 `setup.py` declares a `security-sensor` console script (and a shorter alias),
 both pointing at `main:main`.
@@ -145,13 +167,14 @@ data_lake:
   retry_max_delay: 300       # the delay doubles up to this
   buffer_max_events: 5000    # what may wait for the gateway
   buffer_max_bytes: 16777216
+  rate_limit_share: 0.5      # of the team's request budget at the gateway
 
 # Telemetry Collection
 collection:
-  process_events: true
-  network_connections: true
+  process_events: true        # the processes running: see "What osquery collects"
+  network_connections: true   # the sockets they hold open
   file_monitoring: true
-  user_events: true
+  user_events: true           # the users logged in
   system_inventory: true
   log_forwarding: false   # what it reads: see "Log forwarding"
 
@@ -170,8 +193,8 @@ fim:
 # Performance Tuning
 performance:
   query_interval: 10
-  max_memory_mb: 128
-  max_cpu_percent: 5
+  max_memory_mb: 128    # thresholds of a warning and of over_limits in the
+  max_cpu_percent: 5    # statistics: nothing is limited or slowed down
 ```
 
 The `logging` section configures the sensor's own log:
@@ -555,15 +578,54 @@ what is mounted, so the mount is the outer limit of what a mistaken pattern
 can send. Do not mount `/var/log` whole unless everything in it may leave
 the host, and never `/`.
 
+## What osquery collects
+
+Every `performance.query_interval` seconds (10 by default) the sensor runs
+each query of the enabled packs through `osqueryi`, one at a time, and sends
+each answer that has rows as one event, of type `<pack>.<query>`:
+
+| Setting under `collection` | Pack | Queries |
+| :--- | :--- | :--- |
+| `process_events` | `process_events` | `process_tree`: the running processes, with their user |
+| `network_connections` | `network` | `process_open_sockets`: the open sockets, with their process |
+| `user_events` | `user_events` | `logged_in_users`; on Linux `sudoers`; on Windows `logon_events`, which reads an event table and was never run on a Windows host |
+| `system_inventory` | `system_inventory` | `system_info`, `os_version`, `installed_applications`, `startup_items`, `system_services`; on Linux `kernel_info`, `kernel_modules` |
+
+Each answer is a picture of the host at the moment of the query. The sensor
+collects no stream of events from osquery, whatever the settings are called:
+a process that starts and ends between two cycles, or a connection opened
+and closed between two, is not seen. osquery's event tables
+(`process_events`, `socket_events`, `user_events`) are not queried: through
+`osqueryi`, in the sensor's image, they answer no row and say `is
+event-based but events are disabled`. The sensor starts no `osqueryd`.
+
+In the container the pictures are the container's: its own processes and
+sockets (see [Security notes](#security-notes)).
+
+Without `osqueryi` on its `PATH`, or with one that does not answer a first
+query, the sensor does not start while any of the four settings is on.
+`osquery_manager` in `GET /api/v1/components` reports the `osqueryi` found
+and its `osquery_version`, the packs, and `queries_run`, `queries_failed`
+and `last_error` since the sensor started.
+
 ## File integrity monitoring
 
 With `collection.file_monitoring` and `fim.enabled` on, which is the default,
 the file monitor scans the paths listed under `fim.paths` every 60 seconds
 and reports what changed since the scan before: `file_created`,
 `file_deleted`, and `file_modified` with the list of what changed (`size`,
-`mtime`, `permissions`, `owner`, `group` and, for a file under 10 MiB that
-the sensor can read, `content`, from its SHA-256). The first scan is the
-baseline and reports nothing.
+`mtime`, `permissions`, `owner`, `group` and, for a regular file under 10
+MiB that the sensor can read, `content`, from its SHA-256). The first scan
+of a path is its baseline and reports nothing.
+
+A scan walks the paths and reads the files in a worker thread, so the rest
+of the sensor goes on meanwhile. It reads regular files only (a FIFO, a
+socket or a device is watched by its mode, owner and times), never more
+than 10 MiB of one, and it watches at most `fim.max_files` files, all paths
+together (50,000 by default; about 700 bytes of memory each). Beyond that
+number files are not watched: the monitor logs it once and reports
+`files_over_limit`. A file that comes under watch when room is made is
+reported as created.
 
 ```yaml
 fim:
@@ -574,10 +636,14 @@ fim:
   exclude_patterns:
     - "*.tmp"
   max_depth: 10
+  max_files: 50000
 ```
 
 `fim.paths` are the sensor's own paths, absolute; anything else stops the
-sensor at start-up. Whether a path exists does not:
+sensor at start-up, and so do `exclude_patterns` that are not a list of
+patterns, a `max_depth` that is not a whole number from 0 to 1000 and a
+`max_files` that is not one from 1 to 1,000,000. Whether a path exists does
+not:
 
 - A path that does not exist is a warning that names it when the monitor
   starts. It is watched from the scan at which it appears, with what it
@@ -590,7 +656,52 @@ sensor at start-up. Whether a path exists does not:
 
 `file_monitor` in `GET /api/v1/components` reports `watching`,
 `configured_paths`, `monitored_paths`, `missing_paths`, `tracked_files`,
-`unhashed_files`, `scan_count` and `last_scan_duration`.
+`unhashed_files`, `max_files`, `files_over_limit`, `scan_count`,
+`last_scan_duration` and `baseline`.
+
+### The baseline and restarts
+
+With `data_dir` set, the monitor keeps its baseline in
+`<data_dir>/fim-baseline.json`: for each watched file its size, times, mode,
+owner, group and SHA-256, and no content. When the sensor starts it compares
+the files with that baseline, so what was created, modified or deleted
+while it was stopped is reported by its first scan, and the log says how
+many changes that was. A path that is new to the configuration has no
+baseline: what it holds is taken as it is.
+
+The baseline is what the data service has been told, not what the monitor
+last saw. A file's entry moves when the event that reports its change is
+accepted by the gateway, or dropped for good and counted (see
+[When the gateway takes nothing](#when-the-gateway-takes-nothing)). So:
+
+- a change found while the gateway is away, and still unsent when the
+  sensor stops, is found again by the next start and reported then;
+- if the queue is full when the sensor starts (the gateway has been away
+  for a while), the changes of that first scan are handed over as it
+  empties: the sensor does not wait for room to finish starting;
+- a change delivered in the sensor's last seconds whose baseline was not
+  written (a crash, a full disk) is reported again: the same change can
+  arrive twice, and is never lost for that reason.
+
+The file is written at most every 5 seconds while the baseline moves, and
+when the sensor stops, the way the position file is (a temporary file,
+flushed, renamed over the old one). It is read once, at start, and not
+trusted: a file that is not a regular file of the sensor's user, that is
+not what this sensor writes down to the type of each value, or that names a
+file outside its own paths, is ignored whole, with a warning. So is a
+baseline taken with other `exclude_patterns`, `max_depth` or `max_files`:
+compared with it, every file that entered or left what is watched would be
+a change that never happened. In both cases the monitor does what it does
+without a file: it takes what it finds as the baseline, and what changed
+meanwhile is not reported. `baseline` in the monitor's status says which
+file is used, what became of the one found at start (`loaded`), when it was
+last written, why it could not be (`problem`), and how many changes are
+found and not delivered yet (`changes_not_delivered`).
+
+Without `data_dir` the baseline is in memory only, as it always was: the
+status says so, and what changes while the sensor is stopped is not
+reported. The shipped container configurations set `data_dir` to the
+`sensor_data` volume.
 
 **In the container** the shipped configuration lists `/host/etc`,
 `/host/bin`, `/host/usr/bin` and `/host/opt`, and no compose file mounts
@@ -620,9 +731,11 @@ with no capability, so it reads what that user may read:
   that reads `/etc/shadow` reads every password hash.
 
 What the monitor does not do: it polls, so a file created and deleted
-between two scans is never seen; its baseline is in memory, so what changed
-while the sensor was stopped is not reported; and it does not follow what a
-symbolic link points to outside the watched paths.
+between two scans is never seen, and a file changed twice between two is one
+change; and it does not go into a directory that a symbolic link points to.
+A link to a file is watched as the file it points to, wherever that is. A
+directory the sensor cannot list is skipped, and what it held is neither
+changed nor deleted for the monitor until it can be listed again.
 
 ## Sending telemetry to Wildbox
 
@@ -704,7 +817,8 @@ python main.py --config /etc/security-sensor/config.yaml --test-connection
 It posts an empty batch with the configured key and reports what the gateway
 answered: 200 means the URL, the TLS trust, the key and its scope are right;
 401 means the key is invalid, expired or revoked; 403 means it lacks the
-`data:ingest` scope.
+`data:ingest` scope. The running sensor reads the same answers the same way:
+see [When the gateway takes nothing](#when-the-gateway-takes-nothing).
 
 The sensor sends the key in the `X-API-Key` header only, does not follow
 redirects with it, and never logs it.
@@ -714,13 +828,42 @@ redirects with it, and never logs it.
 Processed events wait in the sender's buffer, serialized, until the gateway
 answers for them. A batch is the oldest events: at most `batch_size` of them
 and 8 MiB, which the gateway's 10 MiB request limit admits. It is sent when
-it is full, or `flush_interval` seconds after its first event.
+it is full, or `flush_interval` seconds after its first event, and the next
+one as soon as the gateway has answered: see
+[How fast a sensor delivers](#how-fast-a-sensor-delivers).
 
-| The gateway answers | What happens to the batch |
-| :--- | :--- |
-| 200 or 201 | It leaves the buffer; `events_forwarded` counts its events |
-| A network error, 429 or 5xx | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). After a 429 the delay is at least the answer's `Retry-After`, or 10 seconds. No number of attempts gives it up |
-| Any other 4xx, or a redirect | It is dropped, and `events_dropped_refused` counts its events: sent again it would get the same answer, and hold back everything collected after it |
+An answer is read for what it says. Only an answer about the events
+themselves costs events; one that says the sensor is not allowed, not now,
+or not at the right address keeps the batch, as an outage does.
+
+| The answer | It means | What happens to the batch |
+| :--- | :--- | :--- |
+| 200 or 201 | Stored | It leaves the buffer; `events_forwarded` counts the events the data service says it stored (`events_ingested`), and any it says it did not are counted as dropped |
+| A network error, 5xx | The gateway, identity or the data service is unreachable (`unavailable`) | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). No number of attempts gives it up |
+| 429 | The team's request budget, or nginx's limit per address (`rate_limited`) | Kept, as above; the delay is at least the answer's `Retry-After`, or 10 seconds |
+| 401, or the gateway's 400 `invalid_token` | The key is invalid, expired or revoked (`unauthorized`) | Kept, as above |
+| 403 | The key lacks the `data:ingest` scope, its member left the team or has not changed the initial password (`forbidden`) | Kept, as above |
+| A redirect, 404, another 4xx | The request did not reach the ingest route (`misconfigured`) | Kept, as above |
+| 413, 422, the data service's 400, a 200 that stored nothing | The payload is not acceptable | The batch is split in halves, each sent in its turn, until the event at fault is alone: that one is dropped and counted in `events_dropped_refused`, the others are delivered. A batch refused for its size is delivered in parts and loses nothing |
+
+While batches are kept the sensor is **not delivering**, and says so:
+
+- an error in its log when it begins, `Not delivering since <time> (HTTP 401
+  invalid_token: ...)`, with what to do about it, and a line when it is
+  over;
+- `data_forwarder.delivery` in `GET /api/v1/components`: `state` (`ok`,
+  `unavailable`, `rate_limited`, `unauthorized`, `forbidden`,
+  `misconfigured`, or `unconfigured` without a key), `since` and `reason`;
+- `delivery_state` and `delivery_since` in `GET /api/v1/stats`, and an alert
+  in `GET /api/v1/dashboard/metrics`.
+
+Nothing is dropped meanwhile, and no log position moves: with a revoked key
+the sensor keeps what it collects, then stops collecting when its buffer is
+full, and delivers every line once after it is restarted with a valid key.
+
+Splitting a refused batch is bounded: after 64 requests spent on one batch,
+what is left of it is dropped whole, with an error that says how many
+events. Finding one unacceptable event among 100 takes about 14.
 
 The buffer holds at most `buffer_max_events` events and `buffer_max_bytes`
 bytes of serialized events (5,000 and 16 MiB by default), and each of the two
@@ -741,7 +884,7 @@ An event leaves the sensor unsent, and is counted, in these cases only:
 
 | Counter | When |
 | :--- | :--- |
-| `events_dropped_refused` | The gateway refused its batch, as above |
+| `events_dropped_refused` | The data service refused the event itself, as above |
 | `events_dropped_oversize` | Serialized, it is larger than a batch may be (8 MiB, or `buffer_max_bytes` if that is less) |
 | `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN) |
 | `events_dropped_unconfigured` | No API key is set: everything collected is discarded |
@@ -756,6 +899,38 @@ number of events dropped since the last such line, by reason.
 
 `data_lake.retry_attempts` is no longer read: the sensor says so at start-up
 when the configuration still sets it.
+
+### How fast a sensor delivers
+
+The sender sends one batch at a time and the next one when the gateway has
+answered, at least 20 ms after the previous request. What limits it is the
+gateway:
+
+- nginx admits 100 requests a second from one address; 20 ms between
+  requests keeps a sensor at half of that.
+- The gateway counts every request of a **team** against one budget,
+  `RATE_LIMIT_PER_HOUR` (10,000 by default), enforced per minute: 166
+  requests a minute for the team's dashboard sessions and all its keys
+  together, after which all of them get 429 until the minute ends. Each
+  answer states what is left (`X-RateLimit-Remaining`). The sensor uses
+  `data_lake.rate_limit_share` of it, half by default: when what is left of
+  the minute's budget falls to the other half, it waits for the next minute.
+  Sensors of the same team share that half between them.
+
+With the defaults a team's sensors deliver about 83 batches a minute:
+**8,300 events a minute, about 140 a second**, with `batch_size: 100`. To
+deliver more, raise `batch_size` (the data service takes up to 1,000 events
+in a batch, about 1,400 events a second; a larger value is split by the
+sender when the data service refuses it), raise `RATE_LIMIT_PER_HOUR` on the
+gateway, or give the sensor a larger `rate_limit_share`.
+
+Above that rate the buffer fills, the queues fill and the collectors wait.
+A burst is delivered later, in order. A log that is written faster than the
+sensor delivers for a long time falls further and further behind, and what
+it has not read is lost when the log is rotated away: `log_forwarder` in
+`GET /api/v1/components` shows, for each file, how many bytes are waiting
+to be read (`behind`), and `data_forwarder.pacing` the budget the gateway
+last stated and whether the sender is waiting for the next minute.
 
 ### In the Wildbox stack
 
@@ -805,7 +980,9 @@ never changed, whatever its source is named.
 Revoke its key (**Settings > API keys**, or
 `DELETE /api/v1/identity/api-keys/<prefix>`) or remove its member from the
 team. The gateway refuses the key on the sensor's next batch, with no cache
-delay.
+delay. The sensor then reports `unauthorized` (or `forbidden`), keeps what
+it has collected and stops collecting when its buffer is full; it discards
+nothing. To bring it back, give it a valid key and restart it.
 
 ## Local API
 
@@ -821,12 +998,18 @@ those routes answer `503`; with a wrong key, `403`.
 | `PUT` | `/api/v1/config` | Not implemented; returns `501` |
 | `POST` | `/api/v1/config/reload` | Not implemented; returns `501` |
 | `POST` | `/api/v1/config/validate` | Validate the loaded configuration |
-| `POST` | `/api/v1/query` | Run an osquery query, body `{"query": "..."}` |
+| `POST` | `/api/v1/query` | Run an osquery query, body `{"query": "..."}`; see below |
 | `GET` | `/api/v1/queries` | Names of the loaded query packs and the query count |
 | `GET` | `/api/v1/components` | Status of each component |
 | `GET` | `/api/v1/stats` | The sensor's counters; see [Statistics](#statistics) |
 | `GET` | `/api/v1/dashboard/metrics` | A summary of this endpoint, from the same counters |
 | `POST` | `/api/v1/test-connection` | POST an empty test batch to `data_lake.endpoint` |
+
+An osquery query, from this route or from the sensor's own packs, is one
+`osqueryi` child process the sensor waits for without stopping anything
+else. Queries run one at a time. One may take 30 seconds and print 16 MiB:
+past either it is killed, the sensor logs which, and the query yields no
+rows.
 
 ```bash
 curl -H "X-API-Key: $SENSOR_API_KEY" http://127.0.0.1:8004/api/v1/status
@@ -853,7 +1036,7 @@ since the sensor started:
 | `errors` | Errors of the processor and of the sender (network errors, error answers of the gateway) |
 | `last_activity` | When the last event was collected; `null` before the first |
 | `uptime_seconds` | Seconds since the sensor started |
-| `memory_mb`, `cpu_percent`, `throttled` | The sensor's own process, as measured every 5 seconds; absent until the first measurement |
+| `memory_mb`, `cpu_percent`, `over_limits` | The sensor's own process, as measured every 5 seconds; absent until the first measurement. `over_limits` is true while it uses more than `performance.max_memory_mb` or `performance.max_cpu_percent`, and for 30 seconds after: the sensor logs a warning and slows nothing down |
 | `timestamp` | When the answer was made |
 
 `events_collected` equals `events_forwarded` + `events_dropped` +
@@ -874,8 +1057,8 @@ never measured them, and they were always zero or a constant.
   `no-new-privileges` and all capabilities dropped (`cap_drop: ALL`), in the
   root `docker-compose.yml` as in the standalone one. No collector needs a
   capability: in the built image, as uid 999, every osquery table the sensor
-  queries, `osqueryd`, the file monitor, the log forwarder and the data
-  volume behave the same with the default capability set and with none. What
+  queries, the file monitor, the log forwarder and the data volume behave
+  the same with the default capability set and with none. What
   the sensor cannot do is a matter of its user, not of capabilities: it sees
   only the processes and sockets of its own container (the container does
   not share the host's PID or network namespace), and it reads only the

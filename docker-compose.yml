@@ -1161,9 +1161,8 @@ services:
     # No capability, as the sensor's README says and its standalone compose
     # file already did (#725). The sensor runs as uid 999, which has no
     # effective capability to begin with; this empties the bounding set too.
-    # Checked in the built image: osquery's tables, osqueryd, the file
-    # monitor, the log forwarder and the data volume behave the same with
-    # and without it.
+    # Checked in the built image: osquery's tables, the file monitor, the
+    # log forwarder and the data volume behave the same with and without it.
     cap_drop:
       - ALL
     ports:

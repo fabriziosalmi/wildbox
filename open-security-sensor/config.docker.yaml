@@ -21,6 +21,10 @@ data_lake:
   # until a batch is accepted; it drops nothing to make room.
   buffer_max_events: 5000
   buffer_max_bytes: 16777216  # 16 MiB
+  # The share of the team's request budget at the gateway (RATE_LIMIT_PER_HOUR
+  # there, counted per minute) that this sensor uses when it has a backlog;
+  # the rest is left to the team's dashboard sessions and other keys.
+  rate_limit_share: 0.5
 
 # Telemetry Collection
 collection:
@@ -32,10 +36,12 @@ collection:
   log_forwarding: false
 
 # Where the sensor keeps what must outlive a restart: the log forwarder's
-# read positions (log-positions.json). In the container this is the
-# sensor_data volume. Overridden by SENSOR_DATA_DIR. The directory must exist
-# and be writable by the sensor's user; one sensor per directory. Without it
-# positions are kept in memory only and read_from applies at every start.
+# read positions (log-positions.json) and the file monitor's baseline
+# (fim-baseline.json). In the container this is the sensor_data volume.
+# Overridden by SENSOR_DATA_DIR. The directory must exist and be writable by
+# the sensor's user; one sensor per directory. Without it both are kept in
+# memory only: read_from applies at every start, and a file changed while
+# the sensor was stopped is not reported.
 data_dir: /var/lib/security-sensor
 
 # Log sources: what the log forwarder reads when log_forwarding is true.
@@ -70,12 +76,17 @@ fim:
     - "*.lock"
   recursive: true
   max_depth: 10
+  # The most files watched, all paths together. Beyond it files are not
+  # watched, and the monitor's status says how many.
+  max_files: 50000
 
 # Performance Tuning (Docker-optimized)
 performance:
   query_interval: 10
-  max_memory_mb: 256  # Higher for Docker
-  max_cpu_percent: 10  # Slightly higher for containerized environment
+  # Thresholds, not limits: above either the sensor logs a warning and
+  # reports over_limits in its statistics. Nothing is slowed down.
+  max_memory_mb: 256
+  max_cpu_percent: 10
   max_queue_size: 2000
   worker_threads: 4
 

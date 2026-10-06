@@ -112,3 +112,33 @@ def test_the_documents_claim_what_the_files_do():
 
     assert "all capabilities dropped (`cap_drop: ALL`)" in readme
     assert "`no-new-privileges:true` and `cap_drop: ALL`" in docker_md
+
+
+def _published(path):
+    """service -> the host address of each port it publishes."""
+    services = yaml.load(path.read_text(), Loader=_Compose).get("services") or {}
+    published = {}
+    for name, service in services.items():
+        for port in service.get("ports") or []:
+            # "127.0.0.1:9090:9090", or "9090:9090" for every address.
+            parts = str(port).split(":")
+            published.setdefault(name, []).append(
+                parts[0] if len(parts) == 3 else "every address"
+            )
+    return published
+
+
+def test_the_standalone_stack_publishes_on_loopback_and_its_document_says_so():
+    """DOCKER.md said Prometheus and Grafana were published on all host
+    interfaces (#745). The compose file bound them to 127.0.0.1, and since
+    #726 it starts neither: the sensor is its only service, and the document
+    says where the stack's Prometheus is."""
+    published = _published(SERVICE_ROOT / "docker-compose.yml")
+
+    assert set(published) == {"sensor"}
+    # Every port the file publishes.
+    assert set(sum(published.values(), [])) == {"127.0.0.1"}
+    docker_md = " ".join((SERVICE_ROOT / "DOCKER.md").read_text().split())
+    assert "all host interfaces" not in docker_md
+    assert "publishes that port on `127.0.0.1:8004` only" in docker_md
+    assert "this file starts none" in docker_md

@@ -57,7 +57,7 @@ class SecuritySensorAgent:
     - File integrity monitoring
     - Log forwarding
     - Data processing and forwarding pipeline
-    - Resource monitoring and throttling
+    - Resource monitoring
     - Local management API
     """
     
@@ -76,7 +76,7 @@ class SecuritySensorAgent:
         self.resource_monitor = None
         
         # What the resource monitor measures (memory_mb, cpu_percent,
-        # throttled). The event counters are not kept here: get_stats()
+        # over_limits). The event counters are not kept here: get_stats()
         # reads them from the components that do the counting.
         self.resources: Dict[str, Any] = {}
 
@@ -195,8 +195,8 @@ class SecuritySensorAgent:
         In this order: what produces events; then, once the events already
         collected have reached the sender or QUEUE_DRAIN_SECONDS have
         passed, what carries them, so that the sender's last batches are the
-        last events; then the log positions once more, for what those
-        batches delivered.
+        last events; then the log positions and the file monitor's baseline
+        once more, for what those batches delivered.
         """
         collectors = [
             component
@@ -223,6 +223,8 @@ class SecuritySensorAgent:
 
         if self.log_forwarder:
             self.log_forwarder.save_positions()
+        if self.file_monitor:
+            self.file_monitor.save_baseline()
 
     @staticmethod
     async def _stop_all(components):
@@ -296,6 +298,9 @@ class SecuritySensorAgent:
         * errors: errors of the processor and of the sender (network errors
           and error answers of the gateway).
         * last_activity: when the last event was collected, or null.
+        * delivery_state: "ok", or why no batch reaches the data service
+          ("unauthorized", "forbidden", "rate_limited", "unavailable",
+          "misconfigured", "unconfigured"), and delivery_since.
         """
         processor = self.data_processor.stats if self.data_processor else {}
         forwarder = self.data_forwarder.stats if self.data_forwarder else {}
@@ -321,6 +326,10 @@ class SecuritySensorAgent:
             'last_activity': last_put.isoformat() if last_put else None,
             'uptime_seconds': uptime,
         }
+        if self.data_forwarder:
+            delivery = self.data_forwarder.get_status()['delivery']
+            stats['delivery_state'] = delivery['state']
+            stats['delivery_since'] = delivery['since']
         stats.update(self.resources)
         return stats
 
