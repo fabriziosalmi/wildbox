@@ -40,7 +40,7 @@ token revocations, scan and run state live in Redis 7. Neither publishes
 a host port.
 ```
 
-Every `/api/v1/<service>/` route except identity requires authentication at the gateway; identity validates tokens itself. Any other path under `/api/` returns 404, the removed alias `/api/tools/` included; `/tools/`, where a standalone tools UI used to be, returns 404 too. The sensor's local API is not routed through the gateway; the sensor itself is a client of it.
+Every `/api/v1/<service>/` route except identity's requires authentication at the gateway; identity validates tokens itself, apart from `/api/v1/identity/health` (identity's `/health`), which the gateway authenticates. Any other path under `/api/` returns 404, the removed alias `/api/tools/` included; `/tools/`, where a standalone tools UI used to be, returns 404 too. The sensor's local API is not routed through the gateway; the sensor itself is a client of it.
 
 ## Services and Ports
 
@@ -56,10 +56,11 @@ The gateway is the only service published on all interfaces. Every other publish
 | agents | 127.0.0.1:8006 | Optional AI-assisted IOC analysis with the Anthropic API (Claude) |
 | guardian | 127.0.0.1:8013 | Assets, vulnerabilities, remediation, compliance, reporting (Django REST) |
 | responder | 127.0.0.1:8018 | YAML incident-response playbooks executed through connectors |
-| cspm | 127.0.0.1:8019 | 22 configuration checks against live AWS accounts, run by `cspm-worker`; GCP and Azure scans are refused with 400, and `GET /api/v1/cspm/providers` lists the providers that can be scanned |
+| cspm | 127.0.0.1:8019 | 22 configuration checks against live AWS accounts, run by `cspm-worker`; GCP and Azure scans are refused with 400, and `GET /api/v1/cspm/providers` lists the providers that can be scanned. Reference: https://www.wildbox.io/api/cspm/endpoints/ |
 | dashboard | 127.0.0.1:3000 | Next.js web UI, normally reached through the gateway |
 | automations | 127.0.0.1:5678 | n8n, only with `--profile automations` |
 | prometheus | 127.0.0.1:9090 | Only with `--profile monitoring` |
+| alertmanager | 127.0.0.1:9093 | Receives the alerts Prometheus fires; only with `--profile monitoring` |
 | postgres, wildbox-redis | none | Datastores |
 
 Canonical page: https://www.wildbox.io/guides/ports/
@@ -96,7 +97,7 @@ curl -s --cacert "$CA" -H "Authorization: Bearer $TOKEN" https://localhost/api/v
 - Passwords are hashed with Argon2id through fastapi-users' `PasswordHelper`; older bcrypt hashes still verify.
 - The gateway calls identity with a 5-second timeout, caches authorization decisions for 300 seconds (`AUTH_CACHE_TTL`), and opens a circuit breaker for 60 seconds after 10 failed calls.
 - Every FastAPI service (identity, tools, data, responder, agents, cspm) serves `/openapi.json`, and `/docs` and `/redoc` where it has them, only when `ENVIRONMENT` is `development` (the generated `.env` sets `production`), and only on its own port, not through the gateway.
-- API keys: create with `POST /api/v1/identity/api-keys`, send as `X-API-Key`. Every authenticated route, the agents routes included, accepts a bearer token or an API key.
+- API keys: create with `POST /api/v1/identity/api-keys` (with a bearer token), send as `X-API-Key`. Every route the gateway authenticates (tools, tasks, data, guardian, responder, agents, cspm and `/api/v1/identity/health`) accepts a bearer token or an API key; identity's own routes (`/auth/users/...`, `/api/v1/identity/...`) take the bearer token only.
 - The gateway limits each team to `RATE_LIMIT_PER_HOUR` requests per hour (default 10,000), enforced per minute (1/60 of it in each 60-second window, 166 by default), and reports the limit in `X-RateLimit-*` headers. A value that is not a whole number from 1 to 1,000,000,000 stops the gateway at start-up.
 
 ## Network Targets of the Security Tools

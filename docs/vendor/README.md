@@ -5,8 +5,8 @@ license.
 
 | Path | What | Version | License |
 |---|---|---|---|
-| `highlight.js/` | Highlight.js core + bash/json/xml/yaml languages and the atom-one-dark style | 11.9.0 | [BSD-3-Clause](https://github.com/highlightjs/highlight.js/blob/main/LICENSE) |
-| `tailwindcss/tailwind.js` | Tailwind CSS Play CDN build (browser JIT compiler) | — | [MIT](https://github.com/tailwindlabs/tailwindcss/blob/main/LICENSE) |
+| `highlight.js/` | Highlight.js core + bash/json/xml/yaml languages and the atom-one-dark style. Not loaded by any page: code blocks are highlighted at build time by Rouge (`assets/docs.css`) | 11.9.0 | [BSD-3-Clause](https://github.com/highlightjs/highlight.js/blob/main/LICENSE) |
+| `tailwindcss/tailwind.js` | Tailwind CSS Play CDN build (browser JIT compiler) | 3.4.17 | [MIT](https://github.com/tailwindlabs/tailwindcss/blob/main/LICENSE) |
 
 Self-hosted fonts are documented in `fonts/README.md`.
 

@@ -12,11 +12,11 @@ What exists today, as defined by `docker-compose.yml` in the repository. Ports, 
 - **Data (`open-security-data`)**: Collects threat intelligence (IOCs, denylists) from 7 public feeds on a schedule and serves lookups.
 - **Guardian (`open-security-guardian`)**: Django REST. Assets, vulnerabilities, remediation, compliance and reporting.
 - **Responder (`open-security-responder`)**: Executes YAML incident-response playbooks through connectors.
-- **CSPM (`open-security-cspm`)**: 22 configuration checks against live AWS accounts, run by a Celery worker (`cspm-worker`). GCP and Azure are not supported: scans of them are refused with 400, and `GET /api/v1/cspm/providers` lists the providers that can be scanned.
+- **CSPM (`open-security-cspm`)**: 22 configuration checks against live AWS accounts, run by a Celery worker (`cspm-worker`). GCP and Azure are not supported: scans of them are refused with 400, and `GET /api/v1/cspm/providers` lists the providers that can be scanned. Reference: [CSPM endpoints](https://www.wildbox.io/api/cspm/endpoints/).
 - **Agents (`open-security-agents`)**: Optional AI-assisted IOC analysis using the Anthropic API (Claude) when `ANTHROPIC_API_KEY` is set; submitted data is then sent to Anthropic.
 - **Sensor (`open-security-sensor`)**: Endpoint telemetry via osquery, sent to the data service through the gateway with a team member's API key (`data:ingest` scope) and stored per team. The sensor's own local API is not routed through the gateway.
 - **Dashboard (`open-security-dashboard`)**: Next.js web UI, served through the gateway.
-- Optional Compose profiles: `automations` (n8n), `monitoring` (Prometheus), `backup` (scheduled PostgreSQL backups).
+- Optional Compose profiles: `automations` (n8n), `monitoring` (Prometheus and Alertmanager), `backup` (scheduled PostgreSQL and Redis backups).
 
 Wildbox does not include a SIEM, a WAF or a local LLM runtime.
 

@@ -107,6 +107,10 @@ defaults:
     values:
       description: "Hand-written endpoint reference for the Wildbox agents service API, reached through the gateway."
   - scope:
+      path: "api/cspm/endpoints.md"
+    values:
+      description: "Hand-written endpoint reference for the Wildbox CSPM service API, reached through the gateway."
+  - scope:
       path: "contributing.md"
     values:
       description: "Engineering notes for people working on Wildbox itself, with links to the contributor documents in the repository."
