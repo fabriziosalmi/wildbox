@@ -33,15 +33,15 @@ python-dateutil==2.8.2
 prometheus-client>=0.20,<1.0.0
 sentry-sdk==1.45.1
 PyYAML==6.0.1
-pytest==9.0.3
-pytest-django==4.5.2
-pytest-cov==4.1.0
-black==26.3.1
-isort==5.12.0
-flake8==6.0.0
-pre-commit==3.3.3
-mypy==1.5.1
-django-stubs==4.2.3
 gunicorn==23.0.0
 whitenoise==6.5.0
 dj-database-url==2.0.0
+
+# No test runner and no linter: the lock made from this file is what the
+# image installs. pytest, pytest-django, pytest-cov, black, isort, flake8,
+# pre-commit, mypy and django-stubs were named here, so the image shipped
+# them with everything they bring (#788). The two jobs that run the unit
+# tests install pytest and its plugins on top of this lock, pytest-django
+# among them (.github/workflows/test.yml), at the versions
+# tests/ci-tools/requirements.in gives; the Code Quality job installs the
+# linters from that lock. To run the tests by hand, see the README.

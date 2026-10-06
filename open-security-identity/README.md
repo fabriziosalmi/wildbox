@@ -347,9 +347,13 @@ Unit tests are in `tests/unit/`. CI runs them as:
 
 ```bash
 cd open-security-identity
-pip install ../open-security-shared -r requirements.txt pytest pytest-asyncio
+pip install ../open-security-shared
+pip install -r requirements.txt
+pip install pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0
 pytest tests/unit/
 ```
+
+The image holds no test tool; the three above go on top of the lock.
 
 ## License
 
