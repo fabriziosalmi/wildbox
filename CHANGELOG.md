@@ -9,6 +9,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A redirect from guardian keeps the port the client called.** The
+  gateway writes guardian's `Location` back to its own
+  `/api/v1/guardian/` path, and nginx completed that path into an
+  absolute URL with the request's host name and the port nginx listens
+  on, 443, which it leaves out. A gateway reached on any other port,
+  published as 8443 or behind a balancer or a NAT that maps one, sent
+  the client to `https://<host>/api/v1/guardian/...`, where the gateway
+  does not answer; a request without its trailing slash, which Django
+  redirects, failed there. The `Location` now leaves as a path alone,
+  with no scheme, host or port, and the client resolves it against the
+  URL it called. No host is written at all, so the one a client sends
+  in `Host` is no longer echoed in the header either (#776).
+
+### Removed
+
+- **The gateway image no longer ships a compiler.** It installed
+  `gcc`, `musl-dev`, `make`, `gettext` and `unzip` as build tools, and
+  nothing in the image compiled, unpacked or called `envsubst`. The
+  image that faces the network is about half the size (69 MB instead of
+  136 MB in a local build) and holds `curl`, `openssl`, `wget` and
+  `ca-certificates`, each of which it uses (#776).
+- **`GATEWAY_DEBUG` is gone.** Compose passed it, `nginx.conf` kept it
+  for the workers and `auth_handler.lua` read it into a field no line
+  of Lua looked at, so setting it changed nothing. With it go the
+  `$gateway_debug` variable of the two server configurations and
+  `utils.set_debug_headers`, the function that read that variable and
+  that nothing called. A `GATEWAY_DEBUG` line left in `.env` is ignored
+  (#776).
+- **The gateway's unused connection zone.** `nginx.conf` defined
+  `limit_conn_zone ... zone=addr:10m`, and no `limit_conn` named it: it
+  limited nothing and held 10 MB of shared memory. The gateway does not
+  limit connections per address, and did not before (#776).
+
+### Documentation
+
+- **The bursts of the gateway's per-address limits are not settings,
+  and the deployment guide now says what that means.** Of the requests
+  one address sends at the same instant the gateway serves the burst
+  plus one (11 under `GATEWAY_RATE_LIMIT_PER_SECOND`, 4 on the login
+  route, 201 for static assets) and answers `429` to the rest, whatever
+  the rate is; a higher rate only makes room again sooner. A page that
+  starts many requests at once, or many users behind one NAT address,
+  meet the burst and not the rate. The deployment guide, the gateway's
+  README and the comment in `.env.example` describe it; the bursts
+  themselves are unchanged (#776).
 - **guardian refuses a second finding for the same asset and CVE when
   neither has a port.** `POST vulnerabilities/` answered 201 twice: the
   unique set `(asset, cve_id, port)` did not hold for a missing port,
@@ -41,9 +86,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attempts in one task. It now takes one port or a range of at most 1,024
   ports from 1 to 65535, and ends `refused`, with nothing dialed, for
   anything else. No route passes the argument (#775).
-
-### Documentation
-
 - An IPv4 entry of `GUARDIAN_ALLOWED_INTERNAL_TARGETS` or
   `TOOLS_ALLOWED_INTERNAL_TARGETS` does not cover the same range written
   as IPv4-mapped IPv6 addresses (`::ffff:10.20.3.4`), by design. The
@@ -64,6 +106,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skip with the reason, as the suite does for its other optional parts.
   Where `REQUIRE_ALL_SERVICES` says the stack must have everything, as in
   the CI jobs, a missing secret fails them instead.
+- **Two integration tests of the gateway that could not fail are
+  removed.** `test_rate_limiting_burst_protection` and
+  `test_rate_limit_headers` in `tests/integration/test_gateway_hardening.py`
+  set `passed = True` in every branch, whether or not a request was
+  refused and whether or not a header was there. The per-address limits
+  are measured against the gateway image by
+  `open-security-gateway/test/rate_limit_tests.py`, and the per-team
+  budget and its `X-RateLimit-*` headers by `test_rate_limiting` in
+  `test_gateway_security.py`, which does assert (#776).
+- **The gateway's test image refuses a request as the production image
+  does.** Its configuration set no `limit_req_status`, so a request past
+  a limit got nginx's default `503` where production answers `429`, and
+  its bursts were its own: 10 on the login and registration routes,
+  where production has 3 and 2. Those two routes now carry production's
+  status and bursts, `tests/scripts/test_gateway_rate_limit_settings.py`
+  fails when the two files differ on either, and `ci_auth_tests.sh`
+  sends a volley and reads the answers. The limit the test configuration
+  put on its authenticated routes is removed: the harness sends them
+  nearly all of its requests, one after another from one address, and
+  the limits are measured against the production image (#776).
+- **The gateway harness's mock upstream answers in one write.** It sent
+  the headers of each answer and the body separately, and on a
+  connection nginx keeps open the second segment waited for a delayed
+  acknowledgement: about 40 ms for each request the test gateway
+  proxied, 2 ms now (#776).
+- **`e2e-fullstack.yml` passes actionlint.** The two `export
+  NAME="$(...)"` lines that shellcheck reported (SC2155) assign first
+  and export afterwards (#776).
 
 ## [0.12.0] - 2026-10-06
 

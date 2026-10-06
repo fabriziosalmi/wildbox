@@ -215,6 +215,23 @@ requests from one address (identity also locks an account after repeated
 failed logins, whatever this rate is); the third only keeps one address
 from hammering the assets.
 
+The bursts in the last column are not settings. A burst is how far ahead of
+its rate one address may get: of the requests an address sends at the same
+instant the gateway serves the burst plus one (11 under the first setting, 4
+on the login route, 3 on registration and on forgotten password, 201 for
+static assets) and answers `429` to the rest, whatever the rate is. After
+that it makes room for one more request every 1/rate seconds. With the
+defaults, 30 API requests that arrive from one address within 50 ms get
+about 16 answers and 14 refusals: the 11 of the burst, and 5 for the 50 ms
+at 100 a second. A page that starts many requests at once, or many users behind one
+NAT address, meet this limit and not the rate. Raising
+`GATEWAY_RATE_LIMIT_PER_SECOND` makes room again sooner (every millisecond
+at 1000, where it is every 10 ms at 100), so a volley spread over some
+milliseconds passes; it does not change how many requests may arrive in the
+same millisecond, which stays 11. The bursts are written beside the routes
+in `open-security-gateway/nginx/conf.d/wildbox_gateway.conf`; no setting in
+`.env` changes them.
+
 These are operator settings. The gateway counts by the address of the
 connection, never by a header, so nothing a client sends changes a limit or
 moves it to another counter. That also means that behind a NAT, a load

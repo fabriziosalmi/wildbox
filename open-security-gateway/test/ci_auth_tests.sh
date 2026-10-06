@@ -494,6 +494,39 @@ else
     fail "RATE_LIMIT_PER_HOUR=120: five requests in a row were all served (last HTTP $STATUS)"
 fi
 
+# --- Per-address limit of this configuration (#776) --------------------------
+echo "== limit_req in the test configuration =="
+
+# 18. Where the test configuration limits, it refuses as production does:
+#     with 429. It set no limit_req_status, so the requests past the burst
+#     got nginx's default, 503 -- the status of an upstream that is down --
+#     and its login route let 11 through at once where production's lets 4.
+#     Twenty at once on the public login route: the `auth` zone, 5 a second
+#     with burst 3. The limits themselves, to the request, are measured on
+#     the production image (rate_limit_tests.py); what is asked here is that
+#     this image answers a refusal the same way, and refuses at all.
+VOLLEY="$(mktemp -d)"
+for i in $(seq 1 20); do
+    curl -s -o /dev/null -w '%{http_code}\n' -X POST "$GATEWAY_URL/api/v1/auth/login" > "$VOLLEY/$i" &
+done
+wait
+SERVED=$(cat "$VOLLEY"/* | grep -c '^200$')
+REFUSED=$(cat "$VOLLEY"/* | grep -c '^429$')
+ANSWERS=$(cat "$VOLLEY"/* | sort | uniq -c | awk '{ printf "%s%s x%s", sep, $2, $1; sep = ", " }')
+rm -rf "$VOLLEY"
+if [ "$((SERVED + REFUSED))" = 20 ] && [ "$REFUSED" -ge 1 ]; then
+    pass "20 logins at once: every answer is a 200 or nginx's 429 ($ANSWERS)"
+else
+    fail "20 logins at once: expected 200s and 429s only, with a 429 among them, got $ANSWERS"
+fi
+# Burst 3: four pass at once, and one more for each fifth of a second the
+# twenty took to arrive. Eleven or more passed with the burst this file had.
+if [ "$SERVED" -ge 1 ] && [ "$SERVED" -le 10 ]; then
+    pass "20 logins at once: $SERVED served, as production's burst of 3 allows"
+else
+    fail "20 logins at once: $SERVED served (production's burst of 3 serves 4, and 5 more a second)"
+fi
+
 # CORS is in cors_tests.sh (#712): it runs against the production
 # configuration, where these cases should have been, and against this one.
 
