@@ -199,8 +199,10 @@ def test_the_compliance_report_of_a_completed_scan(world):
             figures["passed"],
             figures["failed"],
         )
+        # Over the results with a verdict. This asserted the division by
+        # the total, which counts the results without one (#778).
         assert row.compliance_percentage == pytest.approx(
-            figures["passed"] / figures["total"] * 100
+            figures["passed"] / (figures["passed"] + figures["failed"]) * 100
         )
     assert report.recommendations == stored["summary"]["recommendations"]
     assert report.recommendations
@@ -219,7 +221,7 @@ def test_the_compliance_report_of_a_completed_scan(world):
     }
     assert report.overall_score == pytest.approx(
         sum(row.passed_checks for row in report.frameworks)
-        / sum(row.total_checks for row in report.frameworks)
+        / sum(row.passed_checks + row.failed_checks for row in report.frameworks)
         * 100
     )
 

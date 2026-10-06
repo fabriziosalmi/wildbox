@@ -372,10 +372,10 @@ without regard to case; a value that matches no check, such as
       "total_checks": 4,
       "passed_checks": 1,
       "failed_checks": 2,
-      "compliance_percentage": 25.0
+      "compliance_percentage": 33.33333333333333
     }
   ],
-  "overall_score": 25.0,
+  "overall_score": 33.33333333333333,
   "recommendations": ["Configure S3 bucket to block public access"]
 }
 ```
@@ -384,7 +384,11 @@ One entry per framework the scan's results are tagged with, or only the one
 named by `framework`. `total_checks` counts every result tagged with the
 framework, whatever its status, as `summary.compliance_frameworks` in the
 report does, so `passed_checks` and `failed_checks` add up to less when a
-check errored. `generated_at` is UTC without an offset, like every other
+check errored. The two percentages are over the results with a verdict
+(`passed_checks` and `failed_checks`), as the report's `compliance_score`
+is, and `0` when there is none; up to 0.12.0 they were over `total_checks`,
+so a check that errored or was skipped lowered them as a failed one does.
+`generated_at` is UTC without an offset, like every other
 time in these answers. A scan that has not completed answers as the report
 route does.
 

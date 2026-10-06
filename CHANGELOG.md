@@ -52,6 +52,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever stopped the scan between its first write and the queue. In a
   batch, the scans queued before the one that failed stay queued and
   run, as before.
+- **A check that did not run no longer lowers a cspm scan's compliance
+  percentage** (#778). `GET /api/v1/scans/{id}/compliance` and
+  `summary.compliance_frameworks` in a scan's report divided the passed
+  results of a framework by every result tagged with it. A result that
+  was skipped, or whose check failed to run, has no verdict, and it
+  lowered the percentage exactly as a failed one does: a scan with one
+  result passed, two failed and one in error read 25% there and 33.3% in
+  its own `compliance_score`, which counts verdicts only, as the team
+  summary does. `compliance_percentage` and `overall_score` are now over
+  the passed and failed results. A scan in which every check ran reads
+  the same as before; one with skipped or errored checks reads higher.
+  `total_checks` still counts every result, and the percentages are
+  still `0` when nothing was assessed. A report stored by an earlier
+  release keeps the percentages it was stored with in its `summary`; the
+  compliance route computes from the results and answers the new figure
+  for the same scan.
 
 ## [0.12.0] - 2026-10-06
 

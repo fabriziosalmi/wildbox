@@ -730,9 +730,16 @@ async def get_compliance_report(
                 elif result.status == "failed":
                     framework_results[fw]["failed"] += 1
         
-        # Create framework summaries
+        # Create framework summaries. The percentage is over the results
+        # with a verdict, as the report's own compliance_score and the
+        # team summary are: it was over every result, so a check that was
+        # skipped, or that failed to run, lowered it as a failed one does:
+        # one result passed, two failed and one in error read 33.3 in the
+        # report and 25.0 here (#778). total_checks still counts every
+        # result, and nothing assessed is still 0.
         for fw, stats in framework_results.items():
-            compliance_percentage = (stats["passed"] / stats["total"] * 100) if stats["total"] > 0 else 0
+            verdicts = stats["passed"] + stats["failed"]
+            compliance_percentage = (stats["passed"] / verdicts * 100) if verdicts > 0 else 0
             frameworks_summary.append(
                 schemas.ComplianceReportFrameworkSummary(
                     framework=fw,
@@ -744,9 +751,9 @@ async def get_compliance_report(
             )
         
         # Calculate overall score
-        total_framework_checks = sum(fw.total_checks for fw in frameworks_summary)
         total_passed = sum(fw.passed_checks for fw in frameworks_summary)
-        overall_score = (total_passed / total_framework_checks * 100) if total_framework_checks > 0 else 0
+        total_verdicts = total_passed + sum(fw.failed_checks for fw in frameworks_summary)
+        overall_score = (total_passed / total_verdicts * 100) if total_verdicts > 0 else 0
         
         return schemas.ComplianceReportResponse(
             scan_id=scan_id,

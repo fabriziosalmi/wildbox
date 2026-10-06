@@ -434,8 +434,8 @@ The report the worker stored when the scan completed. Abridged to one result:
     "checks_by_status": {"passed": 1, "failed": 2, "error": 1, "skipped": 0, "not_implemented": 0},
     "findings_by_severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "info": 0, "unknown": 1},
     "compliance_frameworks": {
-      "CIS AWS Foundations": {"total": 4, "passed": 1, "failed": 2, "compliance_percentage": 25.0},
-      "PCI DSS": {"total": 4, "passed": 1, "failed": 2, "compliance_percentage": 25.0}
+      "CIS AWS Foundations": {"total": 4, "passed": 1, "failed": 2, "compliance_percentage": 33.33333333333333},
+      "PCI DSS": {"total": 4, "passed": 1, "failed": 2, "compliance_percentage": 33.33333333333333}
     },
     "recommendations": ["<how to fix it>"]
   }
@@ -452,7 +452,7 @@ The figures above are illustrative. The fields come from `ScanReportSchema` in
 | `compliance_score` | `passed_checks / (passed_checks + failed_checks) * 100`; results that errored, were skipped or are not implemented do not count |
 | `results[].status` | `passed`, `failed`, `error`, `skipped` or `not_implemented` |
 | `summary.findings_by_severity.unknown` | Failed results whose check is not in the catalog. The count has no top-level field in this response |
-| `summary.compliance_frameworks` | Per framework: `total` counts every result tagged with it, whatever its status |
+| `summary.compliance_frameworks` | Per framework: `total` counts every result tagged with it, whatever its status; `compliance_percentage` is `passed / (passed + failed) * 100`, and `0` without a verdict |
 | `summary.recommendations` | The five most frequent remediation texts among failed results |
 
 | Scan is | Answer |
@@ -487,17 +487,17 @@ For the scan of the [report above](#read-a-scans-report):
       "total_checks": 4,
       "passed_checks": 1,
       "failed_checks": 2,
-      "compliance_percentage": 25.0
+      "compliance_percentage": 33.33333333333333
     },
     {
       "framework": "PCI DSS",
       "total_checks": 4,
       "passed_checks": 1,
       "failed_checks": 2,
-      "compliance_percentage": 25.0
+      "compliance_percentage": 33.33333333333333
     }
   ],
-  "overall_score": 25.0,
+  "overall_score": 33.33333333333333,
   "recommendations": ["<how to fix it>"]
 }
 ```
@@ -507,14 +507,27 @@ For the scan of the [report above](#read-a-scans-report):
 | `generated_at` | When this answer was made, not when the scan ran |
 | `frameworks` | One entry per framework name the scan's results carry; with `framework`, that one only, and an empty list when no result carries it |
 | `frameworks[].total_checks` | Every result tagged with the framework, whatever its status, as `summary.compliance_frameworks` in the report counts them. A result that errored or was skipped is in the total and in neither of the other two counts |
-| `frameworks[].compliance_percentage` | `passed_checks / total_checks * 100` |
-| `overall_score` | The passed share over the frameworks listed: the sum of their `passed_checks` over the sum of their `total_checks`, times 100. A result tagged with two frameworks counts twice. `0` when no framework is listed |
+| `frameworks[].compliance_percentage` | `passed_checks / (passed_checks + failed_checks) * 100`, as `compliance_score` in the report; `0` when the framework has no result with a verdict |
+| `overall_score` | The passed share over the frameworks listed: the sum of their `passed_checks` over the sum of their `passed_checks` and `failed_checks`, times 100. A result tagged with two frameworks counts twice. `0` when no framework is listed, or none has a verdict |
 | `recommendations` | `summary.recommendations` of the report |
 
-These figures count results that have no verdict in their totals, unlike
+The two percentages are over the results that have a verdict, as
 `compliance_score` in the report and the
-[team compliance summary](#team-compliance-summary), which count `passed` and
-`failed` results only: the same scan can read 25% here and 33.3% there.
+[team compliance summary](#team-compliance-summary) are. Up to 0.12.0 they were
+over `total_checks`, so a result that errored or was skipped lowered them as a
+failed one does, and the scan above read 25% here and 33.3% in its report.
+
+Two differences from the team summary remain:
+
+- `total_checks` counts every result here, and `passed` and `failed` results only
+  there.
+- With no verdict at all the percentages are `0` here, and `compliance_score` in
+  the report is `0.0`, where the team summary answers `null`.
+
+`summary.compliance_frameworks` in a report is computed when the scan completes:
+the report of a scan that completed on 0.12.0 or earlier keeps the percentage over
+`total` it was stored with, and this route, which computes from the results,
+answers the new figure for the same scan.
 
 For a scan that has not completed it answers as
 [the report route](#read-a-scans-report) does: `400`, `403` or `404`.
