@@ -1670,6 +1670,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays 50. It was ignored: the dashboard home asked for one asset to
   read a count, and for the three newest vulnerabilities, and was sent
   fifty rows each time. `next` and `previous` keep the parameter.
+- **identity reads the user of an authenticated request once** (#665).
+  Two dependencies resolve the bearer token of a request to an
+  authenticated route, the route's own and the one that refuses an
+  account that must change its password, and fastapi-users makes a
+  separate dependency of each: every request asked Redis twice whether
+  the token was revoked and read the user from the database twice. The
+  token strategy, which FastAPI creates once per request, now remembers
+  what it read for that request. What a request is refused for has not
+  moved, and each case has a test: a revoked token, a token older than
+  a password change, an inactive or deleted account, an account that is
+  not a superuser, one that must change its password, and a token
+  revoked between two requests. Five `logger.debug` lines of the
+  account-deletion route were written without the `f` prefix and logged
+  their placeholders (`user_id={user_id}`); they now log the values, and
+  the caller's id where the first named the caller's e-mail address.
+  Also removed: `get_current_user` and `get_current_active_user` of
+  `app/auth.py`, a second token dependency that no route used.
 
 ### Changed
 

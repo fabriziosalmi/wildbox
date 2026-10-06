@@ -12,13 +12,11 @@ from typing import Any, Dict, Optional
 import jwt
 from jwt.exceptions import InvalidTokenError
 from fastapi_users.password import PasswordHelper
-from fastapi import HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from .config import settings
-from .database import get_db
 from .models import User, TeamMembership, Team, ApiKey
 
 # Password hashing: the same helper fastapi-users uses for registration, the
@@ -27,10 +25,6 @@ from .models import User, TeamMembership, Team, ApiKey
 # UnknownHashError on the Argon2id hashes fastapi-users writes, so the custom
 # password-change and self-deletion routes failed for every user (#501).
 password_helper = PasswordHelper()
-
-# HTTP Bearer token security
-security = HTTPBearer()
-
 
 def _api_key_hash_secret() -> str:
     """
@@ -194,91 +188,6 @@ def token_predates_cutoff(payload: Dict[str, Any], user: Any) -> bool:
     if cutoff.tzinfo is None:
         cutoff = cutoff.replace(tzinfo=timezone.utc)
     return iat <= cutoff.timestamp()
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_db)
-) -> User:
-    """
-    FastAPI dependency to get the current authenticated user from JWT token.
-    
-    Args:
-        credentials: HTTP Authorization credentials
-        db: Database session
-        
-    Returns:
-        User object
-        
-    Raises:
-        HTTPException: If authentication fails
-    """
-    from .token_blacklist import is_token_blacklisted
-
-    # Verify token
-    payload = verify_access_token(credentials.credentials)
-    user_id = payload.get("sub")
-
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-        )
-
-    # Check if token has been revoked
-    jti = payload.get("jti")
-    if jti and await is_token_blacklisted(jti):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Get user from database
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
-    
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user",
-        )
-
-    if token_predates_cutoff(payload, user):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    return user
-
-
-async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
-    """
-    FastAPI dependency to get the current active user.
-    
-    Args:
-        current_user: Current user from get_current_user dependency
-        
-    Returns:
-        Active user object
-        
-    Raises:
-        HTTPException: If user is inactive
-    """
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
-    return current_user
 
 
 def generate_api_key() -> tuple[str, str, str]:

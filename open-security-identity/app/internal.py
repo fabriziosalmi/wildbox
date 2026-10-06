@@ -85,9 +85,9 @@ async def authorize_request(
             # Revocation applies to gateway traffic.
             #
             # is_token_blacklisted() existed and was consulted only by identity's
-            # own get_current_user dependency -- which gateway-mediated requests
-            # never reach -- so a revoked token was still authorised for every
-            # service in the system (WILDBO-AUTH-01).
+            # own routes -- which gateway-mediated requests never reach -- so a
+            # revoked token was still authorised for every service in the
+            # system (WILDBO-AUTH-01).
             from .token_blacklist import is_token_blacklisted
 
             jti = payload.get("jti")
