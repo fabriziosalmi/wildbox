@@ -976,22 +976,36 @@ docker compose start postgres
 docker compose up -d
 ```
 
-`restore_postgres.sh` restores what the archive holds, into the database
-that is there. A table created after the backup, by the migrations of a
-later release for instance, is not in the archive and is left in place
-([#773](https://github.com/fabriziosalmi/wildbox/issues/773)): the release
-that made it then fails to migrate again, with `relation ... already
-exists`. To have a database exactly as it was when the backup was taken,
-which is what going back to an earlier release needs, drop it and create
-it empty before the restore, between the second and the third command
-above:
+`restore_postgres.sh --overwrite-live-databases` leaves each database with
+what its archive holds, and with no other table, view, materialized view or
+sequence in the schemas the archive holds. One made after the backup, by the
+migrations of a later release for instance, is dropped in the transaction of
+the restore together with what depends on it, and the script lists what it
+removed. That is what going back to an earlier release needs: the release
+that made a table can migrate again afterwards. Up to 0.12.0 such a table
+was left in place, and the next upgrade stopped on `relation ... already
+exists`
+([#773](https://github.com/fabriziosalmi/wildbox/issues/773)); the
+databases no longer have to be dropped and created before a restore.
 
-```bash
-for db in identity data guardian; do
-  docker compose exec -T postgres psql -U postgres \
-    -c "DROP DATABASE \"$db\" WITH (FORCE)" -c "CREATE DATABASE \"$db\""
-done
-```
+The restore leaves alone what an extension owns, what is not a relation (a
+function or a type made after the backup stays), and every schema the
+archive does not hold, such as one you made after the backup: it drops no
+table, view or sequence there. If one of them is in the way (a view on a
+restored table or on a table the restore has to remove, a foreign key to a
+restored table), the restore of that database fails, names it and changes
+nothing: drop it, or its schema, and run the same command again. What only
+refers from such a schema to a table or a sequence made after the backup, a
+foreign key or a column default, goes with it, and PostgreSQL's notices say
+so. A database restored with `--into-suffix` that is already there keeps
+what the archive does not hold.
+
+The script works in a directory it makes under `TMPDIR` (`/tmp` by default)
+and removes when it ends. It holds every archive without its outer gzip,
+which is about the size of the backup files, and the SQL of one database at
+a time, gzipped, which is about the size of that database's archive again.
+Set `TMPDIR` to a disk with room for the backup files plus the largest of
+them.
 
 Both restores destroy everything written since the backup, so each runs only
 with its flag. `--overwrite-live-databases` restores over the databases the
@@ -1027,7 +1041,11 @@ empty Redis.
 A restore that fails leaves the data that was there.
 
 `restore_postgres.sh` reads every archive before it touches a database, and
-restores each database in one transaction (`pg_restore --single-transaction`).
+restores each database in one transaction. `pg_restore` writes the archive
+as SQL to a file, and `psql` is given one stream: `BEGIN`, the removal of
+what was made after the backup, that SQL, `COMMIT`. The file is used only if
+`pg_restore` succeeded and it ends where a complete dump ends; a stream that
+ends early for any other reason has no `COMMIT`, so it commits nothing.
 If anything in it fails, PostgreSQL rolls that database back to what it was.
 The three databases are three transactions, because PostgreSQL has none that
 spans databases: if the second fails, the first is restored and the other two

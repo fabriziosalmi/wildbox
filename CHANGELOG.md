@@ -26,6 +26,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A restore over a live database removes the tables made after the
+  backup** (#773). `scripts/restore_postgres.sh
+  --overwrite-live-databases` ran `pg_restore --clean`, which drops what
+  the archive holds and loads it again; a table made after the backup is
+  in no archive, so it stayed. A stack upgraded from 0.11.2 to 0.12.0 and
+  taken back from its backup kept guardian's
+  `core_teammembershiprevocation`, and the next upgrade stopped on
+  `relation "core_teammembershiprevocation" already exists`. A view on a
+  restored table, or a table with a foreign key to one, made the restore
+  fail instead. Each database is now left with what its archive holds and
+  with no other table, view, materialized view or sequence in the schemas
+  the archive holds: the others are dropped in the transaction of the
+  restore, with what depends on them, and the script lists them. What an
+  extension owns and what is not a relation are left alone, and no table,
+  view or sequence is dropped in a schema the archive does not hold: if
+  one of them is in the way, a view on a restored table for instance, the
+  restore fails, names it and changes nothing. A database restored with
+  `--into-suffix` that is already there keeps what the archive does not
+  hold, as before.
+
+  What 0.12.0 established (#740) is unchanged: every archive is read before a
+  database is touched, and each database is restored in one transaction
+  or is as it was. The transaction is now one stream to `psql`: `BEGIN`,
+  the removal, the archive as SQL, `COMMIT`. `pg_restore` writes that SQL
+  to a file first, which is used only if `pg_restore` succeeded and the
+  file ends where a complete dump ends, and a stream that ends early has
+  no `COMMIT`. The script reports a database as restored only when the
+  server has answered after the `COMMIT`: `psql` exits with status 0 when
+  its input ends, wherever that is. The work directory under `TMPDIR`
+  now also holds the SQL of one database at a time, gzipped, which is
+  about the size of that database's archive; the deployment guide says
+  how much room a restore needs.
 - **A redirect from guardian keeps the port the client called.** The
   gateway writes guardian's `Location` back to its own
   `/api/v1/guardian/` path, and nginx completed that path into an
