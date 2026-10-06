@@ -779,6 +779,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   database driver named by a URL, a Django application, a server
   started from a command line, a pytest plugin), and the list must stay
   exact.
+- **The standalone Compose files of the gateway and the dashboard, and
+  what drove them** (#665).
+  - `open-security-gateway/docker-compose.yml` started the gateway and a
+    Redis and nothing else, and the gateway cannot start that way: nginx
+    exits with `host not found in upstream
+    "open-security-identity:8001"`. Its `Makefile`, `scripts/setup.sh`
+    and `test/integration_test.sh` all ran that file, and
+    `scripts/generate_certs.sh` was called by those two only (the image's
+    entrypoint writes the development certificate). `scripts/test_config.sh`,
+    the `make config` check, wrote an nginx configuration of its own,
+    with an upstream for the automations route removed in #714, and
+    tested that one, not the files in `nginx/`. The gateway runs from the
+    root `docker-compose.yml`, and is tested without the stack as
+    `.github/workflows/gateway-tests.yml` does.
+  - `open-security-dashboard/docker-compose.yml` passed service URLs and
+    `NEXTAUTH_*` variables the dashboard does not read, and checked its
+    health with `curl` on `/api/health`: the image has no `curl` and the
+    dashboard no such route. The dashboard's `Makefile` wrapped that file
+    and an `npm run test` script that does not exist.
 
 ### Fixed
 
