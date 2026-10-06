@@ -97,10 +97,37 @@ app = FastAPI(
 # Canonical error contract + correlation id + Prometheus metrics.
 # One shape for every Wildbox service (see open_security_shared.errors).
 from open_security_shared.errors import install_error_handlers as _install_error_handlers
+from open_security_shared.errors import error_response as _error_response
+from open_security_shared.errors import get_request_id as _get_request_id
+from app.utils.log_safety import code_path, describe_database_error
 from open_security_shared.observability import install_observability as _install_observability
 
 _install_error_handlers(app)
 _install_observability(app, service_name="data", service_version=SERVICE_VERSION)
+
+
+# A database error no route caught: the 500 the shared handler gives an
+# unhandled error, which is where these went, logged without the database's
+# words. The shared handler logs the exception's text and its traceback, and
+# PostgreSQL writes values in its messages: ``DETAIL: Key (...)=(...) already
+# exists`` for a unique violation, the value itself for one a column's type
+# refuses (``invalid input syntax for type inet: "..."``). hide_parameters
+# takes the bound parameters out of the text, not those (#778).
+@app.exception_handler(SQLAlchemyError)
+async def database_error_handler(request: Request, exc: SQLAlchemyError):
+    request_id = _get_request_id(request)
+    logger.error(
+        "Database error: %s\n%s",
+        describe_database_error(exc),
+        code_path(exc),
+        extra={"request_id": request_id, "path": str(request.url.path)},
+    )
+    return _error_response(
+        code=500,
+        message="An internal error occurred",
+        error_type="InternalServerError",
+        request_id=request_id,
+    )
 
 
 # Security headers middleware

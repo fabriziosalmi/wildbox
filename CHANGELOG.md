@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **identity no longer names a Redis key after what was typed in the
+  login form** (#778). The counter of failed logins and the lock were
+  kept under `login:attempts:<address>` and `login:lockout:<address>`,
+  and the address is whatever was typed: a password pasted into the
+  address field became a key name, readable by whoever can list keys and
+  written to Redis's append-only file and to its backups. The keys are
+  now named with an HMAC-SHA256 of the address, keyed by
+  `API_KEY_HASH_SECRET`, which is not in Redis; the log line about a
+  lockout keeps the plain digest an operator can recompute (#755). The
+  lockout itself is unchanged. The keys an earlier release wrote are not
+  read any more, so a lockout in progress at the upgrade ends there, and
+  those keys expire on their own within `ACCOUNT_LOCKOUT_MINUTES` (15 by
+  default). Lifting a lock early by hand now takes the digest of the
+  address, which identity gives: the command is in
+  `docs/guides/authentication.md`.
+- **identity and data log a database error without the values PostgreSQL
+  writes in it** (#778). `hide_parameters` (#755) takes the bound
+  parameters out of the text of an error, not what the server wrote:
+  `DETAIL: Key (email)=(alice@example.com) already exists` for a unique
+  violation, `invalid input syntax for type inet: "..."` with the value
+  itself for one a column refuses. A database error no route handled was
+  logged with that text and with its traceback, which ends with it
+  again; data's collector logged it for an indicator that could not be
+  stored, and again for the collection that failed. Both services now
+  log the class of the error, its SQLSTATE, the constraint and table it
+  names, and the frames it went through. The answers do not change: the
+  same `500`, and identity's `503` for a database that cannot be
+  reached, which is still logged with its cause.
+
 ### Fixed
 
 - **cspm answers when Redis accepts the connection and then says

@@ -22,7 +22,12 @@ from sqlalchemy.orm import Session
 from app.config import get_config
 from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun
 from app.utils.database import get_db_session
-from app.utils.log_safety import describe_error, host_of
+from app.utils.log_safety import (
+    code_path,
+    describe_database_error,
+    describe_error,
+    host_of,
+)
 from app.utils.rate_limiter import RateLimiter
 from app.utils.validators import validate_indicator
 from app.utils.normalizers import normalize_indicator
@@ -188,10 +193,21 @@ class BaseCollector(ABC):
             # error keeps its traceback, for the operator.
             result.error_message = describe_error(e)
             result.error_details = {"exception_type": type(e).__name__}
-            logger.error(
-                f"Collection failed for source {self.source.name}: {describe_error(e)}",
-                exc_info=not isinstance(e, aiohttp.ClientError),
-            )
+            if isinstance(e, SQLAlchemyError):
+                # A database error's traceback ends with its text, and the
+                # text holds what the database wrote, the refused row's
+                # values included: the frames, without it (#778).
+                logger.error(
+                    "Collection failed for source %s: %s\n%s",
+                    self.source.name,
+                    describe_database_error(e),
+                    code_path(e),
+                )
+            else:
+                logger.error(
+                    f"Collection failed for source {self.source.name}: {describe_error(e)}",
+                    exc_info=not isinstance(e, aiohttp.ClientError),
+                )
         
         finally:
             # A run that reaches this block has stopped, so it must not be
@@ -348,7 +364,10 @@ class BaseCollector(ABC):
             # errors (an IntegrityError from uq_source_indicator, for instance)
             # are not among the builtins this used to list, so the session was
             # left in a failed-transaction state (WILDBO-ERR-01).
-            logger.error(f"Error storing indicator: {e}")
+            # Not the error's text: for a database error it holds what the
+            # database wrote, the refused row's values included (#778).
+            what = describe_database_error(e) if isinstance(e, SQLAlchemyError) else e
+            logger.error(f"Error storing indicator: {what}")
             db_session.rollback()
             raise
 

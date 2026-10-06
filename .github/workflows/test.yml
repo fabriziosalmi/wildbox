@@ -107,8 +107,10 @@ jobs:
         # The agents suite starts a throwaway Redis with the runner's Docker
         # and a real Celery worker, to hit the task time limits (#727). The
         # cspm suite starts one too, to run the races between the ends of a
-        # scan on a Redis server's own WATCH (#778). They skip where Docker
-        # is missing; here they must run. No other suite reads the variable.
+        # scan on a Redis server's own WATCH, and the identity and data
+        # suites a PostgreSQL, for the text only the server writes in an
+        # error (#778). They skip where Docker is missing; here they must
+        # run. No other suite reads the variable.
         env:
           WILDBOX_REQUIRE_DOCKER_TESTS: "1"
         run: |

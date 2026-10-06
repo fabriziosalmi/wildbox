@@ -73,14 +73,24 @@ tokens, but nothing delivers them.
 Login is limited per account: after `MAX_FAILED_LOGIN_ATTEMPTS` failures (5)
 the account is locked for `ACCOUNT_LOCKOUT_MINUTES` (15) and login answers
 `429` with `Retry-After`, even for the correct password. The counter is kept in
-Redis.
+Redis, under a keyed digest of the address (`login:attempts:<64 hex digits>`,
+`login:lockout:<64 hex digits>`): an HMAC-SHA256 with `API_KEY_HASH_SECRET`,
+of the address lower-cased and trimmed. Up to 0.12.0 the keys were named
+after the address as it was typed, so a password pasted into the address
+field became a key name in Redis and in its append-only file. No Redis key
+of identity holds an address now.
 
 The log line about a lockout names the account by the first twelve hex
 digits of the SHA-256 of the address as it was typed, lower-cased and
 trimmed, not by the address: `printf %s user@example.com | shasum -a 256`
 gives the digits for an address you already know. A registration is logged
 by the user's id. The database engine never logs the parameters of a
-statement, with `DEBUG` or in the text of an error.
+statement, with `DEBUG` or in the text of an error. A database error no
+route handles is logged by its class, its SQLSTATE and the constraint and
+table it names, with the frames it went through and without the message
+PostgreSQL wrote, which holds values (`DETAIL: Key (email)=(...) already
+exists`); the answer is the same `500`. An unreachable database is still a
+`503`, logged with its cause.
 
 Tokens are HS256 JWTs with `sub`, `aud` (`fastapi-users:auth`), `exp`, a random
 `jti` and a fractional `iat`, valid for `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` (30).
@@ -313,6 +323,10 @@ leaves API keys valid (#648):
   `make init-api-key-hash` before upgrading; see
   [UPGRADING.md](../UPGRADING.md). A fresh install gets it from
   `make generate-secrets`.
+
+It also keys the digests the login lockout's Redis keys are named with.
+Changing it leaves the lockouts in progress behind: they are no longer
+read, and expire within `ACCOUNT_LOCKOUT_MINUTES`.
 
 ## Database migrations
 

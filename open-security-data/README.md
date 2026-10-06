@@ -232,6 +232,18 @@ collects at the same time. Each source's own `collection_interval` decides
 when the scheduler runs it. The service uses no Redis and reads no
 `REDIS_URL`. `.env.example` lists every variable `app/config.py` reads.
 
+### What the logs hold of an error
+
+A feed that cannot be fetched is logged, and stored with the run and the
+source, by the class of the error and its HTTP status, not by its text,
+which ends with the feed's URL (#755). A database error is logged the same
+way: its class, its SQLSTATE and the constraint and table it names, with the
+frames it went through, and not the message PostgreSQL wrote, which holds
+values (`DETAIL: Key (...)=(...) already exists` for an indicator stored
+twice, `invalid input syntax for type inet: "..."` with what was searched
+for). That covers an error no route handles, whose answer is the same `500`,
+an indicator the database refuses, and the collection that fails with it.
+
 ## Development
 
 ```text

@@ -650,6 +650,7 @@
     "SQLi",
     "sqlmap",
     "sqlparse",
+    "SQLSTATE",
     "srcset",
     "SSH",
     "SSL",
