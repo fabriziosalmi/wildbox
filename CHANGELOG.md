@@ -798,6 +798,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     health with `curl` on `/api/health`: the image has no `curl` and the
     dashboard no such route. The dashboard's `Makefile` wrapped that file
     and an `npm run test` script that does not exist.
+- **tools: the files beside the service that nothing read** (#665).
+  `audit_tools.py`, `setup_security.sh`, `test_security_integration.sh`,
+  `scripts/setup.sh`, `scripts/health-check.sh`, and
+  `scripts/security_scanner.py` with the `security_scan_report.json` it
+  once wrote: no workflow, image or page ran them. Three files of
+  `config/` (`logging_config.json`, `rate_limiting.json`,
+  `security_config.json`) that no code opened; the two
+  `*.json.example` files stay, they are the format of the
+  authorization files the service does read. The `Makefile`, which no
+  page mentioned: its `dev` target copied `.env.example` over an
+  existing `.env`, `fix-db` called a script that is not in the
+  repository, and `clean` pruned every unused Docker volume and network
+  of the host, not only this stack's.
 
 ### Fixed
 
@@ -1765,6 +1778,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the caller's id where the first named the caller's e-mail address.
   Also removed: `get_current_user` and `get_current_active_user` of
   `app/auth.py`, a second token dependency that no route used.
+- **tools: the standalone Compose files ask for `API_KEY` instead of
+  defaulting to one the service refuses** (#665).
+  `open-security-tools/docker-compose.yml` and `docker-compose.dev.yml`
+  set `API_KEY` to a placeholder when the variable was unset, and the
+  service's own validation rejects both placeholders (one names a weak
+  pattern, the other is shorter than 32 characters): `docker compose up`
+  built the image and the API exited at once. The variable is now
+  required, and Compose says so before it builds anything. With a
+  generated key the API starts and answers `/health`.
 
 ### Changed
 

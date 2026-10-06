@@ -14,7 +14,9 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      - API_KEY=${API_KEY:-dev-api-key-change-this}
+      # Required: the service refuses a key under 32 characters, which the
+      # default that used to be here was.
+      - API_KEY=${API_KEY:?Set API_KEY to at least 32 random characters, for example the output of openssl rand -hex 32}
       - HOST=0.0.0.0
       - PORT=8000
       # /openapi.json is served in development only, and an environment
