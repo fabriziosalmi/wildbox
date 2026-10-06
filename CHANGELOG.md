@@ -726,6 +726,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the reason of a failure from `task:<id>:error`. The three writes are
   removed. A key already in Redis expires with its task, an hour after
   it at the default.
+- **sensor: the `security-sensor` and `ossensor` console scripts, and
+  the `dev`, `windows` and `macos` extras of `setup.py`** (#665). Both
+  scripts pointed at `main:main`, and `main.py` is not part of what
+  `setup.py` packages: after `pip install .` each failed with
+  `ModuleNotFoundError: No module named 'main'`. They answered only
+  inside the image, where an editable install puts `/app` on the path,
+  and nothing ran them there: the image starts `python main.py`, which
+  is also what the README tells an operator to run. The extras named
+  `pywin32`, `wmi` and `pyobjc-framework-Cocoa`, which no module of the
+  sensor imports. Start the sensor with `python main.py --config <file>`.
 
 ### Fixed
 
