@@ -28,8 +28,10 @@ COLLECTOR = SERVICE_ROOT / "sensor" / "collectors" / "osquery_manager.py"
 
 # osquery 5.x, verified by running
 #   osqueryi --json "PRAGMA table_info(systemd_units);"
-# inside the sensor image. Update this list from that command, never from
-# memory: getting it wrong is the defect this test exists to catch.
+# inside the sensor image, with osquery 5.10.2 and again with 5.23.1 when the
+# image moved to it (#726): the same fourteen columns in both. Update this
+# list from that command, never from memory: getting it wrong is the defect
+# this test exists to catch.
 SYSTEMD_UNITS_COLUMNS = {
     "id",
     "description",

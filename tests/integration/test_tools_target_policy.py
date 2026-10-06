@@ -116,13 +116,51 @@ def test_an_internal_target_is_refused_before_the_tool_runs(headers, tool, paylo
     assert POLICY in response.text, response.text[:300]
 
 
-def test_an_internal_target_is_refused_in_the_worker(headers):
-    body = run_async(
-        headers, "port_scanner", {"target": "wildbox-redis", "ports": [6379]}
+def task_ids(headers):
+    response = requests.get(
+        f"{GATEWAY_URL}/api/v1/tasks?limit=100", headers=headers, timeout=TIMEOUT
+    )
+    assert response.status_code == 200, response.text[:300]
+    return {task["task_id"] for task in response.json()["tasks"]}
+
+
+@pytest.mark.parametrize(
+    "tool,payload,expected",
+    [
+        # A target the policy refuses.
+        ("port_scanner", {"target": "wildbox-redis", "ports": [6379]}, 400),
+        # Input the tool's model refuses.
+        ("port_scanner", {"ports": [6379]}, 422),
+        # A name that is no tool.
+        ("no_such_tool", {"target": "example.com"}, 404),
+    ],
+)
+def test_an_asynchronous_submission_is_refused_like_a_synchronous_run(
+    headers, tool, payload, expected
+):
+    """Nothing invalid is queued (#743).
+
+    The submission used to answer 202 for all three and the caller read the
+    refusal back from the task, as `failed`, after a worker had taken it.
+    The worker still applies the policy when the task runs, which the tools
+    unit tests cover: the answer can change between submission and run.
+    """
+    before = task_ids(headers)
+
+    submitted = requests.post(
+        f"{GATEWAY_URL}/api/v1/tools/{tool}/async",
+        json=payload,
+        headers=headers,
+        timeout=TIMEOUT,
     )
 
-    assert body["status"] == "failed", body
-    assert POLICY in (body.get("error") or ""), body
+    assert submitted.status_code == expected, submitted.text[:300]
+    if expected == 400:
+        assert POLICY in submitted.text, submitted.text[:300]
+        # The same answer as the synchronous route.
+        assert run_tool(headers, tool, payload).status_code == 400
+    assert "task_id" not in submitted.text
+    assert task_ids(headers) == before
 
 
 def test_an_address_outside_the_allowlist_stays_refused(headers):

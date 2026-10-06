@@ -45,7 +45,7 @@ services:
   # Local Redis for standalone development
   # When using main stack, API service can optionally use shared wildbox-redis
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     container_name: wildbox-redis-api
     ports:
       - "127.0.0.1:6379:6379"
@@ -68,7 +68,7 @@ services:
 
   # Nginx reverse proxy (optional)
   nginx:
-    image: nginx:1.30-alpine
+    image: nginx:1.30-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
     container_name: wildbox-nginx-api
     ports:
       - "80:80"

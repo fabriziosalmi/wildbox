@@ -47,16 +47,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Trivy: the scan engine behind the container_security_scanner tool. Pinned so
 # the image is reproducible; the vulnerability DB is fetched at first run.
 # Download the release tarball directly (the install.sh path was unreliable in
-# the slim image). CI/prod build for linux/amd64 -> the Linux-64bit asset.
+# the slim image).
+#
+# The asset is the one for the platform the image is built for. This used to
+# download Linux-64bit whatever the platform, so an image built on or for
+# arm64 (an Apple Silicon laptop, a Graviton or Ampere host) shipped an
+# x86-64 binary: the tool answered "exec format error" at the first scan, or
+# ran under emulation where the host happened to have it (#726). TARGETARCH
+# is set by BuildKit; an architecture with no checksum below fails the build.
 #
 # The tarball is checked against a SHA-256 recorded here before it is
 # unpacked: a release asset can be replaced under the same version (#657).
-# The value is the Linux-64bit line of the release's
-# trivy_${TRIVY_VERSION}_checksums.txt; change it together with the version.
+# The values are the Linux-64bit and Linux-ARM64 lines of the release's
+# trivy_${TRIVY_VERSION}_checksums.txt; change them together with the
+# version.
 ARG TRIVY_VERSION=0.72.0
-ARG TRIVY_SHA256=bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea
-RUN curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
-    -o /tmp/trivy.tar.gz \
+ARG TRIVY_SHA256_AMD64=bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea
+ARG TRIVY_SHA256_ARM64=2ca2c023109c2db6b2b77366b6717291452d4531167377d95c79547f0c8e3467
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+        amd64) TRIVY_ASSET=Linux-64bit; TRIVY_SHA256="${TRIVY_SHA256_AMD64}" ;; \
+        arm64) TRIVY_ASSET=Linux-ARM64; TRIVY_SHA256="${TRIVY_SHA256_ARM64}" ;; \
+        *) echo "Unsupported architecture for Trivy: '${TARGETARCH}' (amd64 and arm64 have a pinned checksum)" >&2; exit 1 ;; \
+    esac \
+    && curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${TRIVY_ASSET}.tar.gz" \
+        -o /tmp/trivy.tar.gz \
     && echo "${TRIVY_SHA256}  /tmp/trivy.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy \
     && rm /tmp/trivy.tar.gz \

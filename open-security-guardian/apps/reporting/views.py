@@ -62,7 +62,9 @@ class ReportTemplateViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         # Queue report generation
         generate_report.delay(report.id)
         
-        serializer = ReportSerializer(report)
+        serializer = ReportSerializer(
+            report, context=self.get_serializer_context()
+        )
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=['get'])
@@ -70,7 +72,9 @@ class ReportTemplateViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         """Get all reports generated from this template"""
         template = self.get_object()
         reports = template.reports.all()
-        serializer = ReportSerializer(reports, many=True)
+        serializer = ReportSerializer(
+            reports, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
@@ -78,7 +82,9 @@ class ReportTemplateViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         """Get metrics for this template"""
         template = self.get_object()
         metrics = template.metrics.order_by('-metric_date')[:30]  # Last 30 days
-        serializer = ReportMetricsSerializer(metrics, many=True)
+        serializer = ReportMetricsSerializer(
+            metrics, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
 
@@ -114,7 +120,9 @@ class ReportScheduleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         # Queue report generation
         generate_report.delay(report.id)
         
-        serializer = ReportSerializer(report)
+        serializer = ReportSerializer(
+            report, context=self.get_serializer_context()
+        )
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=['get'])
@@ -226,7 +234,9 @@ class DashboardViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
             widgets_data.append(widget_data)
         
         return Response({
-            'dashboard': DashboardSerializer(dashboard).data,
+            'dashboard': DashboardSerializer(
+                dashboard, context=self.get_serializer_context()
+            ).data,
             'widgets': widgets_data,
             'last_updated': timezone.now().isoformat()
         })
@@ -358,7 +368,9 @@ class AlertRuleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         """The notifications this rule sent, newest first (#549)."""
         rule = self.get_object()
         page = self.paginate_queryset(rule.notifications.all())
-        serializer = AlertNotificationSerializer(page, many=True)
+        serializer = AlertNotificationSerializer(
+            page, many=True, context=self.get_serializer_context()
+        )
         return self.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['post'])

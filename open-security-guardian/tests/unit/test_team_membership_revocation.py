@@ -374,8 +374,10 @@ def test_an_unassigned_vulnerability_says_why_in_its_history(teams):
     field = Vulnerability._meta.get_field("assigned_to")
     vulnerability = _hold(Vulnerability, field, team_a, member)
 
+    # The notice is queued by the views that assign (#724): patched where
+    # it is defined, so that any dispatch would be seen.
     with mock.patch(
-        "apps.vulnerabilities.signals.notify_vulnerability_assignment"
+        "apps.vulnerabilities.tasks.notify_vulnerability_assignment.delay"
     ) as notify:
         memberships.revoke_membership(team_a, member.username)
 
@@ -387,7 +389,7 @@ def test_an_unassigned_vulnerability_says_why_in_its_history(teams):
     )
     assert (entry.old_value, entry.new_value) == ("assigned", "")
     # Not an edit by anybody: no assignment e-mail is queued for it.
-    notify.delay.assert_not_called()
+    notify.assert_not_called()
 
 
 @pytest.mark.django_db

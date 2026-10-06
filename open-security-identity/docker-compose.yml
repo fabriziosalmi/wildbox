@@ -25,8 +25,10 @@ services:
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL environment variable is required}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY environment variable is required}
-      # Optional here (no ENVIRONMENT=production): unset, identity keys API-key
+      # This file is a development stack, and says so: only development may
+      # run without API_KEY_HASH_SECRET (#736). Unset, identity keys API-key
       # digests with JWT_SECRET_KEY and logs a warning (#648).
+      - ENVIRONMENT=development
       - API_KEY_HASH_SECRET=${API_KEY_HASH_SECRET:-}
       # Auto-migration settings
       - CREATE_INITIAL_ADMIN=true
@@ -41,7 +43,7 @@ services:
       - ./scripts:/app/scripts
 
   postgres:
-    image: postgres:15
+    image: postgres:15@sha256:724292da1f2e50bdccfc3302ce75bbba7f4a6076701b588cc795fcac65683550
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -54,7 +56,7 @@ services:
   # Local Redis for standalone development
   # When using main stack, identity service connects to wildbox-redis:6379/0
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     ports:
       - "127.0.0.1:6384:6379"
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16 --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}

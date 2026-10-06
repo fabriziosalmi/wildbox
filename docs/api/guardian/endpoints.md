@@ -166,7 +166,11 @@ reports in `X-Wildbox-Team-ID` (`apps/core/tenancy.py`):
   is, and the roles they held in the team are cleared when they are
   removed: a vulnerability assigned to them becomes unassigned, with a
   line in its history. What they did (the rows they created, the notes
-  they wrote) stays attributed to them.
+  they wrote) stays attributed to them. A member who is removed from a
+  team and added back within ten minutes can use guardian at once, but can
+  be named again only once the ten minutes have passed and they have made
+  a request: for that long guardian does not take a request as proof of
+  the membership, since one sent before the removal may arrive after it.
 - `/api/v1/guardian/tasks/<uuid>/` answers only for tasks the team
   dispatched; any other id answers `404`.
 
@@ -179,10 +183,22 @@ operator assigns them, for example with
 
 ## Conventions
 
+### Representation
+
+Every answer is JSON, errors included. A request whose `Accept` header admits only
+something else (`Accept: text/html`) answers `406`; a browser, which also sends
+`*/*`, gets the JSON. Django REST framework's browsable API, the HTML pages with a
+form for each route, is served only when guardian runs with `DEBUG=true`, like the
+schema and its UIs. Before #724 it was on in every environment, and in the image
+every request for `text/html` answered `500`.
+
 ### Pagination
 
-List routes use page-number pagination with 50 items per page. Pass `?page=N`; the
-page size cannot be changed per request.
+List routes use page-number pagination with 50 items per page. Pass `?page=N` for
+another page and `?page_size=N` for another size, from 1 to 200: a larger value is
+served 200 items, and a value that is not a positive whole number is served the
+default 50. To read only how many records a list has, ask for `?page_size=1` and
+read `count`. Before #724 `page_size` was ignored.
 
 ```json
 {
@@ -195,8 +211,8 @@ page size cannot be changed per request.
 
 `next` and `previous` are relative references: the path and query of the neighboring
 page, without scheme or host, or `null` when there is none. They keep the other
-query parameters of the request (`search`, `ordering`, filters); `previous` for page
-2 is the list without `page`. Resolve a link against the URL you requested, as you
+query parameters of the request (`page_size`, `search`, `ordering`, filters);
+`previous` for page 2 is the list without `page`. Resolve a link against the URL you requested, as you
 would a redirect:
 
 ```python
@@ -228,12 +244,25 @@ page. The one paginated custom action is `reports/alerts/{id}/notifications/`.
 Most list routes accept:
 
 - `?search=<text>`: searches the fields the view declares (for example asset
-  `name`, `hostname`, `fqdn`, `ip_address` and `description`).
+  `name`, `hostname`, `fqdn`, `ip_address` and `description`), without regard to
+  case. Every word of the text must be found, each in any of the fields.
 - `?ordering=<field>` or `?ordering=-<field>`: sorts by one of the view's ordering
-  fields.
+  fields. A field the view does not order by is ignored.
 - Field filters from the view's filter set, for example `?status=active` or
   `?criticality=high` on assets, and `?severity=critical` or `?status=open` on
-  vulnerabilities.
+  vulnerabilities. The filters of the asset and vulnerability lists are in their
+  sections below.
+
+Several filters together select the records that match all of them. A value a
+filter does not accept (a severity that does not exist, the id of a record of
+another team) answers `400` with the filter's name; a parameter the list does not
+have is ignored. A true/false filter takes `true` or `false`: `true` selects the
+records that are so, `false` the others.
+
+`?format=` does not choose the representation of the answer, which is JSON; on
+`reports/reports/` it is the filter on a report's format. Before #724 it was read
+as the name of a renderer on every route, so `reports/reports/?format=pdf`
+answered `404`.
 
 ### IDs and methods
 
@@ -293,16 +322,43 @@ Custom actions:
 | `POST` | `assets/assets/{id}/add_port/` | Adds a port record to the asset (`201`) |
 | `POST` | `assets/assets/{id}/add_tag/` | Body `{"tag": "..."}` |
 | `DELETE` | `assets/assets/{id}/remove_tag/` | Body `{"tag": "..."}` |
-| `POST` | `assets/assets/discover/` | Body `{"network_range": "...", "scan_type": "basic"}`; queues a discovery task and returns `task_id` |
+| `POST` | `assets/assets/discover/` | Body `{"network_range": "192.0.2.0/24", "scan_type": "basic"}`; queues a discovery of that network and returns `task_id`. `network_range` is a network in CIDR notation, or one address, of at most 1,024 addresses (a `/22` of IPv4); `scan_type` is `basic` (the default) or `comprehensive`, which also scans the ports of the hosts found. Anything else answers `400` on that field and queues nothing |
 | `GET` | `assets/assets/statistics/` | Totals by type, criticality and status |
 | `POST` | `assets/groups/{id}/apply_rules/` | Applies the group's assignment rules |
 | `POST` | `assets/groups/{id}/add_assets/` | Adds assets to the group |
 | `DELETE` | `assets/groups/{id}/remove_assets/` | Removes assets from the group |
 | `POST` | `assets/discovery-rules/{id}/execute/` | Queues a run of the rule and returns `task_id`. `400` if the rule is disabled; `501` with `"code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"` for a rule whose `discovery_type` is not `network_scan` (one stored before the API refused the other types) |
-| `POST` | `assets/discovery-rules/{id}/enable/` | Enables the rule |
+| `POST` | `assets/discovery-rules/{id}/enable/` | Enables the rule. `501` with `"code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"` for a rule whose `discovery_type` is not `network_scan`: it would never run |
 | `POST` | `assets/discovery-rules/{id}/disable/` | Disables the rule |
 | `GET` | `assets/software/inventory/` | Software inventory across assets |
 | `GET` | `assets/ports/summary/` | Port summary across assets |
+
+A rule is `enabled` when it runs on its schedule. A rule of a type guardian does
+not implement (one stored before the API refused the other types) never runs, so it
+cannot be enabled: `enable/` answers `501` and a `PATCH` with `"enabled": true`
+answers `400` on `enabled`. The upgrade to this version switches off the ones that
+were stored as enabled (#724).
+
+A discovery rule of type `network_scan` lists what it sweeps in
+`target_specification`: `networks`, 1 to 32 networks in CIDR notation, each of at
+most 1,024 addresses, and optionally `scan_type` (`basic` or `comprehensive`). The
+bound is the one the tools service puts on a scan target. Before #724 neither
+`discover/` nor a rule checked the size of a network, and `discover/` did not check
+that `network_range` was one. A rule stored with a larger network keeps it, and
+its runs skip that network.
+
+Filters of `assets/assets/`:
+
+| Parameter | Selects |
+| --- | --- |
+| `asset_type`, `criticality`, `status` | The value given; repeat the parameter for any of several (`?status=active&status=maintenance`) |
+| `environment`, `business_function` | Assets whose environment or business function has a name that contains the text |
+| `owner` | Assets whose owner's user name contains the text |
+| `tags` | Assets that have every tag of a comma-separated list |
+| `ip_range` | Assets whose `ip_address` is in a network (`10.20.0.0/16`) or is the address given. An IPv4 network of any size; an IPv6 network of at most 256 addresses (`/120`), `400` for a larger one. A value that is not a network is the start of an address: `?ip_range=10.20.` |
+| `discovered_after`, `discovered_before` | `first_discovered` on or after, on or before, a date and time (ISO 8601) |
+| `last_seen_after`, `last_seen_before` | The same for `last_seen` |
+| `has_vulnerabilities`, `has_software`, `has_open_ports` | `true` or `false` |
 
 Asset fields accepted on create include `name` (required), `description`,
 `asset_type` (`server`, `workstation`, `network_device`, `mobile_device`,
@@ -339,21 +395,75 @@ Custom actions:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `vulnerabilities/{id}/assign/` | Body `assigned_to` (user ID) and/or `assignee_group`; `400` with neither |
+| `POST` | `vulnerabilities/{id}/assign/` | Body `assigned_to` (user ID) and/or `assignee_group`; `400` with neither. Queues the assignment e-mail (see below) |
 | `POST` | `vulnerabilities/{id}/close/` | Sets status `resolved`. Body `reason`, `resolution_method` (default `fixed`). Adds a history entry with the reason and the status the vulnerability had |
 | `POST` | `vulnerabilities/{id}/reopen/` | Sets status `open` and clears `resolved_at`. Body `reason`. Adds a history entry with the reason and the status the vulnerability had |
 | `POST` | `vulnerabilities/{id}/add_tag/` | Body `{"tag": "..."}` |
 | `POST` | `vulnerabilities/{id}/remove_tag/` | Body `{"tag": "..."}` (a `POST` here, unlike assets) |
 | `GET` | `vulnerabilities/{id}/history/` | Change history, as a plain array. The SLA check and the assignment notification record here what became of their e-mail: `SLA violation notification sent`, `sent to the team's owners and admins (no assignee to e-mail)` or `not sent (<reason>)` (`field_name` `sla_status`), and `Assignment notification sent` or `not sent (<reason>)` (`field_name` `assignment_notification`) |
-| `GET` | `vulnerabilities/{id}/attachments/` | Attachments, as a plain array |
 | `POST` | `vulnerabilities/bulk_action/` | See below |
-| `GET` | `vulnerabilities/stats/` | Counts by severity and status |
+| `GET` | `vulnerabilities/stats/` | Counts by severity and status of the vulnerabilities the list's filters select |
 | `GET` | `vulnerabilities/trends/` | Daily counts for today and the `?days=N` days before it (default 30, from 0 to 366; `400` otherwise). See below |
 
-A vulnerability needs `title`, `description` and `asset` (an asset ID). `severity`
+Removed in #724: `GET vulnerabilities/{id}/attachments/`, which answers `404`.
+Guardian has no way to attach a file to a vulnerability (there was never an upload
+route), so the list was always empty, and the `file` of an attachment would have
+been a `/media/` URL that nothing serves. Record the location of evidence in the
+vulnerability's `evidence` or `references` fields.
+
+A vulnerability needs `title`, `description` and `asset` (an asset ID); `cve_id`
+is optional (before #724 a request without it answered `400`, so send `"cve_id":
+""` to an older guardian). Guardian keeps one finding for an asset, a CVE and a
+port: a second one answers `400`. The answer to the creation carries the new
+record's `id` (since #724). `severity`
 is one of `critical`, `high`, `medium`, `low`, `info`; `status` is one of `open`,
 `in_progress`, `resolved`, `accepted`, `false_positive`, `duplicate`; `priority` is
 one of `p1` to `p4`. `cvss_v3_score` must be between 0.0 and 10.0.
+
+`resolved_at` is the time the status became `resolved`. Guardian writes it, on
+any change of status: `close/`, a `PATCH` or `PUT` of `status`, a bulk action. It
+is cleared when the status stops being `resolved`. Before #724 only `close/` and
+`reopen/` wrote it, so a vulnerability resolved by a `PATCH` had none and was
+missing from the resolution figures of `stats/` and `trends/`.
+
+A user who is assigned a vulnerability is sent an e-mail, whichever way the
+assignment is made: `assign/`, `bulk_action/` with `assign`, or a `PUT` or `PATCH`
+that changes `assigned_to` (the last two since #724). It goes to the address
+identity has for the assignee, while they are a member of the team, and the
+vulnerability's history says what became of it. An assignment to a group alone
+sends nothing, and so does creating a vulnerability that already names its
+assignee.
+
+Filters of `vulnerabilities/`, which `vulnerabilities/stats/` takes too:
+
+| Parameter | Selects |
+| --- | --- |
+| `severity`, `status`, `priority`, `threat_level` | The value given; repeat the parameter for any of several (`?severity=critical&severity=high`). `threat_level` is one of `imminent`, `active`, `emerging`, `possible`, `unknown` |
+| `risk_score_min`, `risk_score_max` | `risk_score` at least, at most, a number |
+| `cvss_min`, `cvss_max` | `cvss_v3_score` at least, at most, a number |
+| `asset_id` | Vulnerabilities of one asset |
+| `asset_name` | The asset's name contains the text |
+| `asset_type`, `asset_criticality` | The asset's type or criticality, without regard to case |
+| `asset_environment` | The name of the asset's environment, without regard to case |
+| `assigned_to` | The user ID of the assignee |
+| `assignee_group` | The group contains the text |
+| `unassigned` | `true`: neither a user nor a group is assigned. `false`: one of them is |
+| `discovered_after`, `discovered_before` | `first_discovered` on or after, on or before, a date and time (ISO 8601) |
+| `due_date_from`, `due_date_to` | `due_date` on or after, on or before, a date and time |
+| `overdue`, `due_today`, `due_this_week` | `true`: status `open` and due before now, today, or within the next seven days. `false`: the others |
+| `cve_id`, `scanner`, `service` | The field contains the text |
+| `has_tag` | Vulnerabilities that have the tag |
+| `port`, `protocol` | The port number; the protocol, without regard to case |
+
+`?search=` reads `title`, `description`, `cve_id`, the asset's `name` and
+`ip_address`, `scanner` and `service`.
+
+Before #724 the four filters of the first row matched no record, so
+`?severity=medium` and `?status=open` answered an empty list (and `stats/`
+zeros); `asset_environment` answered `500`; `unassigned=true` matched no record;
+`false` on a true/false filter was ignored; and a search had to match in `title`,
+`description`, `cve_id` or the asset's name even when it also matched the
+address, the scanner or the service.
 
 `bulk_action/` takes `vulnerability_ids` (1 to 100 UUIDs) and `action`, one of:
 
@@ -361,7 +471,7 @@ one of `p1` to `p4`. `cvss_v3_score` must be between 0.0 and 10.0.
 | --- | --- | --- |
 | `close` | `reason` (optional) | As `close/` |
 | `reopen` | `reason` (optional) | As `reopen/` |
-| `assign` | `assigned_to` and/or `assignee_group` | Sets the ones given and leaves the other as it was. Unlike `assign/`, sends no assignment e-mail |
+| `assign` | `assigned_to` and/or `assignee_group` | Sets the ones given and leaves the other as it was. With `assigned_to`, queues the assignment e-mail for each vulnerability, as `assign/` does |
 | `tag` | `tag` | Adds the tag |
 | `untag` | `tag` | Removes the tag |
 | `priority` | `priority` (`p1` to `p4`) | Sets the priority |
@@ -374,11 +484,17 @@ Before #644, `reopen` and `untag` were accepted and answered
 `trends/` counts the vulnerabilities the list would show the caller: the team's,
 and for a `member` only those assigned to or created by them. It takes `days` and
 none of the list's filters. Each day has `discovered_count` and `resolved_count`
-(vulnerabilities first discovered, and resolved, on that day), and `total_open`
-and `avg_risk_score`, which describe the vulnerabilities discovered by the end of
-that day whose status is `open` now: guardian keeps no daily snapshot, so a
-vulnerability that was open on a past day and has been resolved since is not
-counted as open on that day.
+(vulnerabilities first discovered, and resolved, on that day), `total_open`, the
+vulnerabilities whose status was `open` when that day ended, and
+`avg_risk_score`, the average of the risk score those had then.
+
+The last two are read from the vulnerabilities' history, which records every
+change of status and of risk score. Before #724 they described the vulnerabilities
+whose status is `open` now, so one resolved yesterday was open on no earlier day.
+What the history cannot say: a vulnerability deleted since is not counted on the
+days it existed, and a status changed without a history entry (by a direct write
+to the database) shows from the day the figure is asked for. Guardian keeps a
+year of history, which is also the longest window.
 
 ```bash
 curl -s --cacert "$CA" "$BASE/vulnerabilities/?severity=critical&status=open" \
@@ -453,18 +569,24 @@ those are stored as sent and returned to every member of the team.
 ### Scan schedules are not supported
 
 Because guardian cannot start a scan on an external scanner, a scan schedule would
-never run. Creating (`POST scanners/scan-schedules/`), updating (`PUT`/`PATCH`),
-triggering (`POST .../{id}/trigger/`) and enabling (`POST .../{id}/enable/`) a
-schedule all answer `400`:
+never run, and the API offers no way to make one, change one, run one or switch one
+on. A schedule stored by an earlier version can be listed and read
+(`GET scanners/scan-schedules/`, `GET .../{id}/`), disabled
+(`POST .../{id}/disable/`) and deleted (`DELETE .../{id}/`).
 
-```json
-{
-  "detail": "Scheduled scans are not supported: guardian cannot start a scan on an external scanner yet (starting, stopping and importing scans are not implemented), so a schedule would never run. Existing schedules can be listed, disabled and deleted."
-}
-```
+The routes that are not there answer as any missing route does:
 
-Existing schedules can still be listed, retrieved, disabled and deleted. See
-[issue #548](https://github.com/fabriziosalmi/wildbox/issues/548).
+| Request | Answer |
+| --- | --- |
+| `POST scanners/scan-schedules/` | `405`, `Allow: GET, HEAD, OPTIONS` |
+| `PUT` or `PATCH scanners/scan-schedules/{id}/` | `405`, `Allow: GET, DELETE, HEAD, OPTIONS` |
+| `POST scanners/scan-schedules/{id}/trigger/` | `404` |
+| `POST scanners/scan-schedules/{id}/enable/` | `404` |
+
+From #548 to #724 these four were routed and answered
+`400 {"detail": "Scheduled scans are not supported: ..."}` to every request. A
+client that treated that `400` as "not supported" should treat `404` and `405`
+the same way.
 
 ---
 
@@ -676,7 +798,10 @@ failed, with the reason. A template's `default_format` is `pdf` unless set, so p
 template type or format answers `400` with the reason in `template` or `format`.
 
 A generated report is processed by a worker. Poll `reports/reports/{id}/` until its
-`status` is `completed`, then download it:
+`status` is `completed`, then download it. A report record has `file_size` and
+`file_hash` (SHA-256) once its file is written, and no path: where guardian keeps
+the file is not part of the API (the `file_path` field was removed in #724). A
+report whose `status` is `failed` has the reason in `error_message`.
 
 ```bash
 curl -s --cacert "$CA" -X POST "$BASE/reports/templates/<template-id>/generate/" \

@@ -309,10 +309,20 @@ curl -s --cacert "$CA" -X POST https://<host>/api/v1/tools/hash_generator/async 
 }
 ```
 
-The submit endpoint does not check the tool name or the input: an unknown
-tool, an input that fails validation, or a target the network target
-policy refuses all show up later as a task with status `failed` and the
-reason in `error`. A tool that refuses the caller shows up as status `refused`.
+The submission is checked as a synchronous run is, by the same code, and
+nothing that fails the check is queued: **404** (`Tool not found`) for a
+name that is no tool, **422** for an input the tool's schema refuses, with
+the same field errors, and **400** for a target the
+[network target policy](#network-target-policy) refuses
+([#743](https://github.com/fabriziosalmi/wildbox/issues/743)). No task is
+created for any of the three.
+
+The worker checks again when the task runs, because the answer can have
+changed: a host name may resolve to another address by then. A task refused
+at that point reads status `failed` with the reason in `error`; the reason
+names the fields that failed, never their values. Whether the caller may run
+a tool that acts for them is decided when the task runs: a task the tool
+refuses reads status `refused`.
 
 The service records who submitted the task before queuing it. It answers
 **503** (`Asynchronous execution is unavailable`) when it cannot record the
@@ -321,6 +331,26 @@ owner or queue the task (Redis or the task queue unreachable).
 A queued run is stopped after 9 minutes (Celery soft limit 540 seconds,
 hard limit 600 seconds in `open-security-tools/app/celery_app.py`) and then
 reports status `timeout`.
+
+A task whose worker process dies while it runs (killed for memory, a crash
+in native code) is put back on the queue and started again. That happens at
+most three times: when three starts of a task have ended with the process
+gone, the next delivery ends it with status `failed` and the error
+`The worker process running this task was lost 3 times; the task was not
+started again`
+([#743](https://github.com/fabriziosalmi/wildbox/issues/743)). Such a task
+used to come back without end.
+
+When the whole worker is killed while it runs a task (`docker kill`, the
+kernel's out-of-memory killer on the container, a host that goes down), the
+task is neither finished nor back in the queue: the broker keeps it for the
+worker that took it, and it goes on reading `running`. A running worker
+returns it to the queue once it was taken longer ago than the visibility
+timeout, 3600 seconds (`broker_transport_options` in
+`open-security-tools/app/celery_app.py`), and it looks for such tasks when
+it starts and every hundred seconds after that. So the task starts again
+from one hour to one hour and a hundred seconds after it was first taken,
+if a worker is running then; that start counts as one of the three above.
 
 ### Task Visibility
 
@@ -383,7 +413,7 @@ curl -s --cacert "$CA" https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-883f-0016d
 | `SUCCESS` | `completed`, `failed`, `timeout` or `refused` (the task finished and reports how the tool ended) | `error`, `result` (the tool's output when completed), `duration`, `completed_at` |
 | `FAILURE` | `failed` | `error` (`Task execution failed (<exception class>)`, never the exception message), `message`, `completed_at` |
 | `RETRY` | `retrying` | `message`, `info` (the same failure text as `error` above) |
-| `REVOKED` | `cancelled` | `message` (`Task was cancelled`), `completed_at` |
+| `REVOKED` | `cancelled` | `message` (`Task was cancelled`), `completed_at` (null until a worker has dropped or stopped the task: the state is reported as soon as the owner cancels) |
 
 Any other state, including a result record the service cannot read, answers
 200 with status `unknown` and `message` `The task state cannot be read`
@@ -415,8 +445,13 @@ curl -s --cacert "$CA" -X DELETE https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-
 }
 ```
 
-The answer means the cancellation was sent to the worker; reading the task
-afterward reports status `cancelled` once the worker has revoked it.
+The cancellation is recorded with the task before the workers are told
+([#743](https://github.com/fabriziosalmi/wildbox/issues/743)). From then on
+the task reads status `cancelled`, and a task that has not started never
+starts: the worker that takes it reads the record first and drops it,
+including a worker that was not running when the task was canceled. A task
+that is running is stopped (`SIGTERM` to its process). If it finishes on its
+own before that reaches it, it reads the status it finished with.
 
 **400** (`Task cannot be cancelled (current state: ...)`) for a task that
 has finished or was already canceled; **404** for a task the caller did not
@@ -524,15 +559,15 @@ this service reads the counts on every scrape:
 | Outcome | The task |
 | --- | --- |
 | `completed` | ran its tool, which returned (a result with `success: false` included) |
-| `failed` | ran its tool, which raised; or failed in the worker after its retries |
+| `failed` | ran its tool, which raised; or failed in the worker after its retries; or was given up after its worker process died three times while running it |
 | `timeout` | was stopped at the soft time limit (9 minutes) or killed at the hard one (10 minutes) |
 | `cancelled` | was canceled with `DELETE /api/v1/tasks/{task_id}`, while it waited or while it ran |
-| `refused` | ended before its tool was started: the caller may not run the tool, the target is not allowed, the input does not validate or no tool has that name |
+| `refused` | ended before its tool was started: the caller may not run the tool, or what the submission accepted is refused when the task runs (the target now resolves to an address that is not allowed, the worker does not have the tool) |
 
 The status a client reads from `GET /api/v1/tasks/{task_id}` is unchanged
-and differs in two places: a task that ended before its tool started
-because of its input, its target or its tool name reads `failed` there,
-and one killed at the hard time limit reads `failed`
+and differs in two places: a task the worker's own check refused when
+it ran (see [the submission](#post-apiv1toolstool_nameasync)) reads
+`failed` there, and one killed at the hard time limit reads `failed`
 (`Task execution failed (TimeLimitExceeded)`). A tool name that is not a
 tool is counted under `tool="unknown"`.
 

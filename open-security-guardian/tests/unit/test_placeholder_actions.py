@@ -811,7 +811,7 @@ def test_a_bulk_untag_removes_the_tag(api, team):
 
 
 @pytest.mark.django_db
-def test_a_bulk_assign_sets_what_it_names_and_keeps_the_rest(api, team):
+def test_a_bulk_assign_sets_what_it_names_and_keeps_the_rest(api, team, dispatched):
     """A group alone unassigned every user; a user alone cleared every group."""
     owner, colleague = tf.user(team), tf.user(team)
     vulnerability = _set(
@@ -826,6 +826,9 @@ def test_a_bulk_assign_sets_what_it_names_and_keeps_the_rest(api, team):
         "network",
     )
 
+    # A group names nobody to tell.
+    assert dispatched == []
+
     handed = _bulk(api, team, [vulnerability], "assign", assigned_to=colleague.pk)
     assert handed.status_code == 200, handed.content[:300]
     vulnerability.refresh_from_db()
@@ -833,6 +836,10 @@ def test_a_bulk_assign_sets_what_it_names_and_keeps_the_rest(api, team):
         colleague.pk,
         "network",
     )
+    # The new assignee is told, as assign/ tells them (#724).
+    assert dispatched == [
+        "apps.vulnerabilities.tasks.notify_vulnerability_assignment"
+    ]
 
 
 def _bulk_choices():

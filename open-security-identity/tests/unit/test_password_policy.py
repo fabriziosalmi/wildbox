@@ -82,12 +82,32 @@ def make_user(**fields):
     return user
 
 
+class StoreSession:
+    """The session of the store, for the hook that makes a personal team."""
+
+    def __init__(self):
+        self.added = []
+        self.commits = 0
+
+    def add(self, row):
+        self.added.append(row)
+
+    async def flush(self):
+        for row in self.added:
+            if getattr(row, "id", None) is None:
+                row.id = uuid.uuid4()
+
+    async def commit(self):
+        self.commits += 1
+
+
 class UserStore:
     """The parts of SQLAlchemyUserDatabase the manager uses, in memory."""
 
     def __init__(self, *accounts):
         self.users = {account.id: account for account in accounts}
         self.writes = []
+        self.session = StoreSession()
 
     async def get(self, user_id):
         return self.users.get(user_id)
@@ -353,6 +373,12 @@ def test_register_answers_201_for_a_valid_password(client, store):
     store.users.clear()
     response = client.post("/auth/register", json={"email": EMAIL, "password": VALID})
     assert response.status_code == 201, response.text
+    # Registration makes the account's personal team. This application has
+    # no middleware, and the hook used to return without making one unless a
+    # middleware had put a session on the request (#735).
+    made = [type(row).__name__ for row in store.session.added]
+    assert made == ["Team", "TeamMembership"]
+    assert store.session.commits == 1
 
 
 def test_reset_password_answers_400_with_the_reason(client, manager, account):

@@ -108,14 +108,18 @@ groups:
       # task when Celery settles its state:
       #
       #   failed     the tool raised, or the task failed in the worker after
-      #              its retries (a task that is retried is counted once);
+      #              its retries (a task that is retried is counted once), or
+      #              the task was given up after its worker process died
+      #              three times while running it;
       #   completed  the tool returned, `success: false` included;
       #   timeout    stopped at the soft time limit or killed at the hard one;
       #   cancelled  revoked, while it waited or while it ran;
       #   refused    ended before the tool was started: the caller may not run
-      #              it, the target is not allowed, the input does not
-      #              validate or no tool has that name. The synchronous path
-      #              answers the last three with a 4xx before a run exists.
+      #              it, or the worker's check refuses what the submission
+      #              accepted (the target now resolves to an address that is
+      #              not allowed). An unknown tool, invalid input and a
+      #              refused target are answered with a 4xx when the task is
+      #              submitted, as on the synchronous path, and are no task.
       #
       # The counter lives as long as the Redis data, not as long as a
       # process, so restarting the api or the worker does not reset it. A
@@ -152,9 +156,13 @@ groups:
       #
       # It cannot fire on an idle stack: an empty queue is 0, and the
       # consumed counter is exported as 0 before the first task, not absent.
-      # It does not see tasks a worker has already taken: a worker killed
-      # while it ran some keeps them out of the queue until the broker's
-      # visibility timeout returns them, an hour later.
+      # It does not see tasks a worker has already taken. A worker killed
+      # whole while it ran some leaves them unacknowledged, which is not in
+      # the queue: a running worker puts them back once they were taken
+      # longer ago than the broker's visibility timeout (3600 seconds,
+      # broker_transport_options in open-security-tools/app/celery_app.py),
+      # and it looks when it starts and every hundred seconds after that.
+      # Until then such a task reads "running".
       - alert: WildboxAsyncToolTasksNotConsumed
         expr: |
           wildbox_tool_async_queue_length > 0

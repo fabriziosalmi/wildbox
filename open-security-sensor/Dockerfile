@@ -20,7 +20,9 @@ LABEL org.opencontainers.image.revision=$GIT_SHA \
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+# --no-install-recommends: only what is named here, not what these packages
+# recommend (#726).
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     gnupg \
@@ -30,20 +32,35 @@ RUN apt-get update && apt-get install -y \
 # The package is checked against the SHA-256 recorded here before dpkg runs
 # it: the URL names a version, and nothing else said that the bytes behind it
 # were the ones this image was built with last time (#657). The hashes are
-# those of the 5.10.2 release; pkg.osquery.io and the GitHub release
-# (github.com/osquery/osquery/releases/tag/5.10.2) serve the same files.
+# those of the 5.23.1 release; pkg.osquery.io and the GitHub release
+# (github.com/osquery/osquery/releases/tag/5.23.1) serve the same files.
 # Change them together with the version.
+#
+# 5.23.1 (June 2026) replaces 5.10.2 (October 2023). The releases in between
+# fix memory-safety defects in osquery itself (5.23.0: bounds checks in the
+# container tables and a format string in the shell; 5.23.1: a
+# use-after-free in the Linux file events and the permissions of carve
+# directories) and move the libraries it links statically: OpenSSL 3.1 to
+# 3.6.1, expat to 2.7.4 (CVE-2026-25210), sqlite, libarchive, zlib (#726).
+# Every query the sensor ships for Linux was run on both versions, on amd64
+# and arm64: each returns the same columns, the tables they read have the
+# same schema, and osqueryd starts with the configuration the sensor writes.
+#
+# Plain `dpkg -i`, no `|| apt-get install -f -y` behind it: the package
+# depends on libc6 and zlib1g, which the base image has, and the fallback
+# could not have repaired anything, because the layer above has already
+# removed the package lists it would need (#726).
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
-        OSQUERY_SHA256=5a7e6a8bb5dd666a22afff092bd8b9e25a92a37f62e9f3cb6991ea3ea93efb08; \
+        OSQUERY_SHA256=1431a9a6394657eba3cdd3476a462a6fe9721fc3664a70f23efcf7e37816787a; \
     elif [ "$ARCH" = "arm64" ]; then \
-        OSQUERY_SHA256=837470e7e24807f57359a79fad38c9c4e1cdfad9525fa090c999821cc77bce48; \
+        OSQUERY_SHA256=062df9b6432ca1b374e80b24b54f027e224f1300d8bf6338182ec40f41b7975d; \
     else \
         echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
-    curl -fsSL "https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_${ARCH}.deb" -o osquery.deb && \
+    curl -fsSL "https://pkg.osquery.io/deb/osquery_5.23.1-1.linux_${ARCH}.deb" -o osquery.deb && \
     echo "${OSQUERY_SHA256}  osquery.deb" | sha256sum -c - && \
-    { dpkg -i osquery.deb || apt-get install -f -y; } && \
+    dpkg -i osquery.deb && \
     rm osquery.deb && \
     # Create symlinks to make osqueryd available in PATH
     if [ -f /opt/osquery/bin/osqueryd ]; then \

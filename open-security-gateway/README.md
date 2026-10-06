@@ -441,9 +441,12 @@ CI runs two checks on this directory:
   redirects the rest whatever the `Host`, and Docker reports the container
   healthy by the image's own `HEALTHCHECK`.
 
-The `docker-compose.yml`, `docker-compose.dev.yml` and `Makefile` in this
-directory are for standalone use. They use a separate `wildbox-net` network
-and are not what the root stack or CI runs.
+The `docker-compose.yml` and `Makefile` in this directory are for standalone
+use. They use a separate `wildbox-net` network and are not what the root stack
+or CI runs. There is no `docker-compose.dev.yml` any more: it mounted a mock
+identity configuration that was never in the repository, so it could not
+start. The mock identity the tests use is `test/mock_identity.py`, run by
+`.github/workflows/gateway-tests.yml`.
 
 ## License
 

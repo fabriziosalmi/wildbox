@@ -18,8 +18,15 @@ LABEL org.opencontainers.image.revision=$GIT_SHA \
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+# --no-install-recommends: only what is named here. Without it apt also
+# installed what these packages recommend (manual pages, bash-completion,
+# Kerberos locales, SASL modules), none of which the service uses (#726).
+# libc6-dev is one of those recommendations and the one that is needed: gcc
+# without the C library headers cannot build a source distribution, should
+# the lockfile ever hold one for which there is no wheel.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    libc6-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

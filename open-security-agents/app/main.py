@@ -162,7 +162,9 @@ from open_security_shared.errors import install_error_handlers as _install_error
 from open_security_shared.observability import install_observability as _install_observability
 
 _install_error_handlers(app)
-_install_observability(app, service_name="agents", service_version="0.1.6")
+# The same name as above: the header every response carries (X-API-Version)
+# was a second literal, to be changed at each release and forgotten once (#743).
+_install_observability(app, service_name="agents", service_version=SERVICE_VERSION)
 
 
 app.state.limiter = limiter

@@ -2,11 +2,14 @@ from typing import Dict, Any, List
 import asyncio
 import importlib
 import inspect
+import logging
 import sys
 import os
 from datetime import datetime
 
 from fastapi import HTTPException
+from open_security_shared.errors import field_errors
+from pydantic import ValidationError
 
 from ...execution_manager import tool_acts_for_caller
 from ...target_policy import TargetRefused, enforce_target_policy
@@ -18,6 +21,10 @@ from .schemas import (
     WorkflowExecution,
     AutomationMetrics
 )
+
+logger = logging.getLogger(__name__)
+
+
 class SecurityAutomationOrchestrator:
     """Security Automation Orchestrator - Advanced workflow automation and orchestration"""
     
@@ -301,28 +308,34 @@ class SecurityAutomationOrchestrator:
                 
         except HTTPException:
             raise
-        except ImportError as e:
+        # The detail of these becomes the step's error in the workflow result
+        # (see _execute_single_step). What the caller got wrong is said in full; a
+        # failure of the service itself is said without its internals, which
+        # go to the log: the 404 used to end with the import error and its
+        # module path, the 503 with the text of the connection error and the
+        # 500 with the class of the exception.
+        except ImportError:
+            logger.exception("Workflow step: tool %s could not be imported", tool_name)
             raise HTTPException(
                 status_code=404,
-                detail=f"Tool '{tool_name}' not found: {str(e)}"
+                detail=f"Tool '{tool_name}' not found"
             )
         except (ValueError, KeyError, TypeError) as e:
             raise HTTPException(
                 status_code=422,
                 detail=f"Tool execution failed due to invalid input: {str(e)}"
             )
-        except (ConnectionError, TimeoutError) as e:
+        except (ConnectionError, TimeoutError):
+            logger.exception("Workflow step: tool %s could not reach a service", tool_name)
             raise HTTPException(
                 status_code=503,
-                detail=f"Tool execution failed due to service unavailability: {str(e)}"
+                detail="Tool execution failed: a service it needs is unavailable"
             )
-        except Exception as e:
-            # Log unexpected errors and re-raise as 500
-            import logging
-            logging.error(f"Unexpected error executing tool {tool_name}: {str(e)}", exc_info=True)
+        except Exception:
+            logger.exception("Workflow step: unexpected error executing tool %s", tool_name)
             raise HTTPException(
                 status_code=500,
-                detail=f"Internal error executing tool: {type(e).__name__}"
+                detail="Internal error executing tool"
             )
     
     def _validate_tool_parameters(self, tool_name: str, parameters: Dict[str, Any]) -> bool:
@@ -357,8 +370,9 @@ class SecurityAutomationOrchestrator:
         """
         try:
             schema_module = importlib.import_module(f"app.tools.{tool_name}.schemas")
-        except ImportError as e:
-            raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' has no input schema: {e}")
+        except ImportError:
+            logger.exception("Workflow step: the schemas of tool %s could not be imported", tool_name)
+            raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' has no input schema")
 
         # The model the tool's own endpoint validates with, found the same way
         # (#611).
@@ -368,8 +382,22 @@ class SecurityAutomationOrchestrator:
             raise HTTPException(status_code=422, detail=f"Tool '{tool_name}' has no input schema")
         try:
             return input_class(**parameters)
-        except (ValueError, TypeError) as e:
-            raise HTTPException(status_code=422, detail=f"Invalid parameters for '{tool_name}': {e}")
+        except ValidationError as e:
+            # Which parameters and why, as the API says it for a tool's
+            # input: the field and the validator's message. str() of the
+            # error, which this used to send, quotes every value that was
+            # refused (#735).
+            problems = "; ".join(
+                f"{'.'.join(str(part) for part in item.get('loc', []))}: {item.get('msg', '')}"
+                for item in field_errors(e.errors())
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid parameters for '{tool_name}': {problems}",
+            )
+        except (ValueError, TypeError):
+            logger.exception("Workflow step: the input of tool %s could not be built", tool_name)
+            raise HTTPException(status_code=422, detail=f"Invalid parameters for '{tool_name}'")
 
     def _remove_mock_output_method(self):
         """This method replaces the old mock output generation"""

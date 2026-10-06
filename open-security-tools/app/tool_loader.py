@@ -61,12 +61,26 @@ def load_tool_module(tool_name: str) -> Optional[ModuleType]:
     swallowed into a stub, because a tool that cannot be imported must not look
     like a tool that works.
     """
+    # A tool's name is one package name. The asynchronous route takes it from
+    # the URL, and a name with a dot in it ("hash_generator.main") would be
+    # imported as a path below app.tools (#743).
+    if not isinstance(tool_name, str) or not tool_name.isidentifier():
+        return None
     if tool_name.startswith("_") or tool_name in _NON_TOOL_PACKAGES:
         return None
 
     module_path = f"{TOOLS_PACKAGE}.{tool_name}.main"
     try:
         main_module = importlib.import_module(module_path)
+    except ModuleNotFoundError as exc:
+        if exc.name in (f"{TOOLS_PACKAGE}.{tool_name}", module_path):
+            # No such tool: a caller's mistake, not a tool that is broken.
+            return None
+        logger.error(
+            f"Tool {tool_name} failed to import: {type(exc).__name__}: {exc}",
+            exc_info=True,
+        )
+        return None
     except Exception as exc:  # noqa: BLE001 - a bad tool must not kill discovery
         logger.error(
             f"Tool {tool_name} failed to import: {type(exc).__name__}: {exc}",

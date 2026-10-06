@@ -7,12 +7,13 @@ import importlib.util
 from pathlib import Path
 from typing import Dict, Any, Optional
 from celery import Task, signals
-from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
+from celery.exceptions import Ignore, SoftTimeLimitExceeded, TimeLimitExceeded
 
 from app import async_metrics
 from app.celery_app import celery_app
 from app.execution_manager import ExecutionStatus, ToolAuthorizationError, authorize_tool_call
-from app.tool_loader import find_schema_classes
+from app.prerun import PRE_RUN_REFUSALS, check_tool_request, refusal_log
+from app.task_ownership import TaskOwnershipUnavailable, get_task_ownership
 from app.tool_loader import load_tool_module as _shared_load_tool_module
 from app.logging_config import get_logger
 
@@ -119,6 +120,50 @@ def _count_cancelled_task(sender=None, request=None, terminated=None, **_):
     )
 
 
+# How many starts of one task may end with its process gone. A process can be
+# killed once for a reason that has nothing to do with the task (the kernel
+# under memory pressure, a worker stopped hard), and the task deserves another
+# go. A tool that takes its process down every time must not come back for
+# ever: after this many starts that left no result, the next delivery fails
+# the task (#743).
+MAX_LOST_STARTS = 3
+
+
+def _starts_lost(task_id: Optional[str], retries: int) -> int:
+    """Count this start; return how many earlier ones left no result.
+
+    Every start is counted in Redis (app/task_ownership.py). A task has one
+    start, plus one for each retry Celery scheduled, and each of those ends
+    with a state. Any start beyond that number is a redelivery: the process
+    that ran an earlier one died, or its whole worker was killed and the
+    broker gave the task to another. As for a cancellation, a Redis that
+    does not answer is raised.
+    """
+    if not task_id:
+        return 0
+    try:
+        ownership = get_task_ownership()
+    except TaskOwnershipUnavailable:
+        return 0
+    return max(0, ownership.count_start(task_id) - 1 - int(retries or 0))
+
+
+def _cancelled_by_its_owner(task_id: Optional[str]) -> bool:
+    """Whether the task's owner cancelled it (app/task_ownership.py, #743).
+
+    A Redis that does not answer is raised, not read as "no": the task is
+    retried and then failed, never run without having asked. Without a
+    REDIS_URL there is no queue and no record to ask for.
+    """
+    if not task_id:
+        return False
+    try:
+        ownership = get_task_ownership()
+    except TaskOwnershipUnavailable:
+        return False
+    return ownership.is_cancelled(task_id)
+
+
 @celery_app.task(
     bind=True,
     base=ToolExecutionTask,
@@ -153,6 +198,44 @@ def execute_tool_async(
 
     def settled(outcome: str) -> None:
         setattr(self.request, _OUTCOME_ATTRIBUTE, outcome)
+
+    # A cancelled task does not run, whichever worker takes it and whenever.
+    # Celery's revocation is a message to the workers alive when it is sent;
+    # one that started since never heard it and would run the task. The
+    # owner's cancellation is a record in Redis, and this is where it holds.
+    if _cancelled_by_its_owner(task_id):
+        logger.info(
+            f"Async tool execution cancelled before it started: {tool_name}",
+            extra={"tool_name": tool_name, "task_id": task_id},
+        )
+        # The state Celery itself writes for a revoked task, so the task
+        # reads the same whichever way its cancellation reached the worker.
+        self.backend.mark_as_revoked(
+            task_id, reason="cancelled by its owner", request=self.request
+        )
+        async_metrics.record_outcome(task_id, tool_name, async_metrics.CANCELLED)
+        # Nothing more to store and nothing to retry: acknowledge and stop.
+        raise Ignore()
+
+    # A task that keeps taking its process down is not started again.
+    lost = _starts_lost(task_id, self.request.retries)
+    if lost >= MAX_LOST_STARTS:
+        error_msg = (
+            f"The worker process running this task was lost {lost} times; "
+            "the task was not started again"
+        )
+        logger.error(
+            f"Async tool execution abandoned: {tool_name}",
+            extra={"tool_name": tool_name, "task_id": task_id, "lost_starts": lost},
+        )
+        settled(async_metrics.FAILED)
+        return {
+            'status': 'failed',
+            'error': error_msg,
+            'duration': time.time() - start_time,
+            'tool_name': tool_name,
+            'task_id': task_id
+        }
     
     logger.info(
         f"Starting async tool execution: {tool_name}",
@@ -175,35 +258,20 @@ def execute_tool_async(
     )
     
     try:
-        # Dynamically load the tool module
-        logger.debug(f"Loading tool module: {tool_name}")
-        tool_module = _load_tool_module(tool_name)
-        if not tool_module:
-            error_msg = f"Tool '{tool_name}' not found"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        
-        # Get the execute function and input schema
-        execute_func = getattr(tool_module, 'execute_tool', None)
-        if not execute_func:
-            raise ValueError(f"Tool '{tool_name}' missing execute_tool function")
-        
-        # Get input schema class
-        schemas_module = getattr(tool_module, 'schemas', None)
-        input_schema_class = _find_input_schema(schemas_module, tool_name)
-        
-        if not input_schema_class:
-            raise ValueError(f"Tool '{tool_name}' missing input schema")
-        
-        # Validate and convert input
-        validated_input = input_schema_class(**input_data)
-
-        # Target policy (the same check as the synchronous API path): refuse
-        # URLs and network targets that are private, internal or cloud
-        # metadata (#614). TargetRefused is a ValueError, so the task answers
-        # "failed" with the reason below and is not retried.
-        from app.target_policy import enforce_target_policy
-        enforce_target_policy(tool_name, validated_input)
+        # The checks that come before a run, the ones the API applied when it
+        # accepted the task (app/prerun.py): the name is a tool, the input is
+        # what its model accepts, and the target is not private, internal or
+        # cloud metadata (#614). They run again here because the answer can
+        # have changed since: a name resolves to another address, the
+        # operator's allowlist changed, this worker has another set of tools.
+        # A refusal is a ValueError, so the task answers "failed" with the
+        # reason below and is not retried.
+        try:
+            checked = check_tool_request(tool_name, input_data, load=_load_tool_module)
+        except PRE_RUN_REFUSALS as e:
+            raise ValueError(refusal_log(e)) from None
+        execute_func = checked.execute
+        validated_input = checked.validated_input
 
         # Authorize the call exactly as the synchronous path does: a tool
         # that declares user_id needs a caller who may run it, and receives
@@ -331,9 +399,3 @@ def _load_tool_module(tool_name: str):
     """
     return _shared_load_tool_module(tool_name)
 
-
-def _find_input_schema(schemas_module, tool_name: str):
-    """Find the input schema class in a schemas module."""
-    # The same model the synchronous endpoint validates with (#611).
-    input_cls, _ = find_schema_classes(schemas_module)
-    return input_cls

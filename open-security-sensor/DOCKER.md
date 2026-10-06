@@ -19,21 +19,16 @@ gateway's certificate from the `gateway_cert` volume; set
 
 ## Standalone
 
-`docker-compose.yml` in this directory runs the sensor on its own.
+`docker-compose.yml` in this directory runs the sensor on its own; it is the
+only service in the file.
 
-1. Create the external network the compose file attaches to:
-
-   ```bash
-   docker network create security-suite
-   ```
-
-2. Start the sensor with a key for its local API:
+1. Start the sensor with a key for its local API:
 
    ```bash
    SENSOR_API_KEY=<key> docker compose up -d
    ```
 
-3. Verify:
+2. Verify:
 
    ```bash
    curl http://127.0.0.1:8004/health
@@ -45,25 +40,18 @@ so run it from a full repository checkout.
 
 ### Ports and configuration
 
-Both compose files mount `config.yaml.example` as
+Both compose files, this one and the root one, mount `config.yaml.example` as
 `/etc/security-sensor/config.yaml`. It binds the local API to `0.0.0.0:8004`
 inside the container, and compose publishes that port on `127.0.0.1:8004` only.
 To change the configuration, edit `config.yaml.example` or use the
 `SENSOR_*` environment variables listed in [README.md](README.md#environment-variables).
 
-### Monitoring profile
+### No monitoring profile
 
-The `monitoring` profile adds Prometheus (port `9090`) and Grafana (port
-`3000`), both published on all host interfaces. Grafana's admin password comes
-from `GRAFANA_ADMIN_PASSWORD`:
-
-```bash
-GRAFANA_ADMIN_PASSWORD=<password> SENSOR_API_KEY=<key> \
-  docker compose --profile monitoring up -d
-```
-
-The sensor does not expose a `/metrics` endpoint, so the Prometheus scrape job
-for it in `monitoring/prometheus.yml` has no target to read.
+The sensor does not expose a `/metrics` endpoint, so there is nothing for a
+Prometheus to scrape, and this file starts none. The Prometheus and
+Alertmanager of the Wildbox stack are in the root `docker-compose.yml`
+(`--profile monitoring`); they watch the services that do export metrics.
 
 ## Environment variables
 
@@ -75,9 +63,8 @@ for it in `monitoring/prometheus.yml` has no target to read.
 | `SENSOR_DATA_LAKE_CA_BUNDLE` | None (system trust store) | PEM file for a gateway certificate no public CA signed |
 | `SENSOR_LOGGING_LEVEL` | `INFO` | Log level |
 | `PYTHONPATH` | `/app` | Python module path |
-| `GRAFANA_ADMIN_PASSWORD` | None; needed by the `monitoring` profile | Grafana admin password |
 
-The standalone compose files pass the `SENSOR_DATA_LAKE_*` variables through
+The standalone compose file passes the `SENSOR_DATA_LAKE_*` variables through
 only when they are set in the shell.
 
 ## Connect to Wildbox
@@ -110,13 +97,33 @@ stack itself the root `docker-compose.yml` already wires all of this.
 | :--- | :--- |
 | `./config.yaml.example:/etc/security-sensor/config.yaml:ro` | Configuration |
 | `sensor_logs:/var/log/security-sensor` | Sensor log file |
-| `sensor_data:/var/lib/security-sensor` | Sensor state |
+| `sensor_data:/var/lib/security-sensor` | Sensor state: the log forwarder's read positions (`data_dir`), so that a recreated container goes on where the last one stopped |
 | `/proc/stat`, `/proc/meminfo`, the `/proc` load average file, `/sys/class/net` (read-only, under `/host`) | Host metrics |
 
 The root `docker-compose.yml` also mounts the gateway's certificate,
 `gateway_cert:/etc/ssl/wildbox`, read-only. The compose files do not mount
 the host's `/proc`, `/etc`, `/var/log` or the Docker socket: this table is
 everything of the host the container can read.
+
+## Watching host files
+
+File integrity monitoring is on in the shipped configuration, and its paths,
+`/host/etc`, `/host/bin`, `/host/usr/bin` and `/host/opt`, are not mounted
+by the compose files: the sensor logs that it is watching nothing, and
+`GET /api/v1/components` shows `file_monitor.watching: false` with the four
+paths under `missing_paths`. To watch a host directory, mount it read-only
+in a `docker-compose.override.yml`:
+
+```yaml
+services:
+  sensor:
+    volumes:
+      - /etc:/host/etc:ro
+```
+
+and keep in `fim.paths` what you mounted. The sensor reads the mount as uid
+999: what that user cannot read is watched without a hash. See
+[README.md](README.md#file-integrity-monitoring).
 
 ## Forwarding host logs
 
@@ -167,8 +174,15 @@ docker compose logs sensor | grep "Log source"
 - A source follows no link out of the directory its path names, and reads
   regular files only.
 
-The keys of `log_sources`, rotation, and what is a start-up error or a
-warning are in [README.md](README.md#log-forwarding).
+- The position reached in each file is kept in the `sensor_data` volume:
+  after `docker compose up -d` recreates the container, or a restart, the
+  sensor goes on after the last line Wildbox accepted. `docker compose down
+  -v` removes the volume, and with it the positions: each source then starts
+  as its `read_from` says. Do not share the volume between sensors;
+  `docker-compose.scale.yml` does, so do not enable log forwarding with it.
+
+The keys of `log_sources`, rotation, restarts, and what is a start-up error
+or a warning are in [README.md](README.md#log-forwarding).
 
 ## Management
 
@@ -194,11 +208,12 @@ docker compose down
 - `503 API authentication is not configured on this sensor`: the container
   started without `SENSOR_API_KEY` and no `network.api_key` in the
   configuration.
-- `network security-suite declared as external, but could not be found`: run
-  `docker network create security-suite`.
 - `Security Sensor not started: ... log_sources[0] ('name'): ...`: the
   `log_sources` section has an entry the sensor cannot understand; the
   message says which and why. See [README.md](README.md#log-forwarding).
+- `File integrity monitoring is enabled and none of the 4 paths in fim.paths
+  exists: it is watching nothing`: no host directory is mounted for it. See
+  [Watching host files](#watching-host-files).
 - `Log source 'name': <path> is not read: ...`: the file is not mounted, does
   not exist yet, or uid 999 may not read it. See
   [Forwarding host logs](#forwarding-host-logs).

@@ -27,6 +27,8 @@ sys.path.insert(0, str(SERVICE_ROOT))
 
 from sensor.collectors import log_forwarder  # noqa: E402
 from sensor.collectors.log_forwarder import (  # noqa: E402
+    CHECK_BYTES,
+    HEAD_BYTES,
     MAX_FILES_PER_SOURCE,
     MAX_LINE_BYTES,
     READ_CHUNK,
@@ -42,6 +44,7 @@ from sensor.core.config import (  # noqa: E402
 )
 from sensor.pipeline.data_forwarder import build_batch  # noqa: E402
 from sensor.pipeline.data_processor import DataProcessor  # noqa: E402
+from sensor.pipeline.delivery import take_delivery  # noqa: E402
 
 NGINX_LINE = (
     '203.0.113.9 - - [05/Oct/2026:10:00:00 +0000] "GET /?id=1%27%20OR%201=1 '
@@ -80,9 +83,13 @@ async def _look(forwarder, state):
 
 
 def _taken(forwarder):
+    """The queued events, as the pipeline sees them: without the handle by
+    which the forwarder learns what became of each (test_log_positions.py)."""
     events = []
     while not forwarder.event_queue.empty():
-        events.append(forwarder.event_queue.get_nowait())
+        event = forwarder.event_queue.get_nowait()
+        take_delivery(event)
+        events.append(event)
     return events
 
 
@@ -383,6 +390,10 @@ async def test_truncation_in_place_is_read_again_from_the_beginning(tmp_path):
 
     assert _lines(await _look(forwarder, state)) == ["after"]
 
+    # And it is followed from there like any other file.
+    _append(log, "and later\n")
+    assert _lines(await _look(forwarder, state)) == ["and later"]
+
 
 @pytest.mark.asyncio
 async def test_a_file_truncated_and_written_past_the_old_position_is_noticed(
@@ -407,6 +418,119 @@ async def test_a_file_truncated_and_written_past_the_old_position_is_noticed(
 
     _append(log, "appended\n")
     assert _lines(await _look(forwarder, state)) == ["appended"]
+
+
+BANNER = "# written by app 1.0 " + "=" * (HEAD_BYTES + 40) + "\n"
+
+
+@pytest.mark.parametrize("read_from", ["beginning", "end"])
+@pytest.mark.asyncio
+async def test_a_file_rewritten_with_the_same_beginning_is_noticed(tmp_path, read_from):
+    # The file starts with the same banner after it is rewritten, so its
+    # first bytes say nothing; it is longer than before, so its size says
+    # nothing either. What was read just before the position is no longer
+    # there (#725). main went on from the old position: it lost the new
+    # file's first lines.
+    log = tmp_path / "report.log"
+    log.write_text(BANNER + "old one\nold two\n")
+    forwarder, state = _follow(log, read_from=read_from)
+    before = _lines(await _look(forwarder, state))
+    assert before == (
+        [BANNER.strip(), "old one", "old two"] if read_from == "beginning" else []
+    )
+
+    rewritten = [f"new line {index}" for index in range(6)]
+    with open(log, "w") as handle:
+        handle.write(BANNER + "\n".join(rewritten) + "\n")
+
+    assert _lines(await _look(forwarder, state)) == [BANNER.strip()] + rewritten
+
+    _append(log, "appended\n")
+    assert _lines(await _look(forwarder, state)) == ["appended"]
+
+
+@pytest.mark.asyncio
+async def test_a_file_rewritten_to_its_old_length_is_noticed_when_it_grows(tmp_path):
+    log = tmp_path / "report.log"
+    log.write_text(BANNER + "old one\nold two\n")
+    forwarder, state = _follow(log, read_from="beginning")
+    await _look(forwarder, state)
+
+    with open(log, "w") as handle:
+        handle.write(BANNER + "new one\nnew two\n")
+    # As long as before: nothing says it changed, and nothing is read.
+    assert await _look(forwarder, state) == []
+    _append(log, "new three\n")
+
+    assert _lines(await _look(forwarder, state)) == [
+        BANNER.strip(),
+        "new one",
+        "new two",
+        "new three",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_bytes_compared_span_several_short_reads(tmp_path):
+    # The last read brought four bytes. What is compared is still the
+    # CHECK_BYTES before the position, most of them read earlier.
+    log = tmp_path / "report.log"
+    log.write_text(BANNER + "an earlier line that will change\n")
+    forwarder, state = _follow(log, read_from="beginning")
+    await _look(forwarder, state)
+    _append(log, "two\n")
+    assert _lines(await _look(forwarder, state)) == ["two"]
+
+    with open(log, "w") as handle:
+        handle.write(BANNER + "AN EARLIER LINE THAT HAS CHANGED\ntwo\nthree\n")
+
+    assert _lines(await _look(forwarder, state)) == [
+        BANNER.strip(),
+        "AN EARLIER LINE THAT HAS CHANGED",
+        "two",
+        "three",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_with_another_beginning_is_noticed_whatever_follows(
+    tmp_path,
+):
+    # The other half of the check: the same bytes before the position, but
+    # the file does not begin as it did.
+    log = tmp_path / "report.log"
+    body = "the same line in both files " + "y" * CHECK_BYTES + "\n"
+    log.write_text("header of the first file\n" + body)
+    forwarder, state = _follow(log, read_from="beginning")
+    await _look(forwarder, state)
+
+    with open(log, "w") as handle:
+        handle.write("HEADER OF THE OTHER FILE\n" + body + "after\n")
+
+    assert _lines(await _look(forwarder, state)) == [
+        "HEADER OF THE OTHER FILE",
+        body.strip(),
+        "after",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_that_keeps_the_bytes_before_the_position_is_not_noticed(
+    tmp_path,
+):
+    # The limit of the check, pinned so that the documentation stays true:
+    # same first HEAD_BYTES bytes, same CHECK_BYTES bytes before the old
+    # position, at least as long. It reads on from the old position.
+    log = tmp_path / "report.log"
+    same_end = "x" * CHECK_BYTES + "\n"
+    log.write_text(BANNER + "old middle\n" + same_end)
+    forwarder, state = _follow(log, read_from="beginning")
+    await _look(forwarder, state)
+
+    with open(log, "w") as handle:
+        handle.write(BANNER + "NEW MIDDLE\n" + same_end + "after\n")
+
+    assert _lines(await _look(forwarder, state)) == ["after"]
 
 
 @pytest.mark.asyncio
@@ -844,7 +968,9 @@ async def test_one_busy_file_does_not_starve_the_sources_other_files(
 
 
 async def _next_event(forwarder, timeout=5):
-    return await asyncio.wait_for(forwarder.event_queue.get(), timeout=timeout)
+    event = await asyncio.wait_for(forwarder.event_queue.get(), timeout=timeout)
+    take_delivery(event)
+    return event
 
 
 @pytest.mark.asyncio
@@ -864,6 +990,7 @@ async def test_the_running_forwarder_follows_its_sources_and_stops_cleanly(
         _append(log, NGINX_LINE.replace("203.0.113.9", "198.51.100.7") + "\n")
         rotated = await _next_event(forwarder)
 
+        size = log.stat().st_size
         status = forwarder.get_status()
     finally:
         await forwarder.stop()
@@ -882,8 +1009,17 @@ async def test_the_running_forwarder_follows_its_sources_and_stops_cleanly(
             "format": "nginx",
             "files": [str(log)],
             "problems": {},
+            # Read to its end; nothing accepted, as nothing took the events
+            # further than the queue.
+            "positions": {str(log): {"read": size, "accepted": 0}},
         }
     ]
+    assert status["positions"] == {
+        "persisted": False,
+        "file": None,
+        "last_saved": None,
+        "problem": "data_dir is not set: positions are kept in memory only",
+    }
     # Stopped: no task left, no file left open.
     assert forwarder._tasks == []
     assert forwarder._file_sources["nginx_access"].tails == {}
@@ -958,7 +1094,7 @@ async def test_a_source_this_platform_cannot_read_is_skipped_with_a_warning(
         await forwarder.stop()
 
     assert tasks == 1
-    assert _warnings(caplog) == [
+    assert _warnings(caplog)[:3] == [
         "Log source 'journal' (journald) is skipped: the systemd journal is "
         "read on Linux only",
         "Log source 'security' (windows_event) is skipped: the Windows Event "
@@ -966,6 +1102,9 @@ async def test_a_source_this_platform_cannot_read_is_skipped_with_a_warning(
         "Log source 'unified' (unified_log) is skipped: the unified log is "
         "read on macOS only",
     ]
+    # And, with no data_dir, that positions will not outlive the sensor.
+    (memory_only,) = _warnings(caplog)[3:]
+    assert memory_only.startswith("data_dir is not set: read positions are kept")
 
 
 @pytest.mark.asyncio

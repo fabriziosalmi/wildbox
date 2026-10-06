@@ -17,7 +17,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 # Install system dependencies including development tools
-RUN apt-get update && apt-get install -y \
+# --no-install-recommends, as in Dockerfile: only what is named here (#726).
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     curl \

@@ -18,6 +18,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from .environment import production_checks_apply
+
 logger = logging.getLogger(__name__)
 
 
@@ -137,11 +139,12 @@ def setup_cors(
             "Origin",
         ]
 
-    # Validate origins in production
-    if os.getenv("ENVIRONMENT") == "production":
+    # Validate origins everywhere but in development (#736): the test was for
+    # the exact value "production".
+    if production_checks_apply(os.getenv("ENVIRONMENT")):
         if not allowed_origins or allowed_origins == ["*"]:
             raise ValueError(
-                "CORS origins must be explicitly configured in production. "
+                "CORS origins must be explicitly configured unless ENVIRONMENT=development. "
                 "Set CORS_ORIGINS environment variable to comma-separated list."
             )
 
