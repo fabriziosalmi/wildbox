@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-06
+
+A patch for 0.12.0: what its upgrade test and its last pull requests found
+and left. `scripts/restore_postgres.sh` restores a database to what its
+backup holds and no more, so a deployment taken back from an upgrade can be
+upgraded again (#773). cspm bounds every wait on Redis, ends a scan in one
+transaction and computes a scan's compliance percentages over the checks
+that reached a verdict (#778). guardian refuses a duplicate finding without
+a port, scans IPv6 assets over IPv6 and says which networks a discovery
+rule skipped (#775). The sensor's stop can no longer be held by a write
+that does not return, and its image carries no test tools (#777). The
+gateway's redirects keep the port the client called, and its image has no
+compiler (#776). identity's lockout keys and the logs of identity and data
+no longer hold what a user typed or what the database quoted back (#778).
+
+From 0.12.0 nothing is required beyond rebuilding the images:
+[Upgrading to 0.12.1](UPGRADING.md#upgrading-to-0121) lists what an
+operator or a client may notice. A login lockout in progress at the
+upgrade ends with it.
+
+
 ### Security
 
 - **identity no longer names a Redis key after what was typed in the
@@ -232,6 +253,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `Stopped with N events still on their way to the sender`: as read
   again for the journal when its cursor is saved, as dropped otherwise
   (#777).
+- **guardian refuses a second finding for the same asset and CVE when
+  neither has a port.** `POST vulnerabilities/` answered 201 twice: the
+  unique set `(asset, cve_id, port)` did not hold for a missing port,
+  which the serializer's validator skips and the database's unique index
+  takes for a value of its own each time. The second request now answers
+  the `400` a duplicate with a port gets. Findings with neither a CVE nor
+  a port are all kept, as before. The duplicates a deployment already
+  holds stay as they are: the check is the API's, and a database
+  constraint is left for a minor release (#775).
+- **A port scan of an IPv6 asset connects over IPv6.** guardian opened
+  IPv4 sockets whatever the asset's address, so the scan of an IPv6 asset
+  completed with every port closed. It now connects over the family of
+  the address the scan target check returned; an internal IPv6 address is
+  refused before a socket is opened, as an IPv4 one is. The worker needs
+  an IPv6 route to reach such an asset: the stack's Docker networks are
+  IPv4 only, and from a worker without one the scan still finds no open
+  port (#775).
+- **A discovery rule says what its last run skipped.** A rule whose
+  networks were all refused by the scan target check (one stored before
+  0.12.0, or before the operator narrowed
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS`) ended `completed` with
+  `networks_queued: 0`, and the reason was in `guardian-worker`'s log
+  only. The rule's record now has `last_run_result`, read-only: the
+  status, the number of discoveries queued, and each network left out
+  with the reason. A run that queued nothing is `skipped`, with `reason`
+  `no_network_queued`, and the task's result says the same. One nullable
+  column is added to guardian's database at start (#775).
+- **`scan_asset_ports` bounds its `port_range`.** The task parsed the
+  argument without a limit: `1-4000000000` was that many connection
+  attempts in one task. It now takes one port or a range of at most 1,024
+  ports from 1 to 65535, and ends `refused`, with nothing dialed, for
+  anything else. No route passes the argument (#775).
 
 ### Removed
 
@@ -282,38 +335,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   meet the burst and not the rate. The deployment guide, the gateway's
   README and the comment in `.env.example` describe it; the bursts
   themselves are unchanged (#776).
-- **guardian refuses a second finding for the same asset and CVE when
-  neither has a port.** `POST vulnerabilities/` answered 201 twice: the
-  unique set `(asset, cve_id, port)` did not hold for a missing port,
-  which the serializer's validator skips and the database's unique index
-  takes for a value of its own each time. The second request now answers
-  the `400` a duplicate with a port gets. Findings with neither a CVE nor
-  a port are all kept, as before. The duplicates a deployment already
-  holds stay as they are: the check is the API's, and a database
-  constraint is left for a minor release (#775).
-- **A port scan of an IPv6 asset connects over IPv6.** guardian opened
-  IPv4 sockets whatever the asset's address, so the scan of an IPv6 asset
-  completed with every port closed. It now connects over the family of
-  the address the scan target check returned; an internal IPv6 address is
-  refused before a socket is opened, as an IPv4 one is. The worker needs
-  an IPv6 route to reach such an asset: the stack's Docker networks are
-  IPv4 only, and from a worker without one the scan still finds no open
-  port (#775).
-- **A discovery rule says what its last run skipped.** A rule whose
-  networks were all refused by the scan target check (one stored before
-  0.12.0, or before the operator narrowed
-  `GUARDIAN_ALLOWED_INTERNAL_TARGETS`) ended `completed` with
-  `networks_queued: 0`, and the reason was in `guardian-worker`'s log
-  only. The rule's record now has `last_run_result`, read-only: the
-  status, the number of discoveries queued, and each network left out
-  with the reason. A run that queued nothing is `skipped`, with `reason`
-  `no_network_queued`, and the task's result says the same. One nullable
-  column is added to guardian's database at start (#775).
-- **`scan_asset_ports` bounds its `port_range`.** The task parsed the
-  argument without a limit: `1-4000000000` was that many connection
-  attempts in one task. It now takes one port or a range of at most 1,024
-  ports from 1 to 65535, and ends `refused`, with nothing dialed, for
-  anything else. No route passes the argument (#775).
 - An IPv4 entry of `GUARDIAN_ALLOWED_INTERNAL_TARGETS` or
   `TOOLS_ALLOWED_INTERNAL_TARGETS` does not cover the same range written
   as IPv4-mapped IPv6 addresses (`::ffff:10.20.3.4`), by design. The
@@ -6392,7 +6413,8 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 - Docker Compose orchestration
 - Dashboard UI with Next.js
 
-[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/fabriziosalmi/wildbox/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.0...v0.11.1
