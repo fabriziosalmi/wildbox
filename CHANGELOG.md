@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **cspm answers when Redis accepts the connection and then says
+  nothing** (#778). A Redis that is down refuses the connection and the
+  routes answer 503 at once (#766). One that accepts it and never
+  replies, which is what a paused container or a stopped host looks
+  like, held `/health` and every route for as long as the caller waited:
+  the API's three clients (the scan store, the Celery broker and the
+  result backend) had no timeout, and with the event loop held nothing
+  else was served either. Measured with a server that accepts and never
+  answers: no answer from any route in 13 seconds. The API now gives
+  each client 2 seconds to open a connection and 3 for each reply, and
+  opens a connection that failed once, where Celery's own settings try
+  again after pauses of two and four seconds, and twenty times for the
+  result backend. Measured the same way: `/health` and every route
+  answer 503 in 3 seconds; with the store answering and the queue not,
+  `POST /api/v1/scans` answers 503 in 6. `socket_timeout` and
+  `socket_connect_timeout` in the query string of `REDIS_URL` or
+  `CELERY_RESULT_BACKEND` still replace the limits of that client. The
+  worker keeps Celery's own waits: it waits on its broker connection for
+  as long as no scan is queued.
+
 ## [0.12.0] - 2026-10-06
 
 This release closes what the audits of 0.11.0 found, service by service.

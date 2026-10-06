@@ -26,6 +26,7 @@ from .checks.runner import check_runner
 from . import schemas
 from . import scan_store
 from . import providers
+from . import connections
 from open_security_shared.errors import error_response, get_request_id, http_exception_handler
 from .utils import (
     _estimate_scan_duration, _summarize_compliance, _compliance_findings,
@@ -69,8 +70,11 @@ app.add_middleware(
     allow_headers=settings.cors_allow_headers,
 )
 
-# Redis client for caching
-redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+# The scan store's client, and this process's Celery client: each with a
+# limit on every wait, so a Redis that accepts and never answers ends in a
+# 503 and not in a route that never returns (#778, app.connections).
+redis_client = connections.redis_client(settings.redis_url)
+connections.bound_task_queue_waits(celery_app)
 
 
 # --- Redis or the task queue cannot be reached: 503 ---------------------------

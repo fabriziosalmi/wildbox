@@ -439,6 +439,19 @@ take, answers 503 in the error body above, with the message
 service's log. `GET /api/v1/providers` and `GET /api/v1/checks` read nothing
 from Redis and answer as usual.
 
+A Redis that is down refuses the connection and the 503 is immediate. One
+that accepts it and then sends nothing (a paused container, a host that
+stopped) used to hold the route, and the whole API with it, for as long as
+the caller waited. The API now gives each of its three clients (the scan
+store, the Celery broker and the result backend) 2 seconds to open a
+connection and 3 for each reply (`app/connections.py`), and opens a
+connection that failed once, not three or twenty times. Measured with a
+server that accepts and never answers: every route and `/health` answer 503
+in 3 seconds; with the store answering and the queue not, `POST
+/api/v1/scans` in 6. `socket_timeout` and `socket_connect_timeout` in the
+query string of `REDIS_URL` or `CELERY_RESULT_BACKEND` replace the two
+limits of that client. The worker keeps Celery's own waits.
+
 ## Configuration
 
 Settings are read from the environment (`app/config.py`); the root

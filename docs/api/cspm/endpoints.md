@@ -770,10 +770,10 @@ The status code says what the body says, so a probe that reads only the code
   waits for `cspm` to be healthy.
 - The route waits one second for the workers' replies, so it takes about that long
   whenever Redis answers.
-- A Redis that accepts the connection and never answers holds the route, and every
-  other one, for as long as the client waits: the service sets no timeout of its
-  own. `socket_timeout` and `socket_connect_timeout` in the query string of
-  `REDIS_URL` (in seconds) bound that wait; the route then answers `503`.
+- A Redis that accepts the connection and never answers (a paused container, a host
+  that stopped) is `unhealthy` after 3 seconds: the API gives Redis 2 seconds to
+  accept a connection and 3 to send a reply. See
+  [When Redis does not answer](#when-redis-does-not-answer).
 
 ---
 
@@ -823,6 +823,27 @@ When Redis cannot be reached, every route that reads or writes it answers `503` 
 this format, and so does a scan the broker cannot take; the cause is in the
 service's log. `GET /providers` and `GET /checks` read nothing from Redis and
 answer as usual. [`GET /health`](#health-check) answers `503` with its own body.
+
+### When Redis does not answer
+
+A Redis that is down refuses the connection, and the `503` is immediate. One that
+accepts the connection and then sends nothing is given a limited time by the API:
+
+| Client | Variable | Connection | Each reply |
+| --- | --- | --- | --- |
+| Scan store | `REDIS_URL` | 2 s | 3 s |
+| Task queue | `CELERY_BROKER_URL` | 2 s | 3 s |
+| State of scans in progress | `CELERY_RESULT_BACKEND` | 2 s | 3 s |
+
+- The route then answers `503`, as when Redis is down. Measured with a server that
+  accepts and never answers in all three roles: every route and `/health` in 3
+  seconds. With the store answering and the other two not: `POST /scans` in 6
+  seconds, `GET` and `DELETE /scans/{scan_id}` in 3.
+- `socket_timeout` and `socket_connect_timeout` in the query string of `REDIS_URL`
+  (in seconds) replace the store's two limits, and in `CELERY_RESULT_BACKEND` the
+  backend's. The broker's are not read from its URL.
+- The limits are the API's. The worker keeps Celery's own: it waits on its broker
+  connection for as long as no scan is queued.
 
 ---
 
