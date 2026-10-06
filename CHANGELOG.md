@@ -105,6 +105,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is removed, and a URL of another database is refused when the engine
   is first asked for, by the name of its backend and without the URL,
   which carries a password.
+- **The data scheduler has one rule for the sources it runs** (#778).
+  At start it left out an enabled source whose status was `error`; its
+  reload of the sources, every ten minutes, did not, and scheduled the
+  same source to run thirty seconds later. A source in error was
+  collected after every restart all the same, up to ten minutes later
+  than the others. Both now schedule every enabled source that has a
+  collector, whatever its status, which is also what the scheduler does
+  with a source that fails while it runs: it is tried again at its own
+  interval. A disabled source is not scheduled, as before.
 
 ## [0.12.0] - 2026-10-06
 

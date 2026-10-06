@@ -93,6 +93,14 @@ and the scheduler disables such a source when it meets one, with the
 reason in its `last_error`: a source that cannot be collected is not
 offered as an enabled one.
 
+The scheduler runs every enabled source it can collect, whatever the
+`status` of its row, by one rule at start and at its reload of the sources
+every ten minutes. It used to leave a source in `error` out at start and
+add it at the first reload, so such a source was collected after a restart
+all the same, up to ten minutes later than the others. A source that fails
+is tried again at its own `collection_interval`, and is disabled when a
+collection raises or times out with ten errors counted.
+
 `manage.py` has no other commands besides `init` and `reset`. Both use
 SQLAlchemy `create_all()` rather than Alembic, and `reset` drops every table;
 with the full stack, let the API apply the migrations instead.

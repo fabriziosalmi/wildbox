@@ -89,18 +89,30 @@ class CollectionScheduler:
             db.commit()
         return collectable
 
+    def _sources_to_schedule(self, db) -> List[Source]:
+        """The sources the scheduler runs: enabled, and collectable (#778).
+
+        One rule, for the start and for the periodic reload. They had two:
+        the start left out a source whose status was 'error', and the
+        reload, up to ten minutes later, scheduled it to run in thirty
+        seconds. So a source in error was collected after every restart all
+        the same, later, and whether the scheduler ran it depended on how
+        long the scheduler had been up.
+
+        The status is not what stops a failing source. One that fails keeps
+        its task and is tried again at its own interval (_run_collection),
+        and _handle_collection_error disables it when a collection raises
+        or times out with ten errors counted: a disabled source is not
+        scheduled, here as before.
+        """
+        enabled = db.query(Source).filter(Source.enabled == True).all()
+        return self._collectable(db, enabled)
+
     async def _load_sources(self):
-        """Load enabled sources from database"""
+        """Schedule the sources at start, each from its last collection"""
         db = get_db_session()
         try:
-            enabled = db.query(Source).filter(Source.enabled == True).all()
-            # Every enabled source is looked at, the ones in error too, so
-            # that one nothing can collect stops being offered as enabled.
-            sources = [
-                source
-                for source in self._collectable(db, enabled)
-                if source.status != 'error'
-            ]
+            sources = self._sources_to_schedule(db)
 
             current_time = datetime.now(timezone.utc)
             
@@ -260,9 +272,7 @@ class CollectionScheduler:
             
             db = get_db_session()
             try:
-                sources = self._collectable(
-                    db, db.query(Source).filter(Source.enabled == True).all()
-                )
+                sources = self._sources_to_schedule(db)
                 
                 # Update existing tasks and add new ones
                 current_source_ids = set(self.tasks.keys())
