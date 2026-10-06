@@ -1,6 +1,15 @@
 """
 Gateway Hardening Test Module
-Tests RBAC, error handling, rate limiting for enterprise security
+Tests RBAC and error handling for enterprise security
+
+Rate limiting is not tested here. The two tests this module had for it could
+not fail: each set ``passed = True`` in every branch, whether or not a request
+was refused and whether or not a header was there (#776). What they claimed
+to check is checked where it can be: the per-address limits and their 429
+against the gateway image itself (open-security-gateway/test/
+rate_limit_tests.py; the stacks this suite runs against raise those limits
+so that it cannot meet them), and the per-team budget and its
+``X-RateLimit-*`` headers in test_gateway_security.py's test_rate_limiting.
 """
 
 import os
@@ -171,89 +180,6 @@ class TestGatewayHardening:
             self.log_test_result("Error Handling: Service Failure Resilience", False, f"Error: {str(e)}")
             raise
             
-    async def test_rate_limiting_burst_protection(self) -> None:
-        """
-        Test rate limiting: Gateway should throttle excessive requests
-        
-        This validates that the gateway's rate limiting (limit_req_zone) is active
-        and prevents abuse by returning 429 Too Many Requests.
-        """
-        try:
-            # Send a burst of requests to trigger rate limiting
-            test_endpoint = f"{self.base_url}/api/v1/tools"
-            request_count = 15  # Exceed typical rate limit
-            responses = []
-            
-            for i in range(request_count):
-                response = requests.get(
-                    test_endpoint,
-                    headers=self.admin_headers,
-                    timeout=5
-                )
-                responses.append(response.status_code)
-                # Small delay to avoid connection issues
-                await asyncio.sleep(0.05)
-            
-            # Check if we got any rate limit responses
-            rate_limited = 429 in responses or 503 in responses
-            success_count = sum(1 for r in responses if r == 200)
-            
-            if rate_limited:
-                details = f"Rate limiting active: {responses.count(429)} requests throttled out of {request_count}"
-                passed = True
-            elif success_count == request_count:
-                # All succeeded - rate limiting might not be configured
-                details = f"Rate limiting not triggered: all {request_count} requests succeeded (may need tuning)"
-                passed = True  # Not a failure, just not configured strictly
-            else:
-                details = f"Mixed responses: {success_count} success, {responses}"
-                passed = True
-                
-            self.log_test_result("Rate Limiting: Burst Protection", passed, details)
-            assert passed, details
-            
-        except Exception as e:
-            self.log_test_result("Rate Limiting: Burst Protection", False, f"Error: {str(e)}")
-            raise
-            
-    async def test_rate_limit_headers(self) -> None:
-        """
-        Test that rate limiting headers are present in responses
-        
-        Validates that the gateway returns X-RateLimit-* headers to inform
-        clients about their current rate limit status.
-        """
-        try:
-            response = requests.get(
-                f"{self.base_url}/api/v1/tools",
-                headers=self.admin_headers,
-                timeout=10
-            )
-            
-            # Check for rate limit headers
-            rate_limit_headers = [
-                'X-RateLimit-Limit',
-                'X-RateLimit-Remaining',
-                'X-RateLimit-Reset'
-            ]
-            
-            found_headers = [h for h in rate_limit_headers if h in response.headers]
-            
-            if found_headers:
-                details = f"Rate limit headers present: {', '.join(found_headers)}"
-                passed = True
-            else:
-                # Headers might not be implemented yet
-                details = "Rate limit headers not implemented (acceptable for current phase)"
-                passed = True
-                
-            self.log_test_result("Rate Limiting: Informational Headers", passed, details)
-            assert passed, details
-            
-        except Exception as e:
-            self.log_test_result("Rate Limiting: Informational Headers", False, f"Error: {str(e)}")
-            raise
-            
     async def test_malicious_ip_vulnerability_creation(self) -> None:
         """
         Test complete security workflow: Malicious IP → Guardian vulnerability
@@ -340,8 +266,6 @@ async def run_tests() -> Dict[str, Any]:
         tester.test_rbac_user_forbidden_admin_endpoint,
         tester.test_rbac_role_header_propagation,
         tester.test_error_handling_service_failure,
-        tester.test_rate_limiting_burst_protection,
-        tester.test_rate_limit_headers,
         tester.test_malicious_ip_vulnerability_creation
     ]
     

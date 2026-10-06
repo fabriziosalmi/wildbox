@@ -40,8 +40,10 @@ The gateway strips `/api/v1/guardian/` and forwards the rest to guardian under
 
 - **Trailing slashes are required.** Every guardian route ends with `/`. Without it,
   Django's `APPEND_SLASH` answers `301 Moved Permanently` to the same path with the
-  slash. The gateway rewrites that `Location` header back to `/api/v1/guardian/...`,
-  so a `GET` that follows redirects still works, but most clients resend a
+  slash. The gateway rewrites that `Location` header back to `/api/v1/guardian/...`
+  and sends it as a path alone, without scheme, host or port: a client resolves it
+  against the URL it called, so a `GET` that follows redirects still works on
+  whatever host and port the gateway is reached, but most clients resend a
   redirected `POST` as a `GET`. Always write the slash.
 - **Guardian sees its own host name.** The gateway sends `Host: open-security-guardian`
   (the caller's host travels as `X-Forwarded-Host`), because Django checks `Host`

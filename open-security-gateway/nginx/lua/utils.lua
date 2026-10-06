@@ -254,15 +254,6 @@ function _M.generate_request_id()
     )
 end
 
--- Set response headers with auth info for debugging
-function _M.set_debug_headers(auth_data)
-    if ngx.var.gateway_debug == "true" then
-        ngx.header["X-Debug-User-ID"] = auth_data.user_id
-        ngx.header["X-Debug-Team-ID"] = auth_data.team_id
-        ngx.header["X-Debug-Cache-Hit"] = auth_data.cache_hit and "true" or "false"
-    end
-end
-
 -- The cookie the dashboard keeps the session JWT in (auth-provider.tsx).
 local SESSION_COOKIE = "auth_token"
 
