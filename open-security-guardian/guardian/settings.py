@@ -321,16 +321,15 @@ SPECTACULAR_SETTINGS = {
 # CORS CONFIGURATION
 # =============================================================================
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:80",
-    "http://localhost",
-    "http://127.0.0.1:80",
-    "http://127.0.0.1",
-]
+# The origins a browser may call guardian from: CORS_ALLOWED_ORIGINS, a
+# comma-separated list. Unset, the development origins; set and empty, none.
+# docker-compose.prod.yml has always passed the deployment's CORS_ORIGINS
+# under this name, and the list was written here, so the value did nothing
+# (#665). An entry that is not an origin stops guardian at start-up; see
+# guardian/cors.py.
+from guardian.cors import allowed_origins  # noqa: E402
+
+CORS_ALLOWED_ORIGINS = allowed_origins(os.getenv('CORS_ALLOWED_ORIGINS'))
 
 CORS_ALLOW_CREDENTIALS = True
 
