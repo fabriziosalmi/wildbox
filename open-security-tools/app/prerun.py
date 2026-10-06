@@ -28,7 +28,7 @@ submission must not spend.
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
-from app.target_policy import TargetRefused, enforce_target_policy
+from app.target_policy import TargetRefused, enforce_target_policy, refusal_summary
 from app.tool_loader import find_schema_classes, load_tool_module
 from fastapi import HTTPException, status
 from open_security_shared.errors import field_errors
@@ -134,8 +134,8 @@ def refusal_text(refusal: Exception) -> str:
     """A refusal as the caller reads it: in the task's result, as in the 4xx.
 
     For invalid input, the fields and what is wrong with each, not the
-    values. A refused target is named: the answer goes back to the caller
-    who sent it, and says which of their targets the policy refuses.
+    values. For a refused target, the kind of refusal and the field that
+    held the target, not the target, which was quoted until #774.
     """
     if isinstance(refusal, InvalidToolInput) and refusal.errors is not None:
         fields = ", ".join(
@@ -143,7 +143,21 @@ def refusal_text(refusal: Exception) -> str:
             for item in refusal.errors
         )
         return f"{refusal} ({fields})"
+    if isinstance(refusal, TargetRefused):
+        return refusal_summary(refusal)
     return str(refusal)
+
+
+def target_field_errors(refusal: TargetRefused) -> List[Dict[str, Any]]:
+    """The field a refused target was in, as a validation error is reported.
+
+    ``loc``, ``msg`` and ``type``, the three keys of the field errors of a
+    422 (``input_field_errors``): a client that points at the field for one
+    can point at it for the other. Empty when the field is not known.
+    """
+    if not refusal.field:
+        return []
+    return [{"loc": [refusal.field], "msg": str(refusal), "type": refusal.code}]
 
 
 UNDECLARED_FIELD = "(undeclared field)"
@@ -153,12 +167,12 @@ TARGET_REFUSED = "Target refused by the target policy"
 def refusal_log(refusal: Exception) -> str:
     """A refusal for the log: what kind, and which fields; nothing they held.
 
-    The text of a refused target quotes the target, and the location of a
-    validation error can be a key of the caller's own making (a field the
-    model does not declare, a key of a dictionary). So the log has the kind
-    of refusal, and for invalid input the declared field each error is under
-    and pydantic's name for it (#755). The caller still reads the whole
-    refusal in the answer (``refusal_text``, ``http_error``).
+    The field of a refused target and the location of a validation error
+    can be a key of the caller's own making (a field the model does not
+    declare, a key of a dictionary). So the log has the kind of refusal, and
+    for invalid input the declared field each error is under and pydantic's
+    name for it (#755). The caller reads the refusal and its field in the
+    answer (``refusal_text``, ``http_error``).
     """
     if isinstance(refusal, TargetRefused):
         return TARGET_REFUSED
@@ -193,7 +207,12 @@ def http_error(refusal: Exception) -> HTTPException:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail
         )
     if isinstance(refusal, TargetRefused):
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(refusal)
-        )
+        # The kind of refusal in the message, and the field that held the
+        # target in the field errors, where a 422 has its own: never the
+        # target (#774).
+        reason: Any = str(refusal)
+        errors = target_field_errors(refusal)
+        if errors:
+            reason = {"reason": str(refusal), "errors": errors}
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
     raise TypeError(f"not a pre-run refusal: {type(refusal).__name__}")

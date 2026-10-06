@@ -42,44 +42,48 @@ class SecurityIntegration:
             self.security_enabled = False
     
     def secure_tool_execution(self, tool_name: str):
-        """Decorator to add security controls to tool execution."""
+        """Decorator: this layer's checks, then the tool, called once.
+
+        The tool is called outside every handler of this class, so what it
+        raises is its own failure and reaches the caller as it was raised.
+        The call used to sit inside the handler meant for a failed check:
+        outside strict mode a ValueError, KeyError, TypeError,
+        ConnectionError or TimeoutError raised by the tool was taken for a
+        failed check, and the tool was called a second time. A scan ran
+        twice against its target, the first failure was never reported, and
+        the caller read the outcome of the second run (#774).
+
+        What a failed check does is decided in _apply_security_controls and
+        nowhere else.
+        """
         def decorator(func: Callable):
             @wraps(func)
             async def wrapper(*args, **kwargs):
-                try:
-                    # Extract common parameters
-                    input_data = args[0] if args else None
+                input_data = args[0] if args else None
 
-                    # Apply security controls if enabled
-                    if self.security_enabled and input_data:
-                        await self._apply_security_controls(tool_name, input_data)
-                    
-                    # Execute original function
-                    if asyncio.iscoroutinefunction(func):
-                        result = await func(*args, **kwargs)
-                    else:
-                        result = func(*args, **kwargs)
-                    
-                    return result
-                    
-                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                    if self.strict_mode:
-                        raise
-                    logger.warning(f"Security check failed for {tool_name}, continuing without security: {error_site(e)}")
-                    # Execute without security controls in non-strict mode
-                    if asyncio.iscoroutinefunction(func):
-                        return await func(*args, **kwargs)
-                    else:
-                        return func(*args, **kwargs)
-            
+                if self.security_enabled and input_data:
+                    await self._apply_security_controls(tool_name, input_data)
+
+                if asyncio.iscoroutinefunction(func):
+                    return await func(*args, **kwargs)
+                return func(*args, **kwargs)
+
             return wrapper
         return decorator
-    
+
     async def _apply_security_controls(self, tool_name: str, input_data: Any):
-        """Apply security controls to tool execution."""
+        """Run this layer's checks on a tool's input, before the tool.
+
+        The two modes differ here and only here. In strict mode
+        (SECURITY_STRICT_MODE=true) a check that fails is raised: the tool
+        is not run and the caller gets the failure of the check. Otherwise
+        the failure is logged as an error and the tool runs once, without
+        that check: the mode the service calls "graceful" when it starts.
+        Either way the tool is not called from here.
+        """
         if not self.security_enabled:
             return
-        
+
         try:
             # Input validation
             if self.validator and hasattr(input_data, 'target_url'):
@@ -94,10 +98,17 @@ class SecurityIntegration:
             # check and refused the execution itself (#563).
         
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Security control failed for {tool_name}: {error_site(e)}")
             if self.strict_mode:
+                logger.error(
+                    f"Security check failed for {tool_name}: {error_site(e)}; "
+                    "the tool is not run (SECURITY_STRICT_MODE)"
+                )
                 raise
-    
+            logger.error(
+                f"Security check failed for {tool_name}: {error_site(e)}; "
+                "SECURITY_STRICT_MODE is off, so the tool runs WITHOUT this check"
+            )
+
     def get_api_key(self, service: str) -> Optional[str]:
         """Get the API key for an external service from the environment.
 

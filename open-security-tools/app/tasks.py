@@ -7,7 +7,12 @@ import importlib.util
 from pathlib import Path
 from typing import Dict, Any, Optional
 from celery import Task, signals
-from celery.exceptions import Ignore, SoftTimeLimitExceeded, TimeLimitExceeded
+from celery.exceptions import (
+    Ignore,
+    SoftTimeLimitExceeded,
+    TaskPredicate,
+    TimeLimitExceeded,
+)
 
 from app import async_metrics
 from app.celery_app import celery_app
@@ -25,6 +30,11 @@ TASK_NAME = 'app.tasks.execute_tool_async'
 # What a task's result says when its tool raised: the words of the
 # synchronous route's 500, followed by the class of the exception.
 TOOL_FAILED = "Tool execution failed"
+
+# The errors of a request, raised before its tool is called by a check that
+# is not one of app.prerun's refusals: the task answers "failed" for them and
+# is not retried, since the same request would fail the same way.
+EXPECTED_ERRORS = (ValueError, KeyError, TypeError, ConnectionError, TimeoutError)
 
 # Where the task body leaves the outcome of a run it ends by returning, for
 # _count_returned_task below. The result a client reads says "failed" for a
@@ -210,6 +220,31 @@ def _cancelled_by_its_owner(task_id: Optional[str]) -> bool:
     return ownership.is_cancelled(task_id)
 
 
+class TaskFailed(Exception):
+    """A task failed outside its tool: the class and the line, not the text.
+
+    Celery keeps what a failed task raised with the task's result, for
+    ``result_expires``: the exception's class and arguments, and the
+    traceback, whose last line is the exception's text. The worker writes
+    both to its log, for the failure and for each retry before it. The text
+    of an exception raised over a request can repeat the request (a
+    validator that quotes the value it refuses) or name the deployment (the
+    address of the Redis that did not answer). So the task raises this in
+    place of whatever was raised: its one argument is
+    ``app.log_safety.error_site`` of the original, and it is raised once
+    the original is no longer being handled, so it does not carry it as its
+    context and the traceback Celery stores is this exception's alone
+    (#774).
+
+    The API still names the original class to the task's owner
+    (``app.api.async_router._failure_name`` reads it from the argument).
+    """
+
+    def __init__(self, site: str):
+        super().__init__(site)
+        self.site = site
+
+
 @celery_app.task(
     bind=True,
     base=ToolExecutionTask,
@@ -225,16 +260,59 @@ def execute_tool_async(
 ) -> Dict[str, Any]:
     """
     Execute a security tool asynchronously.
-    
+
     Args:
         tool_name: Name of the tool to execute
         input_data: Tool input parameters (as dict)
         user_id: The caller the submitting request authenticated as. Tools
             that act on a caller's behalf require it (see authorize_tool_call).
         timeout: Optional timeout override
-        
+
     Returns:
         Dict containing execution result
+
+    Raises:
+        TaskFailed: the task failed before its tool was called (Redis did
+            not answer for a cancellation or an allowance, a fault in the
+            checks). Celery retries it, then fails it. A failure of the
+            tool itself is returned, never raised: see _execute_tool_task.
+    """
+    try:
+        return _execute_tool_task(self, tool_name, input_data, user_id, timeout)
+    except TaskPredicate:
+        # Ignore (a cancelled task), Retry, Reject: Celery's own signals.
+        raise
+    except Exception as e:  # noqa: BLE001 - whatever it is, its text stays here
+        site = error_site(e)
+        logger.error(
+            f"Async tool execution failed before its tool ran: {tool_name}",
+            extra={
+                "tool_name": tool_name,
+                "task_id": self.request.id,
+                "error_type": site,
+                "status": "failed",
+            },
+        )
+    # Raised here and not in the handler above: an exception raised while
+    # another is handled keeps it as its context, text included, for
+    # whatever formats or reports the failure.
+    raise TaskFailed(site)
+
+
+def _execute_tool_task(
+    self,
+    tool_name: str,
+    input_data: Dict[str, Any],
+    user_id: Optional[str],
+    timeout: Optional[int],
+) -> Dict[str, Any]:
+    """The body of execute_tool_async; ``self`` is the bound task.
+
+    A tool is called at most once per task. Whatever it raises, of any
+    class, is the tool's own failure: the task returns ``failed`` and is
+    not retried, because a retry is a second run of the tool, a second scan
+    of someone's host. Only what fails before the tool is called is raised,
+    for Celery to retry.
     """
     start_time = time.time()
     task_id = self.request.id
@@ -428,7 +506,12 @@ def execute_tool_async(
             'task_id': task_id
         }
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except Exception as e:  # noqa: BLE001 - see below
+        if not tool_started and not isinstance(e, EXPECTED_ERRORS):
+            # Not the tool, and not an error of the request: the task itself
+            # could not do its work. Raised, for Celery to retry; the tool
+            # has not run, so a retry is not a second run of it.
+            raise
         duration = time.time() - start_time
         # What the tool raised while it worked on the caller's input. Its
         # text can quote that input (the URL a client could not fetch, the
@@ -437,6 +520,12 @@ def execute_tool_async(
         # for an hour and the caller reads, says what the synchronous route
         # says for the same failure, with the class (#755). This stored and
         # logged str(e).
+        #
+        # Every class, once the tool was called (#774). Only the five of
+        # EXPECTED_ERRORS were caught here: any other (a RuntimeError, an
+        # error of an HTTP client) was raised to Celery, which called the
+        # tool again, twice, and then stored the text and the traceback of
+        # the last failure with the result and logged them.
         logger.error(
             f"Async tool execution failed: {tool_name}",
             extra={

@@ -108,11 +108,18 @@ def test_a_network_is_allowed_or_refused_whole(case, kind):
     message = str(refused.value)
     if case["expect"] == "too_large":
         assert f"at most {shared.MAX_TARGET_ADDRESSES}" in message
+        assert refused.value.code == tp.TARGET_TOO_LARGE
     elif case["expect"] == "internal":
-        assert f"includes {ipaddress.ip_address(case['address'])}, " in message
+        # The first address the policy refuses is what the three suites
+        # agree on. It is data of the refusal here, not part of its text.
+        assert refused.value.address == ipaddress.ip_address(case["address"])
+        assert "includes a private" in message
         assert SETTING in message
+        assert refused.value.code == tp.TARGET_INTERNAL
     else:
         assert "must be an IP address" in message
+        assert refused.value.code == tp.TARGET_INVALID
+    assert case["network"] not in message
 
 
 @pytest.mark.parametrize("name", VECTORS["names"]["internal"])

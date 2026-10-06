@@ -596,12 +596,15 @@ def test_the_worker_does_not_run_a_tool_it_cannot_count(
     monkeypatch.setattr(tasks.execute_tool_async, "update_state", lambda **kwargs: None)
 
     # Raised, not returned: the task fails (after Celery's retries) and the
-    # tool has not run.
-    with pytest.raises(RateLimitUnavailable):
+    # tool has not run. What it raises names RateLimitUnavailable and the
+    # line, in place of the exception itself, whose text Celery would keep
+    # with the result and log (#774).
+    with pytest.raises(tasks.TaskFailed, match="^RateLimitUnavailable at ") as raised:
         tasks.execute_tool_async.run(
             tool_name=TOOL, input_data={"target_url": TARGET}, user_id=user
         )
 
+    assert RateLimitUnavailable.__name__ in raised.value.site
     assert sent == []
 
 

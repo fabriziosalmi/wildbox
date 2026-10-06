@@ -66,14 +66,16 @@ operator allows them, it refuses:
   `postgres`, `gateway`), `localhost`, names ending in `.localhost`,
   `.local`, `.internal`, `.localdomain` or `.home.arpa`, and the cloud
   metadata names;
-- spellings that are not canonical (`127.1`), and values with whitespace
-  or control characters.
+- spellings that are not canonical (`127.1`), values with whitespace or
+  control characters, and an address or a range written with an IPv6 zone
+  id (`fe80::1%eth0`).
 
 How a refusal reaches the caller depends on the path: the synchronous run
 and the asynchronous submission answer **400** with the reason in
-`error.message`, and the submission creates no task; a task whose target is
-refused only when it runs (the name resolves to another address by then)
-ends with status `failed` and the reason in `error`; and a
+`error.message` and the field that held the target in
+`error.details.errors`, and the submission creates no task; a task whose
+target is refused only when it runs (the name resolves to another address by
+then) ends with status `failed` and the reason in `error`; and a
 `security_automation_orchestrator` step that names a refused target fails.
 
 Every failed step of a `security_automation_orchestrator` workflow has an
@@ -93,8 +95,36 @@ Every failed step of a `security_automation_orchestrator` workflow has an
 For the last four `error_message` is one fixed sentence per code. What was
 raised is in the service's log, by class and line, and is never part of the
 workflow's result.
-The reason names the policy, for example
-`Target '10.0.0.5' is a private, loopback, link-local, multicast, reserved or otherwise internal address (network target policy; operators can allow internal targets with TOOLS_ALLOWED_INTERNAL_TARGETS)`.
+The reason says what kind of refusal it is and, for an internal target,
+names the policy and the setting that governs it, for example
+`The target is a private, loopback, link-local, multicast, reserved or otherwise internal address (network target policy; operators can allow internal targets with TOOLS_ALLOWED_INTERNAL_TARGETS)`.
+It does not repeat the target, which it quoted until
+[#774](https://github.com/fabriziosalmi/wildbox/issues/774). The field is
+named instead, as in a 422:
+
+```json
+{
+  "error": {
+    "code": 400,
+    "message": "The target is a private, loopback, link-local, multicast, reserved or otherwise internal address (network target policy; operators can allow internal targets with TOOLS_ALLOWED_INTERNAL_TARGETS)",
+    "details": {
+      "reason": "The target is a private, loopback, link-local, multicast, reserved or otherwise internal address (network target policy; operators can allow internal targets with TOOLS_ALLOWED_INTERNAL_TARGETS)",
+      "errors": [
+        {"loc": ["target"], "msg": "The target is a private, loopback, link-local, multicast, reserved or otherwise internal address (network target policy; operators can allow internal targets with TOOLS_ALLOWED_INTERNAL_TARGETS)", "type": "target_internal"}
+      ]
+    }
+  }
+}
+```
+
+`type` is `target_internal` (an internal address, a range with one in it, a
+name of the deployment, a name that does not resolve or resolves inside),
+`target_too_large` (a range of more than 1,024 addresses),
+`target_invalid` (not a host, an address or a range) or `url_refused` (a
+URL the URL guard refuses; `loc` is the field of the input the URL is
+under). The result of a task and the error of a workflow step, which are
+one string, end with the field and the type in brackets:
+`... (target: target_internal)`.
 
 `TOOLS_ALLOWED_INTERNAL_TARGETS` (empty by default) opens internal targets
 for every caller of every network tool. It is a comma-separated list of
@@ -286,7 +316,7 @@ The service refuses a run with these statuses:
 
 | Status | When | `error.message` |
 | --- | --- | --- |
-| 400 | A URL or a network target in the input is refused (see [Network Target Policy](#network-target-policy)) | The policy's reason |
+| 400 | A URL or a network target in the input is refused (see [Network Target Policy](#network-target-policy)) | The kind of refusal; `error.details.errors` names the field. The target is not echoed back |
 | 404 | No tool has that name | `Not Found` |
 | 403 | The tool acts on behalf of the caller and the caller is not authorized for it (today `sql_injection_scanner`, which also needs an authenticated caller) | The authorization reason |
 | 403 | The credential the gateway forwarded is an API key without `tools:execute`, or the request does not state its auth type (a gateway older than the service) | `This API key is not authorized for this operation.` with `error.details.code` `INSUFFICIENT_SCOPE`; or `error.details.code` `GATEWAY_AUTH_TYPE_REQUIRED` |
@@ -341,8 +371,9 @@ created for any of the three.
 The worker checks again when the task runs, because the answer can have
 changed: a host name may resolve to another address by then. A task refused
 at that point reads status `failed` with the reason in `error`: for a
-target, the policy's reason, which names the target; for an input the tool's
-schema refuses, the fields that failed, never their values. Whether the caller may run
+target, the kind of refusal and the field that held the target, never the
+target; for an input the tool's schema refuses, the fields that failed,
+never their values. Whether the caller may run
 a tool that acts for them is decided when the task runs: a task the tool
 refuses reads status `refused`.
 
@@ -353,6 +384,14 @@ the same failure, with the class. The text of the error is neither stored
 with the task nor logged, because a tool's error can repeat the input it was
 raised over
 ([#755](https://github.com/fabriziosalmi/wildbox/issues/755)).
+This holds for an error of any class, and the tool is called once: a task is
+not retried for what its tool raised. Until
+[#774](https://github.com/fabriziosalmi/wildbox/issues/774) an error that
+was not a `ValueError`, `KeyError`, `TypeError`, `ConnectionError` or
+`TimeoutError` made the worker call the tool twice more, and the task then
+read `failed` in state `FAILURE`. Only a task that fails before its tool is
+called (Redis does not answer, a fault in the checks) is retried, and reads
+`retrying` meanwhile.
 
 The service records who submitted the task before queuing it. It answers
 **503** (`Asynchronous execution is unavailable`) when it cannot record the
@@ -441,7 +480,7 @@ curl -s --cacert "$CA" https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-883f-0016d
 | `PENDING` | `pending` | `message` |
 | `STARTED` or `RUNNING` | `running` | `message`; `info` with the progress fields `tool_name`, `started_at` and `status` when the worker has written them |
 | `SUCCESS` | `completed`, `failed`, `timeout` or `refused` (the task finished and reports how the tool ended) | `error`, `result` (the tool's output when completed), `duration`, `completed_at` |
-| `FAILURE` | `failed` | `error` (`Task execution failed (<exception class>)`, never the exception message), `message`, `completed_at` |
+| `FAILURE` | `failed` (the task failed before its tool was called, after its retries, or was killed at the hard time limit) | `error` (`Task execution failed (<exception class>)`, never the exception message), `message`, `completed_at` |
 | `RETRY` | `retrying` | `message`, `info` (the same failure text as `error` above) |
 | `REVOKED` | `cancelled` | `message` (`Task was cancelled`), `completed_at` (null until a worker has dropped or stopped the task: the state is reported as soon as the owner cancels) |
 
@@ -589,7 +628,7 @@ this service reads the counts on every scrape:
 | Outcome | The task |
 | --- | --- |
 | `completed` | ran its tool, which returned (a result with `success: false` included) |
-| `failed` | ran its tool, which raised; or failed in the worker after its retries; or was given up after its worker process died three times while running it |
+| `failed` | ran its tool, which raised; or failed in the worker before its tool was called, after its retries; or was given up after its worker process died three times while running it |
 | `timeout` | was stopped at the soft time limit (9 minutes) or killed at the hard one (10 minutes) |
 | `cancelled` | was canceled with `DELETE /api/v1/tasks/{task_id}`, while it waited or while it ran |
 | `refused` | ended before its tool was started: the caller may not run the tool, or what the submission accepted is refused when the task runs (the target now resolves to an address that is not allowed, the worker does not have the tool) |

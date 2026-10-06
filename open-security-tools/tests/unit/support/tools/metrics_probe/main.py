@@ -31,15 +31,22 @@ def _die() -> None:
 
 
 def execute_tool(data: MetricsProbeInput) -> MetricsProbeOutput:
+    if data.starts:
+        # One line per call of the tool, whatever it then does.
+        with open(data.starts, "a", encoding="utf-8") as starts:
+            starts.write("called\n")
     if data.behaviour == "raise":
-        # A type the task catches: the run is reported as failed.
+        # One of the five classes the task has always caught.
         raise ValueError("the probe was asked to fail")
     if data.behaviour == "quote":
         # As above, with an error that repeats the input it was raised over.
         raise ValueError(f"the probe cannot use {data.marker!r}")
     if data.behaviour == "crash":
-        # A type nothing catches: Celery retries the task, then fails it.
+        # Any other class. Celery used to call the tool again for it, twice.
         raise RuntimeError("the probe was asked to crash")
+    if data.behaviour == "crash_quote":
+        # As above, with an error that repeats the input it was raised over.
+        raise RuntimeError(f"the probe crashed over {data.marker!r}")
     if data.behaviour == "touch":
         # Leaves a trace that the tool ran at all.
         _started_before(data.marker)

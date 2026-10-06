@@ -180,13 +180,33 @@ def _failure_name(result: Any) -> Optional[str]:
     """The exception class behind a failed or retried task, if it is known."""
     if isinstance(result, BaseException):
         name = type(result).__name__
+        arguments: Any = result.args
     elif isinstance(result, dict):
         name = result.get("exc_type")
+        arguments = result.get("exc_message")
     else:
         name = None
+        arguments = None
+    if name == TASK_FAILED:
+        # What the task raises in place of what failed it (app.tasks,
+        # TaskFailed): its argument starts with the class that did.
+        name = _class_in(arguments) or name
     if isinstance(name, str) and _EXCEPTION_NAME.fullmatch(name):
         return name
     return None
+
+
+TASK_FAILED = "TaskFailed"
+
+
+def _class_in(arguments: Any) -> Optional[str]:
+    """The class a TaskFailed stands for: the first word of its argument."""
+    if isinstance(arguments, (list, tuple)) and arguments:
+        arguments = arguments[0]
+    if not isinstance(arguments, str):
+        return None
+    first = arguments.split(" ", 1)[0]
+    return first if _EXCEPTION_NAME.fullmatch(first) else None
 
 
 def _failure_message(result: Any) -> str:

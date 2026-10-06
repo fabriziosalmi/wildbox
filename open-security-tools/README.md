@@ -275,14 +275,26 @@ submits is written to the log by value
 - A request is logged by its path, without its query string.
 - An error a tool raises while it works on its input is logged by its class
   and the line that raised it (`ValueError at main.py:42 in scan`). A
-  refused target is logged as a refusal, without the target; the caller
-  reads which target in the answer.
+  refused target is logged as a refusal, without the target. The answer
+  does not repeat the target either: it says what kind of refusal it is and
+  names the field that held the target
+  ([#774](https://github.com/fabriziosalmi/wildbox/issues/774)).
 - A tool names its target in a log line by its host only
   (`app/log_safety.py`, `host_of`): no user, password, path or query.
 - The HTTP client libraries do not log the URLs the tools call.
 - The traceback of an unexpected failure (a 500) is logged with the text of
   the exception: it is a fault of the service, and its cause is the
   operator's to read.
+- An asynchronous task keeps and logs no text of an error. Whatever its
+  tool raises, of any class, is stored as `Tool execution failed (<class>)`
+  and logged by class and line; the tool is called once and the task is not
+  retried. A task that fails before its tool is called (Redis does not
+  answer, a fault in the checks) is retried by Celery, which stores the
+  exception and its traceback with the result and logs both: the task
+  raises `TaskFailed` with the class and the line of what failed it
+  (`RuntimeError at rate_limit.py:95 in allow`) in place of the exception
+  itself, so neither holds its text
+  ([#774](https://github.com/fabriziosalmi/wildbox/issues/774)).
 
 An asynchronous run needs its input to run, so the input is stored: it is
 the body of the task's message in Redis, in the queue until a worker takes
@@ -367,7 +379,14 @@ Refused, unless allowed below:
   `.internal`, `.localdomain` and `.home.arpa`, and the cloud metadata
   names;
 - spellings that are not canonical (`127.1`, `0x7f000001`), non-ASCII host
-  names (write them in their `xn--` form) and values with whitespace.
+  names (write them in their `xn--` form), values with whitespace, and an
+  address or a range written with an IPv6 zone id (`fe80::1%eth0`).
+
+A refusal answers `400`. Its message says what kind of refusal it is and,
+for an internal target, names `TOOLS_ALLOWED_INTERNAL_TARGETS`; the field
+that held the target is in `error.details.errors`, as the fields of a `422`
+are. Neither repeats the target
+([#774](https://github.com/fabriziosalmi/wildbox/issues/774)).
 
 The inputs checked, declared per tool in `NETWORK_TARGET_FIELDS`:
 
@@ -467,6 +486,27 @@ and were removed (#646). An environment variable the service does not
 declare is ignored, but a key it does not declare in a `.env` file in the
 working directory stops it at start-up (`Extra inputs are not permitted`):
 delete those two lines from a `.env` copied from an older `.env.example`.
+
+Two variables switch on one more check on the synchronous route. Neither
+is passed by the root `docker-compose.yml`, and both are read from the
+process environment by `app/security_integration.py`:
+
+- `SECURITY_CONTROLS_ENABLED=true` (default `false`) checks the structure of
+  a tool's `target_url` once more before the tool is called
+  (`SecurityValidator.validate_url`: scheme, no user info, port, host
+  spelling). The asynchronous task does not run this check. The checks of
+  the sections above run on both paths whatever this is set to.
+- `SECURITY_STRICT_MODE=true` (default `false`) decides what a failed check
+  does. With it, the tool is not called and the run fails with `500`
+  (`Tool execution failed`). Without it, the failure is logged as an error
+  (`Security check failed for <tool>: ...; SECURITY_STRICT_MODE is off, so
+  the tool runs WITHOUT this check`) and the tool is called.
+
+In both modes the tool is called once, and what it raises is its own
+failure: until
+[#774](https://github.com/fabriziosalmi/wildbox/issues/774), outside
+strict mode, a tool that raised was taken for a failed check and called a
+second time.
 
 The Celery limits are fixed in `app/celery_app.py` (10-minute hard limit,
 9-minute soft limit, results kept for one hour) and the worker command line in

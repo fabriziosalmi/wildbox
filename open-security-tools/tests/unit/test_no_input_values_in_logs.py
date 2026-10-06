@@ -35,7 +35,6 @@ from app.auth import verify_api_key  # noqa: E402
 from app.celery_app import celery_app  # noqa: E402
 from app.execution_manager import ToolExecutionManager  # noqa: E402
 from app.middleware import RequestLoggingMiddleware  # noqa: E402
-from app.target_policy import TargetRefused  # noqa: E402
 from app.tool_loader import load_tool_module  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -280,13 +279,25 @@ def test_error_site_says_where_and_not_what():
 # --- a refusal before the run ---------------------------------------------------------
 
 
-def test_a_refused_target_is_answered_in_full_and_logged_by_kind(
+def test_a_refused_target_is_answered_by_kind_and_field_and_logged_by_kind(
     client, caplog, monkeypatch
 ):
-    def refuse(tool_name, validated):
-        raise TargetRefused(f"Target {validated.input_text!r} is internal")
+    """The policy itself decides, on a field declared a target for the test.
 
-    monkeypatch.setattr(prerun, "enforce_target_policy", refuse)
+    The answer named the target until #774: "the answer goes back to the
+    caller who sent it". It now says what kind of refusal it is and which
+    field held the target, as the answer to an input the schema refuses
+    does, and the value is in neither the answer, the task's result nor the
+    log.
+    """
+    from app import target_policy
+
+    # A name no resolver is asked about: single-label, so internal.
+    monkeypatch.setitem(
+        target_policy.NETWORK_TARGET_FIELDS,
+        TOOL,
+        {"input_text": target_policy.TargetKind.HOST},
+    )
     monkeypatch.setattr(tasks.execute_tool_async, "update_state", lambda **kw: None)
     body = {"input_text": MARKER}
 
@@ -297,10 +308,22 @@ def test_a_refused_target_is_answered_in_full_and_logged_by_kind(
             tool_name=TOOL, input_data=body, user_id=USER
         )
 
-    # The caller is told which target, in the answer that goes back to them.
     assert synchronous.status_code == submitted.status_code == 400
-    assert MARKER in synchronous.json()["error"]["message"]
-    assert in_the_worker["error"] == f"Target {MARKER!r} is internal"
+    for answer in (synchronous, submitted):
+        error = answer.json()["error"]
+        assert error["message"] == target_policy.INTERNAL_NAME
+        assert error["details"]["errors"] == [
+            {
+                "loc": ["input_text"],
+                "msg": target_policy.INTERNAL_NAME,
+                "type": "target_internal",
+            }
+        ]
+        assert MARKER not in answer.text
+    assert in_the_worker["error"] == (
+        f"{target_policy.INTERNAL_NAME} (input_text: target_internal)"
+    )
+    assert MARKER not in str(in_the_worker)
     # The log says a target was refused, three times, and not which.
     nowhere_in(caplog.records)
     refusals = [
@@ -615,3 +638,58 @@ def test_a_worker_does_not_log_what_a_tool_raises_over_its_input(stack):
     log = stack.logged(mark, "Async tool execution failed")
     assert MARKER not in log
     assert MARKER not in stack.redis.get(f"celery-task-meta-{result.id}")
+
+
+def test_a_worker_does_not_log_or_keep_what_a_tool_raises_of_any_class(stack):
+    """An error of another class than the five the task has always caught.
+
+    It was raised to Celery, which stored its text and its traceback with
+    the result for an hour and logged both, after calling the tool twice
+    more (#774).
+    """
+    mark = stack.mark()
+
+    result = stack.send(input_data={"behaviour": "crash_quote", "marker": MARKER})
+    meta = stack.state(result, {"SUCCESS", "FAILURE", "REVOKED"})
+
+    assert meta["status"] == "SUCCESS", meta
+    assert meta["result"]["status"] == "failed"
+    assert meta["result"]["error"] == "Tool execution failed (RuntimeError)"
+    stored = stack.redis.get(f"celery-task-meta-{result.id}")
+    assert MARKER not in stored
+    assert json.loads(stored)["traceback"] is None
+    log = stack.logged(mark, "Async tool execution failed")
+    assert MARKER not in log
+    assert "Traceback" not in log
+
+
+def test_a_worker_does_not_log_or_keep_what_fails_a_task_before_its_tool(stack):
+    """The task itself fails, over the input, and Celery retries it.
+
+    What Celery keeps of a failed task is the exception and its traceback,
+    and it logs both, for each retry and for the failure. They are the
+    class and the line of what was raised, not its text (#774).
+    """
+    mark = stack.mark()
+
+    result = stack.send(input_data={"behaviour": "fault_before", "marker": MARKER})
+    meta = stack.state(result, {"SUCCESS", "FAILURE", "REVOKED"})
+
+    assert meta["status"] == "FAILURE", meta
+    stored = json.loads(stack.redis.get(f"celery-task-meta-{result.id}"))
+    assert MARKER not in json.dumps(stored)
+    assert stored["result"]["exc_type"] == "TaskFailed"
+    (site,) = stored["result"]["exc_message"]
+    assert site.startswith("RuntimeError at schemas.py:")
+    assert site.endswith(" in _fault_before_the_tool")
+    # The traceback is kept: it is the task's, and ends with the same line.
+    assert stored["traceback"].rstrip().endswith(f"TaskFailed: {site}")
+    # What the task's owner reads names the class that failed it.
+    assert async_router._failure_message(stored["result"]) == (
+        "Task execution failed (RuntimeError)"
+    )
+    log = stack.logged(mark, "raised unexpected")
+    assert MARKER not in log
+    # Two retries and the failure, each logged by the task and by Celery.
+    assert log.count("Async tool execution failed before its tool ran") == 3
+    assert log.count(f"TaskFailed('{site}')") >= 3

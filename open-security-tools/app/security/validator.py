@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Union, Optional
 from fastapi import HTTPException, status
 import logging
 
+from ..target_policy import is_internal_address
 from ..url_guard import is_local_hostname, parse_target_url
 
 logger = logging.getLogger(__name__)
@@ -249,10 +250,14 @@ class SecurityValidator:
             return
         # Raised outside the try above: inside it, this error was swallowed by
         # the "not an IP address" branch and every private address passed.
-        # Only globally routable unicast addresses are allowed: is_global is
-        # False for private, loopback, link-local, unspecified, shared
-        # (100.64.0.0/10) and reserved ranges, and for IPv4-mapped forms.
-        if not ip.is_global or ip.is_multicast:
+        # Which addresses are internal is the shared target policy's answer,
+        # reached through the name the URL guard and the network target
+        # policy use (app.target_policy, #748). This method decided with
+        # "not ip.is_global or ip.is_multicast", a second classifier, and
+        # the two had drifted: it accepted the reserved IPv6 space (::2)
+        # and an internal IPv4 address behind the NAT64 prefix
+        # (64:ff9b::a9fe:a9fe), which the URL guard refuses (#774).
+        if is_internal_address(ip):
             raise ValueError("Private/local IP addresses not allowed")
     
     @classmethod

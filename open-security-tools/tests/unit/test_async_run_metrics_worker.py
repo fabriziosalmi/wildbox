@@ -179,14 +179,35 @@ def test_a_task_that_fails_after_its_retries_is_counted_once(stack):
     before = stack.outcomes()
     consumed = stack.consumed()
 
-    # RuntimeError is not a type the task catches: two retries, then FAILURE.
-    result = stack.probe("crash")
+    # A RuntimeError before the tool is called (the probe's input model
+    # raises it): the task itself fails. Two retries, then FAILURE. This
+    # test made the tool raise it, which Celery retried too: a failing tool
+    # was called three times (#774; the next test).
+    result = stack.probe("fault_before")
     meta = stack.state(result, {"FAILURE"})
 
     assert "RuntimeError" in repr(meta["result"])
     stack.settled(before, {(PROBE, "failed"): 1})
     # Three starts of one task: a retry is consumed again, not failed again.
     assert stack.consumed() == consumed + 3
+
+
+def test_a_tool_that_crashes_is_called_once_and_counted_once(stack, tmp_path):
+    """Whatever the class of what it raises (#774)."""
+    before = stack.outcomes()
+    consumed = stack.consumed()
+    starts = tmp_path / "starts"
+
+    result = stack.send(input_data={"behaviour": "crash", "starts": str(starts)})
+    meta = stack.state(result, {"SUCCESS", "FAILURE"})
+
+    assert meta["status"] == "SUCCESS", meta
+    assert meta["result"]["status"] == "failed"
+    assert meta["result"]["error"] == "Tool execution failed (RuntimeError)"
+    # settled() waits and looks again: longer than a retry would take to come.
+    stack.settled(before, {(PROBE, "failed"): 1})
+    assert starts.read_text(encoding="utf-8").splitlines() == ["called"]
+    assert stack.consumed() == consumed + 1
 
 
 def test_a_task_that_never_starts_its_tool_is_refused_not_failed(stack):
