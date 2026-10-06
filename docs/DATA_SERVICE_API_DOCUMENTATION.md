@@ -1039,13 +1039,13 @@ Use `total` to calculate:
 **Configuration:**
 
 ```text
-COLLECTION_ENABLED=true
-COLLECTION_INTERVAL=3600              # 1 hour
-MAX_CONCURRENT_COLLECTORS=10
-COLLECTION_TIMEOUT=300                # 5 minutes
-SKIP_DUPLICATES=true
-VALIDATE_COLLECTION_DATA=true
+MAX_CONCURRENT_COLLECTORS=10          # sources collected at the same time
 ```
+
+A source's interval, timeout and rate limit are fields of the source
+record. `COLLECTION_ENABLED`, `COLLECTION_INTERVAL`,
+`COLLECTION_TIMEOUT`, `SKIP_DUPLICATES` and `VALIDATE_COLLECTION_DATA` were
+listed here and read by no code; they are not settings.
 
 ---
 
@@ -1102,15 +1102,11 @@ in the service.
 - `expires_at`: set by the collector from the source; nothing deactivates an indicator when it passes
 - `active`, `false_positive`, `whitelisted`: columns; no route or command changes them, and only `active` is read (searches and lookups return active indicators)
 
-**Storage Strategy:**
+**Storage:**
 
-```text
-DATA_RETENTION_DAYS=365               # Total retention
-ARCHIVE_AFTER_DAYS=90                 # Archive old data
-BACKUP_ENABLED=false
-BACKUP_INTERVAL=86400                 # 24 hours
-BACKUP_RETENTION=30                   # 30 days
-```
+The service has no retention, archive or backup setting of its own:
+`DATA_RETENTION_DAYS`, `ARCHIVE_AFTER_DAYS` and `BACKUP_*` were listed here
+and read by no code.
 
 **Data Normalization:**
 
@@ -1168,11 +1164,11 @@ BACKUP_RETENTION=30                   # 30 days
 
 ```text
 LOG_LEVEL=INFO
-LOG_FILE_ENABLED=true
-LOG_FILE_PATH=logs/app.log
-LOG_JSON_FORMAT=false                 # Can enable for structured logging
-SENTRY_ENABLED=false                  # Optional error tracking
+LOG_FORMAT="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 ```
+
+The service logs to the console. It writes no log file and has no Sentry
+integration: `LOG_FILE_*`, `LOG_JSON_FORMAT` and `SENTRY_*` were not read.
 
 ---
 
@@ -1344,7 +1340,7 @@ curl -s --cacert "$CA" -H "X-API-Key: $SENSOR_DATA_LAKE_API_KEY" \
 ```text
 DATABASE_URL=postgresql://user:pass@host:5432/db
 DB_POOL_SIZE=20
-DB_MAX_OVERFLOW=10
+DB_POOL_OVERFLOW=10
 DB_POOL_TIMEOUT=30
 ```
 
@@ -1353,8 +1349,6 @@ DB_POOL_TIMEOUT=30
 ```text
 API_HOST=0.0.0.0
 API_PORT=8002
-API_WORKERS=4
-API_TIMEOUT=30
 CORS_ENABLED=true
 CORS_ORIGINS=*
 ```
@@ -1369,19 +1363,10 @@ MAX_BATCH_SIZE=1000
 ### Collection
 
 ```text
-COLLECTION_ENABLED=true
-COLLECTION_INTERVAL=3600
 MAX_CONCURRENT_COLLECTORS=10
-COLLECTION_TIMEOUT=300
-SKIP_DUPLICATES=true
 ```
 
-### Storage
-
-```text
-DATA_RETENTION_DAYS=365
-ARCHIVE_AFTER_DAYS=90
-BACKUP_ENABLED=false
-BACKUP_INTERVAL=86400
-```
+These are all the settings the service reads, with `ENVIRONMENT`, `DEBUG`,
+`SECRET_KEY`, `DB_ECHO`, `LOG_LEVEL` and `LOG_FORMAT`
+(`open-security-data/.env.example`).
 

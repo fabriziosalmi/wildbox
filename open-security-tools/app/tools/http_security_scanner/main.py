@@ -12,6 +12,7 @@ from ...input_validation import InputSanitizer
 from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
 from ...tool_errors import RUN_ERRORS
+from ...log_safety import host_of
 from .schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ class HttpSecurityScanner:
                 headers = {k.lower(): v for k, v in response.headers.items()}
                 return headers, response.status, str(response.url)
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error fetching headers from {url}: {e}")
+            logger.error(f"Error fetching headers from {host_of(url)}: {type(e).__name__}")
             raise
 
     def analyze_security_headers(self, headers: Dict[str, str]) -> List[SecurityHeader]:
@@ -336,7 +337,7 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
     except aiohttp.ClientConnectorCertificateError as e:
         # Reported as-is. There is no fallback to an unverified connection.
         message = certificate_error_message(e, input_data.url)
-        logger.warning(message)
+        logger.warning(f"TLS certificate could not be verified for {host_of(input_data.url)}")
         return HttpSecurityScannerOutput(
             success=False,
             error_message=message,
@@ -349,7 +350,7 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
             findings={"error": message, "certificate_verification": "failed"}
         )
     except RUN_ERRORS as e:
-        logger.error(f"HTTP security scan failed: {e}")
+        logger.error(f"HTTP security scan failed: {type(e).__name__}")
         duration = (datetime.now() - start_time).total_seconds()
         
         return HttpSecurityScannerOutput(

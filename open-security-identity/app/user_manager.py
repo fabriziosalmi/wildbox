@@ -134,9 +134,28 @@ class RevocableJWTStrategy(JWTStrategy):
         }
         return generate_jwt(data, self.encode_key, self.lifetime_seconds, algorithm=self.algorithm)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # What read_token() answered for a token, for the life of this
+        # strategy, which is one request: FastAPI resolves get_jwt_strategy
+        # once per request and hands the same instance to every dependency
+        # that asks for it. A request to an authenticated route has two that
+        # read the token, the route's own (current_active_user or
+        # current_superuser) and require_password_changed on its router, and
+        # each used to ask Redis whether the token was revoked and read the
+        # user from the database. The checks that differ between them
+        # (active, superuser, verified, must_change_password) are made on the
+        # user this returns, by each dependency, as before.
+        self._read: dict = {}
+
     async def read_token(self, token, user_manager):
         if token is None:
             return None
+        if token not in self._read:
+            self._read[token] = await self._read_token(token, user_manager)
+        return self._read[token]
+
+    async def _read_token(self, token, user_manager):
         try:
             data = decode_jwt(token, self.decode_key, self.token_audience, algorithms=[self.algorithm])
         except pyjwt.PyJWTError:
@@ -158,6 +177,10 @@ def get_jwt_strategy() -> JWTStrategy:
     """
     Creates a new JWT strategy instance for each request.
     This function is called by FastAPI Users as a dependency.
+
+    Never keep the instance beyond the request it was made for: it remembers
+    the tokens it has read (see RevocableJWTStrategy.__init__), and a token
+    revoked since would still read as its user.
     """
     return RevocableJWTStrategy(
         secret=settings.jwt_secret_key,
@@ -467,7 +490,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         Logica da eseguire dopo la registrazione di un utente.
         Qui creiamo il Team e la membership (owner).
         """
-        logger.info(f"User {user.email} has registered. Running post-registration logic.")
+        logger.info(f"User {user.id} has registered. Running post-registration logic.")
         
         # Without a request the account was not registered through the API:
         # scripts/init.sh creates the first administrator that way and makes
@@ -499,7 +522,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
 
         # Commit delle modifiche
         await db.commit()
-        logger.info(f"Team and membership (owner) created for user {user.email}.")
+        logger.info(f"Team and membership (owner) created for user {user.id}.")
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):

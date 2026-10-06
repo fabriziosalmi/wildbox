@@ -13,6 +13,7 @@ from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
 from ...tool_config import ToolConfig
 from ...tool_errors import RUN_ERRORS
+from ...log_safety import host_of
 from .schemas import (
     WebVulnScannerInput, WebVulnScannerOutput, VulnerabilityFinding,
     SecurityHeader, VulnerabilityLevel, ScanDepth
@@ -72,7 +73,7 @@ async def check_security_headers(url: str, rate_limiter: RateLimiter = None,
     except aiohttp.ClientConnectorCertificateError:
         raise
     except RUN_ERRORS as e:
-        logger.error(f"Error checking security headers: {e}")
+        logger.error(f"Error checking security headers: {type(e).__name__}")
         
     return security_headers
 
@@ -109,7 +110,7 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                 except aiohttp.ClientConnectorCertificateError:
                     raise
                 except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
-                    logger.error(f"Error testing XSS on {url}: {e}")
+                    logger.error(f"Error testing XSS on {host_of(url)}: {type(e).__name__}")
                     pass
             
             # Test for SQL injection indicators
@@ -142,7 +143,7 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                 except aiohttp.ClientConnectorCertificateError:
                     raise
                 except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
-                    logger.error(f"Error testing SQL injection on {test_url}: {e}")
+                    logger.error(f"Error testing SQL injection on {host_of(test_url)}: {type(e).__name__}")
                     pass
             
             # Check for information disclosure
@@ -175,13 +176,13 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                 except aiohttp.ClientConnectorCertificateError:
                     raise
                 except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
-                    logger.error(f"Error testing information disclosure on {test_url}: {e}")
+                    logger.error(f"Error testing information disclosure on {host_of(test_url)}: {type(e).__name__}")
                     pass
                     
     except aiohttp.ClientConnectorCertificateError:
         raise
     except RUN_ERRORS as e:
-        logger.error(f"Error during vulnerability scanning: {e}")
+        logger.error(f"Error during vulnerability scanning: {type(e).__name__}")
         
     return vulnerabilities
 
@@ -225,7 +226,7 @@ async def execute_tool(input_data: WebVulnScannerInput) -> WebVulnScannerOutput:
     except aiohttp.ClientConnectorCertificateError as e:
         # Reported as-is. There is no fallback to an unverified connection.
         message = certificate_error_message(e, input_data.target_url)
-        logger.warning(message)
+        logger.warning(f"TLS certificate could not be verified for {host_of(input_data.target_url)}")
         return WebVulnScannerOutput(
             success=False,
             error_message=message,

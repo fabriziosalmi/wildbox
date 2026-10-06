@@ -13,7 +13,7 @@ and refuses, in any function, a call to ``call_next`` (ASGI) or
 - inside an ``except`` or ``finally`` clause: the retry;
 - inside a loop;
 - more than once, unless every call but one is the value of a ``return``
-  (an early exit, as the idempotency middleware has for requests it skips).
+  (an early exit, for the requests a middleware does not handle).
 """
 
 import ast
@@ -174,7 +174,7 @@ def test_one_call_is_accepted_with_its_error_handling():
 
 
 def test_early_exits_that_return_the_downstream_answer_are_accepted():
-    # The idempotency middleware: requests it does not handle go straight on.
+    # A middleware that handles some requests: the others go straight on.
     assert check("""
         async def dispatch(self, request, call_next):
             if request.method != "POST":
@@ -214,8 +214,10 @@ def middleware_files() -> list:
 
 
 def test_the_services_have_middlewares_for_this_to_read():
-    # Seven services and the shared package had one when this was written.
-    assert len(middleware_files()) >= 8, middleware_files()
+    # Nine files had one when this was written. Two were modules of the
+    # shared package that no service imported (security_middleware.py and
+    # idempotency.py), removed in #665.
+    assert len(middleware_files()) >= 7, middleware_files()
 
 
 @pytest.mark.parametrize("path", middleware_files())

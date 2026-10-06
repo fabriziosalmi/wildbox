@@ -6,7 +6,7 @@ Nothing ever scheduled them. ``build_beat_schedule()`` returns the schedule
 as ``CELERY_BEAT_SCHEDULE``; guardian-beat runs django-celery-beat's
 DatabaseScheduler, which writes each entry into a ``PeriodicTask`` row when
 it starts (creating or updating it by name), so the schedule is versioned
-here and still visible in the Django admin.
+here and still visible in the database.
 
 Every entry can be changed without a rebuild through its environment
 variable, read by guardian-beat when it starts:
@@ -18,7 +18,7 @@ variable, read by guardian-beat when it starts:
   would not do that: the scheduler only creates and updates rows, so the
   old row would go on running.
 
-An edit made in the admin to one of these rows lasts until guardian-beat
+An edit made to one of these rows in the database lasts until guardian-beat
 restarts, when the value from here is written back. Change the variable.
 
 Each run also expires: a run still queued when the next one is due is

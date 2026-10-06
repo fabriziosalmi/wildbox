@@ -459,6 +459,12 @@ class VulnerabilityHistory(models.Model):
         return f"{self.vulnerability.title}: {self.field_name} changed"
 
 
+# The two functions below belonged to VulnerabilityAttachment, a model nothing
+# ever wrote a row of; migration 0004 dropped its table (#665). They stay
+# because migrations 0001 and 0002 name them: Django imports every migration
+# to build the state the later ones start from.
+
+
 def validate_attachment_file(value):
     """Validate uploaded file type and size."""
     import os
@@ -482,45 +488,3 @@ def attachment_upload_to(instance, filename):
     team_id = instance.vulnerability.asset.team_id
     day = timezone.now().strftime('%Y/%m/%d')
     return f"vulnerability_attachments/{team_id or 'unassigned'}/{day}/{filename}"
-
-
-class VulnerabilityAttachment(models.Model):
-    """A file attached to a vulnerability. Not offered by the API (#724).
-
-    Nothing in guardian creates a row: there has never been an upload
-    route, a task or a command for it. The one route that read the table,
-    ``vulnerabilities/{id}/attachments/``, answered an empty list and a
-    ``file`` URL under /media/, which is not served, and was removed. The
-    model and its table stay, so that this is not a migration that drops
-    data an operator may have written by hand; before an upload is ever
-    offered it needs a download route under /api/, scoped to the team, as
-    reports have (apps.reporting.views.ReportViewSet.download).
-    """
-    TEAM_LOOKUP = 'vulnerability__asset__team_id'
-    vulnerability = models.ForeignKey(Vulnerability, on_delete=models.CASCADE, related_name='attachments')
-    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
-
-    # File details
-    file = models.FileField(upload_to=attachment_upload_to, validators=[validate_attachment_file])
-    filename = models.CharField(max_length=255)
-    file_size = models.PositiveIntegerField()
-    content_type = models.CharField(max_length=100)
-    
-    # Metadata
-    description = models.TextField(blank=True)
-    attachment_type = models.CharField(max_length=20, choices=[
-        ('screenshot', 'Screenshot'),
-        ('report', 'Report'),
-        ('log', 'Log File'),
-        ('evidence', 'Evidence'),
-        ('patch', 'Patch File'),
-        ('other', 'Other')
-    ], default='other')
-    
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-uploaded_at']
-    
-    def __str__(self):
-        return f"{self.filename} - {self.vulnerability.title}"

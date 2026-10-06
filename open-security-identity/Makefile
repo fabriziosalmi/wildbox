@@ -1,10 +1,7 @@
-.PHONY: help setup dev prod test clean build logs shell migrate-only
+.PHONY: help dev prod test clean build logs shell migrate-only
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-
-setup: ## Quick setup with automatic migration (recommended)
-	./scripts/setup.sh
 
 dev: ## Start development environment with auto-migration
 	docker-compose up --build

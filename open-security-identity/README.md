@@ -75,6 +75,13 @@ the account is locked for `ACCOUNT_LOCKOUT_MINUTES` (15) and login answers
 `429` with `Retry-After`, even for the correct password. The counter is kept in
 Redis.
 
+The log line about a lockout names the account by the first twelve hex
+digits of the SHA-256 of the address as it was typed, lower-cased and
+trimmed, not by the address: `printf %s user@example.com | shasum -a 256`
+gives the digits for an address you already know. A registration is logged
+by the user's id. The database engine never logs the parameters of a
+statement, with `DEBUG` or in the text of an error.
+
 Tokens are HS256 JWTs with `sub`, `aud` (`fastapi-users:auth`), `exp`, a random
 `jti` and a fractional `iat`, valid for `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` (30).
 Logout adds the `jti` to a Redis blacklist and tells the gateway, so the token

@@ -74,7 +74,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-ROTATABLE="JWT_SECRET_KEY GATEWAY_INTERNAL_SECRET API_KEY API_KEY_HASH_SECRET CSPM_CREDENTIAL_KEY REDIS_PASSWORD POSTGRES_PASSWORD NEXTAUTH_SECRET"
+ROTATABLE="JWT_SECRET_KEY GATEWAY_INTERNAL_SECRET API_KEY API_KEY_HASH_SECRET CSPM_CREDENTIAL_KEY REDIS_PASSWORD POSTGRES_PASSWORD"
 
 if [ "$LIST" = true ]; then
   cat <<'LIST'
@@ -108,8 +108,6 @@ Rotatable secrets, what reads each one, and what rotating it costs:
                            connection string in .env, together. Needs the
                            stack running. Services keep their open
                            connections and must be recreated to open new ones.
-  NEXTAUTH_SECRET          Passed to the dashboard container; nothing reads
-                           it. Rotating it has no effect.
 LIST
   exit 0
 fi
@@ -511,7 +509,6 @@ GENERATORS = {
     "CSPM_CREDENTIAL_KEY": lambda: gen.generate_base64(32),
     "REDIS_PASSWORD": lambda: gen.generate_password(24),
     "POSTGRES_PASSWORD": lambda: gen.generate_base64(32),
-    "NEXTAUTH_SECRET": lambda: gen.generate_base64(32),
 }
 print(GENERATORS[os.environ["NAME"]]())
 PY
@@ -820,11 +817,6 @@ case "$SECRET" in
     echo "  - The other services hold the old password in their environment."
     echo "    They keep their open connections, and every new connection"
     echo "    fails until they are recreated:"
-    ;;
-  NEXTAUTH_SECRET)
-    echo "NEXT: nothing depends on it. The dashboard container receives the"
-    echo "variable and no code reads it; recreating it only keeps .env and the"
-    echo "container the same:"
     ;;
 esac
 echo ""

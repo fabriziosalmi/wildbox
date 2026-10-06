@@ -83,6 +83,9 @@ fim:
 # Performance Tuning (Docker-optimized)
 performance:
   query_interval: 10
+  # Seconds between two runs of the system_inventory queries; the other
+  # osquery packs run every query_interval. 0: at every cycle.
+  inventory_interval: 3600
   # Thresholds, not limits: above either the sensor logs a warning and
   # reports over_limits in its statistics. Nothing is slowed down.
   max_memory_mb: 256

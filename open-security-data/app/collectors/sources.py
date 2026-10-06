@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List
 from app.collectors import BaseCollector, HTTPCollector
+from app.utils.log_safety import describe_error
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,9 @@ class URLVoidCollector(HTTPCollector):
                             'response': data
                         }
                 except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                    logger.error(f"Error checking domain {domain}: {e}")
+                    logger.error(
+                        f"Error checking domain {domain}: {describe_error(e)}"
+                    )
                     continue
     
     def parse_item(self, raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -276,7 +279,7 @@ class MalwareBazaarCollector(HTTPCollector):
                         yield item
                         
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error collecting from MalwareBazaar: {e}")
+            logger.error(f"Error collecting from MalwareBazaar: {describe_error(e)}")
             raise
     
     def parse_item(self, raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -342,7 +345,7 @@ class ThreatFoxCollector(HTTPCollector):
                         yield item
                         
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error collecting from ThreatFox: {e}")
+            logger.error(f"Error collecting from ThreatFox: {describe_error(e)}")
             raise
     
     def parse_item(self, raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -404,10 +407,10 @@ class ThreatFoxCollector(HTTPCollector):
         }
 
 
-# Register all collectors
+# Register the collectors that can run. HTTPCollector itself is their base
+# class: it has no parse_item and is not one of them.
 from app.collectors import CollectorRegistry
 
-CollectorRegistry.register_collector('http', HTTPCollector)
 CollectorRegistry.register_collector('malware_domain_list', MalwareDomainListCollector)
 CollectorRegistry.register_collector('abuseipdb', AbuseIPDBCollector)
 CollectorRegistry.register_collector('urlvoid', URLVoidCollector)

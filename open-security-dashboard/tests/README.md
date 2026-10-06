@@ -84,7 +84,23 @@ This is what `.github/workflows/test.yml` runs, after `npm run build`.
 
 ## Running the backend tests
 
-1. Start the full stack from the repository root (`docker compose up -d`).
+1. Start the full stack from the repository root (`docker compose up -d`),
+   with the gateway's rate limits raised in the repository's `.env`. The
+   specs drive one team through every page and send everything from one
+   address, and they neither pace themselves nor retry a `429`:
+
+   ```bash
+   RATE_LIMIT_PER_HOUR=1000000
+   GATEWAY_RATE_LIMIT_PER_SECOND=10000
+   GATEWAY_AUTH_RATE_LIMIT_PER_SECOND=10000
+   GATEWAY_STATIC_RATE_LIMIT_PER_SECOND=10000
+   ```
+
+   These are the values `.github/workflows/e2e-fullstack.yml` sets. With the
+   defaults, which are a deployment's limits, a spec fails with a `429` from
+   the gateway sooner or later. The limits themselves are tested by the
+   gateway harness (`open-security-gateway/test/rate_limit_tests.py`).
+
 2. Load the threat-intel seed, because the data service has no API that
    creates indicators:
 

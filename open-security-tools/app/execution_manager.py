@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import Enum
 from app.config import settings
+from app.log_safety import error_site
 from app.logging_config import get_logger
 from open_security_shared.observability import outcome_counter
 
@@ -323,7 +324,9 @@ class ToolExecutionManager:
                     extra={
                         "tool_name": tool_name,
                         "execution_id": execution_id,
-                        "error": str(e),
+                        # Not str(e): a tool's error can quote the
+                        # input it was raised over (#755).
+                        "error_type": error_site(e),
                         "duration": f"{duration:.3f}s",
                         "status": "failed"
                     }

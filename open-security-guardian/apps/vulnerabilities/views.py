@@ -256,12 +256,13 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         )
         return Response(serializer.data)
     
-    # There is no ``attachments`` action. It listed VulnerabilityAttachment
-    # rows, and guardian has never had a route, a task or a command that
+    # There is no ``attachments`` action. It listed the rows of an attachment
+    # table, and guardian has never had a route, a task or a command that
     # creates one; each row's ``file`` would have been a /media/ URL that
     # nothing serves (#642 stopped serving media: it is outside /api/, so
     # neither the gateway's authentication nor the team check applied). The
-    # route always answered an empty list, and was removed (#724).
+    # route always answered an empty list, and was removed (#724); the model
+    # and its table followed (#665).
 
     @action(detail=False, methods=['post'])
     def bulk_action(self, request):

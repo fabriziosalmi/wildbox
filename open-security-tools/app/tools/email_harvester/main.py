@@ -229,7 +229,7 @@ def execute_tool(input_data: EmailHarvesterInput) -> EmailHarvesterOutput:
         all_emails.extend(direct_emails)
         sources_searched.append("Direct Domain")
     except Exception as exc:
-        logger.warning("Direct domain search skipped for %r: %s", input_data.domain, exc)
+        logger.warning("Direct domain search skipped: %s", type(exc).__name__)
     
     # Remove duplicates while preserving source information
     unique_emails = {}

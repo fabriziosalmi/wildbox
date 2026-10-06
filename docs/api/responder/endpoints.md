@@ -425,7 +425,6 @@ in the same container as the API):
 | `WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service |
 | `WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian |
 | `WILDBOX_AGENTS_URL` | `http://open-security-agents:8006` | Agents service |
-| `WILDBOX_SENSOR_URL` | `http://open-security-sensor:8004` | Accepted and unused: no connector calls the sensor |
 | `REDIS_URL` | `redis://localhost:6381/0` | Run state and the worker queue |
 | `PLAYBOOKS_DIRECTORY` | `./playbooks` | Where the playbook YAML files are loaded from |
 | `EXECUTION_RETENTION_DAYS` | `30` | How long run records are kept |

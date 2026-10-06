@@ -13,10 +13,11 @@ no webhook and delivers nothing through a channel. The columns were dropped,
 and a request that sends a value for one of the three is answered 400 on
 that field (``RefusedFieldsMixin``), not accepted and discarded.
 
-``IntegrationLog`` is read-only through the API and leaves out
-``request_data`` and ``response_data``: the raw payloads of calls to an
-external system can carry credentials (authorization headers, OAuth token
-responses). Nothing writes an integration log today.
+``IntegrationLog`` is read-only through the API, and nothing writes an
+integration log today. It had two columns for the raw request and response
+of a call to an external system, ``request_data`` and ``response_data``,
+which this serializer left out because such payloads carry credentials;
+nothing ever filled them and they were dropped (#665).
 """
 
 from rest_framework import serializers

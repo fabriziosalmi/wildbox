@@ -158,11 +158,10 @@ def test_an_unknown_type_is_refused_for_the_type():
         ("CELERY_BROKER_URL", "redis://redis.internal:6379/5"),
         ("CELERY_RESULT_BACKEND", "redis://redis.internal:6379/6"),
         ("GATEWAY_INTERNAL_SECRET", "a-secret-for-this-test"),
-        ("INTERNAL_API_KEY", "no-longer-read"),
     ],
 )
 def test_the_variable_sets_the_field(monkeypatch, variable, value):
-    """These five declared ``env=``; they are read by name, as all are."""
+    """These declared ``env=``; they are read by name, as all are."""
     monkeypatch.setenv(variable, value)
     assert getattr(Settings(_env_file=None), variable.lower()) == value
 

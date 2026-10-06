@@ -37,6 +37,11 @@ def _init_engine():
             pool_timeout=config.database.pool_timeout,
             pool_pre_ping=True,
             echo=config.database.echo,
+            # Statements, never their parameters: neither in the echo of
+            # DB_ECHO nor in the text of a database error, which this
+            # service logs. The parameters are the events a sensor sent and
+            # the indicators a team searched for (#755).
+            hide_parameters=True,
             poolclass=StaticPool if is_sqlite else None,
             connect_args={"check_same_thread": False} if is_sqlite else {},
         )

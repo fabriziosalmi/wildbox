@@ -295,11 +295,11 @@ async def delete_user(
     - Transferring ownership to another admin/member if available
     - Deleting the team if no other members exist
     """
-    logger.debug("Delete user called with user_id={user_id}, force={force}, current_user={current_user.email}")
+    logger.debug("Delete user called with user_id=%s, force=%s, current_user.id=%s", user_id, force, current_user.id)
     
     # Only superusers can delete accounts
     if not current_user.is_superuser:
-        logger.debug("Non-superuser attempted delete: is_superuser={current_user.is_superuser}")
+        logger.debug("Non-superuser attempted delete: is_superuser=%s", current_user.is_superuser)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Superuser access required"
@@ -325,7 +325,7 @@ async def delete_user(
     
     # Prevent deleting self
     if user_id == str(current_user.id):
-        logger.debug("Attempted to delete self: user_id={user_id}, current_user.id={current_user.id}")
+        logger.debug("Attempted to delete self: user_id=%s, current_user.id=%s", user_id, current_user.id)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account"
@@ -333,7 +333,7 @@ async def delete_user(
     
     # Prevent deleting superusers (extra protection) - but allow force deletion by superadmin
     if user.is_superuser and not force:
-        logger.debug("Attempted to delete superuser without force: user.is_superuser={user.is_superuser}, force={force}")
+        logger.debug("Attempted to delete superuser without force: user.is_superuser=%s, force=%s", user.is_superuser, force)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete superuser accounts. Use force=true to override or remove superuser privileges first."
@@ -346,7 +346,7 @@ async def delete_user(
     if user.owned_teams:
         if not force:
             team_names = [team.name for team in user.owned_teams]
-            logger.debug("User owns teams and no force flag: owned_teams={len(user.owned_teams)}, force={force}")
+            logger.debug("User owns teams and no force flag: owned_teams=%s, force=%s", len(user.owned_teams), force)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot delete user who owns {len(user.owned_teams)} team(s): {', '.join(team_names)}. Use force=true to automatically handle team ownership."

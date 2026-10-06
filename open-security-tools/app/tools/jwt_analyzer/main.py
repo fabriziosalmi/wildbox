@@ -223,7 +223,7 @@ def analyze_claims(payload: Dict) -> List[JWTClaim]:
                 timestamp = datetime.fromtimestamp(value, tz=timezone.utc)
                 formatted_value = f"{value} ({timestamp.isoformat()})"
             except (ValueError, OSError, OverflowError) as e:
-                logger.debug(f"Error formatting timestamp {value}: {e}")
+                logger.debug(f"Error formatting a timestamp claim: {type(e).__name__}")
                 formatted_value = value
         else:
             formatted_value = value

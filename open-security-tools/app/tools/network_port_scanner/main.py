@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import random
 
+from ...log_safety import host_of
 from .schemas import NetworkPortScannerInput, NetworkPortScannerOutput, PortInfo
 logger = logging.getLogger(__name__)
 
@@ -72,13 +73,13 @@ def parse_port_specification(port_spec: str) -> List[int]:
                 start, end = map(int, part.split('-'))
                 ports.extend(range(start, end + 1))
             except ValueError:
-                logger.warning(f"Invalid port range: {part}")
+                logger.warning("Invalid port range in the port list")
         else:
             # Single port
             try:
                 ports.append(int(part))
             except ValueError:
-                logger.warning(f"Invalid port: {part}")
+                logger.warning("Invalid port in the port list")
     
     return sorted(list(set(ports)))  # Remove duplicates and sort
 
@@ -98,7 +99,7 @@ async def resolve_hostname(target: str) -> str:
         return ip
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Failed to resolve hostname {target}: {str(e)}")
+        logger.error(f"Failed to resolve hostname {host_of(target)}: {type(e).__name__}")
         raise
 
 
@@ -189,7 +190,7 @@ async def detect_service(ip: str, port: int, protocol: str = "tcp") -> Tuple[Opt
                 if parsed['version']:
                     version = parsed['version']
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.debug(f"Banner grab failed for {ip}:{port}: {e}")
+            logger.debug(f"Banner grab failed for {ip}:{port}: {type(e).__name__}")
     
     return service_name, version, banner
 
@@ -244,7 +245,7 @@ async def grab_banner(ip: str, port: int, timeout: int = 5) -> Optional[str]:
                 return response.decode('utf-8', errors='ignore').strip()
     
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.debug(f"Banner grab error for {ip}:{port}: {e}")
+        logger.debug(f"Banner grab error for {ip}:{port}: {type(e).__name__}")
     
     return None
 
@@ -516,7 +517,7 @@ async def execute_tool(request: NetworkPortScannerInput) -> NetworkPortScannerOu
     start_time = time.time()
     
     try:
-        logger.info(f"Starting port scan for target: {request.target}")
+        logger.info(f"Starting port scan for target: {host_of(request.target)}")
         
         # Resolve target to IP
         target_ip = await resolve_hostname(request.target)
@@ -611,7 +612,7 @@ async def execute_tool(request: NetworkPortScannerInput) -> NetworkPortScannerOu
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         scan_duration = time.time() - start_time
-        logger.error(f"Error in port scanner: {str(e)}")
+        logger.error(f"Error in port scanner: {type(e).__name__}")
         
         return NetworkPortScannerOutput(
             target=request.target,

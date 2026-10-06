@@ -37,7 +37,6 @@ services:
     ports:
       - "127.0.0.1:8006:8006"
     environment:
-      - DEBUG=true
       # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -73,7 +72,6 @@ services:
       - .:/app
       - ./logs:/app/logs
     environment:
-      - DEBUG=true
       # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0

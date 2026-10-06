@@ -45,17 +45,10 @@ This document establishes **mandatory engineering standards** for the Wildbox Se
 ```bash
 # Authentication (CRITICAL)
 JWT_SECRET_KEY=<openssl rand -hex 32>
-NEXTAUTH_SECRET=<openssl rand -base64 32>
 GATEWAY_INTERNAL_SECRET=<openssl rand -hex 32>
-
-# N8N Automation
-N8N_ENCRYPTION_KEY=<openssl rand -hex 32>
 
 # Database
 POSTGRES_PASSWORD=<openssl rand -base64 32>
-
-# Monitoring
-GRAFANA_ADMIN_PASSWORD=<openssl rand -base64 24>
 
 # API Keys
 API_KEY=<openssl rand -hex 32>

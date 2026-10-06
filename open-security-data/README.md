@@ -73,15 +73,25 @@ docker compose up -d data data-scheduler gateway
 ### Seed the default sources
 
 A fresh database has no sources, so the scheduler has nothing to collect.
-`manage.py` adds a default set and manages it:
+`manage.py` adds the default set and manages it:
 
 ```bash
 docker compose exec data python manage.py sources add-defaults
 docker compose exec data python manage.py sources list
-docker compose exec data python manage.py sources disable "PhishTank"
-docker compose exec data python manage.py sources enable "PhishTank"
 docker compose exec data python manage.py sources test "Feodo Tracker"
+docker compose exec data python manage.py sources disable "Feodo Tracker"
+docker compose exec data python manage.py sources enable "Feodo Tracker"
 ```
+
+The default set is the sources a fresh deployment can collect from as it
+is (`app/collectors/defaults.py`): today one, Feodo Tracker, whose feed
+needs no key. `sources add-defaults` leaves a source of that name alone
+when it can be collected, and repairs it in place when it cannot: an
+earlier release created "Feodo Tracker" with a `source_type` that had no
+collector. `sources enable` refuses a source whose type has no collector,
+and the scheduler disables such a source when it meets one, with the
+reason in its `last_error`: a source that cannot be collected is not
+offered as an enabled one.
 
 `manage.py` has no other commands besides `init` and `reset`. Both use
 SQLAlchemy `create_all()` rather than Alembic, and `reset` drops every table;
@@ -105,29 +115,32 @@ docker compose up -d data data-scheduler gateway
 Collectors live in `app/collectors/`. The collector for a source is chosen by
 its `source_type` through `CollectorRegistry`:
 
-| `source_type` | Collector |
-| --- | --- |
-| `http`, `https`, `json`, `csv`, `txt` | `HTTPCollector` (generic) |
-| `rss`, `atom` | `RSSCollector` |
-| `malware_domain_list` | `MalwareDomainListCollector` |
-| `abuseipdb` | `AbuseIPDBCollector` |
-| `urlvoid` | `URLVoidCollector` |
-| `phishtank` | `PhishTankCollector` |
-| `feodo_tracker` | `FeodoTrackerCollector` |
-| `malwarebazaar` | `MalwareBazaarCollector` |
-| `threatfox` | `ThreatFoxCollector` |
+| `source_type` | Collector | What its feed needs (checked on 6 October 2026) |
+| --- | --- | --- |
+| `feodo_tracker` | `FeodoTrackerCollector` | Nothing: the default source |
+| `threatfox` | `ThreatFoxCollector` | An abuse.ch key, as an `Auth-Key` header of the source |
+| `malwarebazaar` | `MalwareBazaarCollector` | An abuse.ch key, as an `Auth-Key` header of the source |
+| `abuseipdb` | `AbuseIPDBCollector` | An AbuseIPDB key, as `api_key` in the source's `config` |
+| `urlvoid` | `URLVoidCollector` | A URLVoid key and a list of domains, as `api_key` and `domains` in the source's `config` |
+| `phishtank` | `PhishTankCollector` | A URL with a registered application key; the collector's own default address answers 404 |
+| `malware_domain_list` | `MalwareDomainListCollector` | The feed answers 403: the project has stopped |
 
-The seven source-specific collectors are in `app/collectors/sources.py`.
-`sources add-defaults` creates five sources (Malware Domain List, PhishTank,
-Feodo Tracker, AbuseIPDB Blacklist, URLVoid Reputation) with `source_type`
-`txt` or `json`, so they use the generic `HTTPCollector`. AbuseIPDB and
-URLVoid need an API key in the source configuration.
-`scripts/init_feeds.py` creates sources with `source_type` `api` or `feed`,
-for which no collector is registered, so those sources fail to collect.
+The registry holds collectors that can run, and nothing else. It used to
+register `http`, `https`, `json`, `csv` and `txt` to `HTTPCollector` and
+`rss` and `atom` to `RSSCollector`: those are the base classes of the
+collectors above, have no `parse_item` and cannot be instantiated, so a
+source of one of those types failed every time it was tried. That was every
+default source: `sources add-defaults` created five of type `txt` or
+`json`, and `scripts/init_feeds.py`, which is removed, six of type `api`
+or `feed`, for which nothing was registered at all. There is no command to
+create a source of the six types that need a key; such a source is a row of
+the `sources` table with that `source_type` and the key where the table
+above says.
 
 To add a source type, subclass `BaseCollector` or `HTTPCollector` in
-`app/collectors/sources.py` and register it with
-`CollectorRegistry.register_collector()`.
+`app/collectors/sources.py`, define `parse_item`, and register the class
+with `CollectorRegistry.register_collector()`, which refuses a class that
+cannot be instantiated.
 
 ## API
 
@@ -201,10 +214,10 @@ Settings are read from environment variables in `app/config.py`;
 - `GATEWAY_INTERNAL_SECRET`: shared with the gateway.
 - `ENVIRONMENT`, `DEBUG`, `LOG_LEVEL`, `CORS_ORIGINS`.
 
-Collection settings such as `COLLECTION_INTERVAL`, `MAX_CONCURRENT_COLLECTORS`
-and `COLLECTION_TIMEOUT` have defaults in `app/config.py`. Each source's own
-`collection_interval` decides when the scheduler runs it. `REDIS_URL` is
-configurable but the service does not use Redis.
+`MAX_CONCURRENT_COLLECTORS` (default 10) is how many sources the scheduler
+collects at the same time. Each source's own `collection_interval` decides
+when the scheduler runs it. The service uses no Redis and reads no
+`REDIS_URL`. `.env.example` lists every variable `app/config.py` reads.
 
 ## Development
 
@@ -214,14 +227,13 @@ open-security-data/
 ├── app/
 │   ├── api/main.py     # FastAPI application and routes
 │   ├── auth.py         # Gateway authentication dependency
-│   ├── collectors/     # Collector base classes, registry, source collectors
+│   ├── collectors/     # Collector base classes, registry, source collectors, default sources
 │   ├── config.py       # Settings
 │   ├── models.py       # SQLAlchemy models
 │   ├── scheduler/      # Collection scheduler
 │   ├── schemas/        # Pydantic request and response models
 │   └── utils/          # Database, validation, normalization, rate limiting
 ├── manage.py           # Source management CLI
-├── scripts/            # init_feeds.py (not used by the stack)
 └── tests/unit/
 ```
 

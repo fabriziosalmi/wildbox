@@ -1,7 +1,7 @@
 """
 Observability wiring shared by every Wildbox service.
 
-Provides three things a service gets by calling ``install_observability(app, ...)``:
+Provides two things a service gets by calling ``install_observability(app, ...)``:
 
 1. **Correlation.** A ``X-Request-ID`` is taken from the inbound header (the
    gateway sets it) or generated, put on ``request.state.request_id``, echoed on
@@ -11,10 +11,6 @@ Provides three things a service gets by calling ``install_observability(app, ...
 2. **Metrics.** Request count and latency by method, path template and status,
    exposed in Prometheus exposition format at ``/metrics``. Domain counters are
    available for services to increment (see ``outcome_counter``).
-
-3. **Tracing (optional).** If ``open_security_shared.tracing`` and its
-   OpenTelemetry dependencies are installed, tracing is initialised; otherwise
-   this is a no-op and the service still starts.
 
 prometheus_client comes with the package's ``metrics`` extra, which every
 service that calls ``install_observability`` installs and locks. The import is
@@ -210,11 +206,10 @@ def install_observability(
     app: FastAPI,
     service_name: str,
     service_version: str = "unknown",
-    enable_tracing: bool = True,
     metrics_path: Optional[str] = "/metrics",
 ) -> None:
     """
-    Install correlation, metrics and (optionally) tracing on a FastAPI app.
+    Install correlation and metrics on a FastAPI app.
 
     Call once, from the application module, next to install_error_handlers.
     """
@@ -241,24 +236,3 @@ def install_observability(
             include_in_schema=False,
             name="prometheus_metrics",
         )
-
-    if enable_tracing:
-        try:
-            from open_security_shared.tracing import (  # noqa: WPS433
-                setup_wildbox_service_tracing,
-            )
-
-            setup_wildbox_service_tracing(service_name=service_name, app=app)
-            logger.info("Tracing initialised for %s", service_name)
-        except ImportError as exc:
-            # No image installs the `tracing` extra, and the message used to
-            # advise an extra (`observability`: the API and the SDK) that did
-            # not make the module importable either. Say what failed.
-            logger.info(
-                "Tracing not initialised for %s: open_security_shared.tracing "
-                "cannot be imported (%s)",
-                service_name,
-                exc,
-            )
-        except Exception:  # pragma: no cover - tracing must never block startup
-            logger.warning("Tracing setup failed for %s", service_name, exc_info=True)

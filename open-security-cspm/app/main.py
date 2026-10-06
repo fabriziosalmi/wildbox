@@ -282,14 +282,20 @@ async def health_check():
             }
         )
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Health check unexpected error: {type(e).__name__}: {e}")
+        # The cause is the operator's, in the log with its traceback. The
+        # body said the class of the exception ("ValueError", "KeyError") to
+        # whoever asked; the route needs no credential. It says the status
+        # now, and a fixed word for why (#755).
+        logger.error(
+            f"Health check unexpected error: {type(e).__name__}: {e}", exc_info=True
+        )
         return schemas.HealthCheckResponse(
             status="unhealthy",
             timestamp=datetime.utcnow(),
             version=settings.app_version,
             checks={
                 "api": "unhealthy",
-                "error": str(type(e).__name__)
+                "error": "Health check failed"
             }
         )
 

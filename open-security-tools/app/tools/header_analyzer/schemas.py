@@ -4,7 +4,7 @@ HTTP Header Security Analyzer Schemas
 Pydantic models for HTTP header security analysis requests and responses.
 """
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, ConfigDict
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Dict, Any, Optional
 
@@ -15,7 +15,7 @@ class HeaderAnalyzerInput(BaseToolInput):
     url: HttpUrl = Field(
         ...,
         description="Target URL to analyze HTTP headers",
-        example="https://example.com"
+        json_schema_extra={"example": "https://example.com"}
     )
     follow_redirects: bool = Field(
         default=True,
@@ -28,7 +28,7 @@ class HeaderAnalyzerInput(BaseToolInput):
     custom_headers: Optional[Dict[str, str]] = Field(
         default=None,
         description="Custom headers to include in the request",
-        example={"User-Agent": "Custom-Scanner/1.0"}
+        json_schema_extra={"example": {"User-Agent": "Custom-Scanner/1.0"}}
     )
 
 
@@ -64,8 +64,8 @@ class HeaderAnalyzerOutput(BaseToolOutput):
     error: Optional[str] = Field(None, description="Error message if analysis failed")
     message: str = Field(..., description="Human-readable status message")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "success": True,
                 "results": {
@@ -109,4 +109,5 @@ class HeaderAnalyzerOutput(BaseToolOutput):
                 },
                 "message": "HTTP header analysis completed successfully"
             }
-        }
+        },
+    )

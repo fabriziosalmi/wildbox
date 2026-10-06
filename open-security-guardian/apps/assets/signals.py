@@ -12,6 +12,7 @@ import logging
 from apps.core.schedules import InvalidSchedule, next_cron_run
 
 from .models import Asset, AssetDiscoveryRule
+from .networks import check_address
 from .tasks import scan_asset_ports
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,17 @@ def asset_post_save(sender, instance, created, **kwargs):
             if group.auto_assignment_rules:
                 group.apply_auto_assignment_rules()
         
-        # If asset has IP and no ports, schedule port scan
+        # If asset has IP and no ports, schedule port scan: unless the
+        # address is one guardian does not scan (#748). The asset is stored
+        # either way; an inventory lists internal hosts too.
         if instance.ip_address and not instance.ports.exists():
-            scan_asset_ports.delay(instance.id)
+            _, refusal = check_address(instance.ip_address)
+            if refusal is None:
+                scan_asset_ports.delay(instance.id)
+            else:
+                logger.info(
+                    f"Asset {instance.name} is not port scanned on creation: {refusal}"
+                )
     
     else:
         # Update last_seen on any modification
@@ -90,7 +99,7 @@ def discovery_rule_next_run(sender, instance, **kwargs):
     try:
         instance.next_run = next_cron_run(instance.schedule, timezone.now())
     except InvalidSchedule as exc:
-        # The API refuses such a schedule; one written another way (the
-        # admin, a shell) is reported by the dispatcher and never run.
+        # The API refuses such a schedule; one written another way (a
+        # shell, SQL) is reported by the dispatcher and never run.
         logger.warning(f"Discovery rule {instance.name}: {exc}")
         instance.next_run = None

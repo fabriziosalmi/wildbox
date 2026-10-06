@@ -503,14 +503,24 @@ def test_no_script_probes_guardian_anywhere_else():
     assert offenders == []
 
 
-def test_the_page_test_script_takes_its_health_urls_from_the_table():
-    script = (REPO_ROOT / "tests" / "test_all_pages.sh").read_text()
-    assert (
-        'test_endpoint "Guardian Health" \\\n    "$(wb_health_url guardian)"' in script
-    )
-    assert not re.search(r"http://localhost[:\d]*/health", script)
-    # A JSON body under an error status is a failure.
-    assert "curl -fsS" in script
+def test_the_table_names_the_scripts_that_source_it_and_no_other():
+    """The header of the table says who sources it. It went on naming
+    system_monitor.sh after #706 removed it; tests/test_all_pages.sh, the
+    other script it named, called the backends without the gateway's
+    identity headers and was run by nothing (#665)."""
+    header = TABLE.read_text().split("\n\n", 1)[0]
+    named = set(re.findall(r"\b(?:scripts|tests)/[\w./-]+\.sh\b", header))
+    sourcing = set()
+    for path in [*REPO_ROOT.glob("scripts/**/*.sh"), *REPO_ROOT.glob("tests/**/*.sh")]:
+        if path == TABLE:
+            continue
+        if re.search(
+            r"^\s*(?:\.|source)\s.*health_endpoints\.sh", path.read_text(), re.M
+        ):
+            sourcing.add(str(path.relative_to(REPO_ROOT)))
+    assert sourcing, "no script sources the table: the search is wrong"
+    assert named == sourcing
+    assert not (REPO_ROOT / "tests" / "test_all_pages.sh").exists()
 
 
 # --- the API-doc generators --------------------------------------------------

@@ -87,15 +87,6 @@ PROVIDERS = {
     "prometheus_client": "prometheus-client",
     "redis": "redis",
     "sqlalchemy": "sqlalchemy",
-    "opentelemetry": "opentelemetry-api",
-    "opentelemetry.sdk": "opentelemetry-sdk",
-    "opentelemetry.exporter.jaeger.thrift": "opentelemetry-exporter-jaeger-thrift",
-    "opentelemetry.exporter.otlp.proto.http": "opentelemetry-exporter-otlp-proto-http",
-    "opentelemetry.instrumentation.fastapi": "opentelemetry-instrumentation-fastapi",
-    "opentelemetry.instrumentation.httpx": "opentelemetry-instrumentation-httpx",
-    "opentelemetry.instrumentation.redis": "opentelemetry-instrumentation-redis",
-    "opentelemetry.instrumentation.sqlalchemy": "opentelemetry-instrumentation-sqlalchemy",
-    "opentelemetry.propagators.b3": "opentelemetry-propagator-b3",
 }
 
 # The environment the images run, for a requirement that carries a marker.

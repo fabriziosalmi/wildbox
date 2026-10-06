@@ -200,8 +200,9 @@ test.describe('Login flow', { tag: '@backend' }, () => {
           const status = (await api.get(protectedRoute, { headers: bearer(token) })).status()
           if (status !== 401) leaks.push(`iteration ${i}, probe ${probe}: HTTP ${status}`)
         }
-        // The auth routes allow 5 requests/s per address; two per iteration.
-        await new Promise(resolve => setTimeout(resolve, 450))
+        // No pause between iterations: the stack these specs run against
+        // does not hold the login and logout routes to the 5 requests a
+        // second per address a deployment has (#756, support/backend.ts).
       }
 
       expect(leaks, `revoked token accepted after logout`).toEqual([])

@@ -20,7 +20,9 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      - API_KEY=${API_KEY:-your-secure-api-key-here-change-this}
+      # Required: the service refuses to start on a short or guessable key,
+      # and the placeholder that used to be the default here was one.
+      - API_KEY=${API_KEY:?Set API_KEY to at least 32 random characters, for example the output of openssl rand -hex 32}
       - HOST=0.0.0.0
       - PORT=8000
       - DEBUG=${DEBUG:-false}

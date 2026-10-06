@@ -73,11 +73,12 @@ services:
   # PostgreSQL - Production Settings
   postgres:
     restart: always
-    environment:
-      - ENVIRONMENT=production
-      # Production connection limits
-      - POSTGRES_MAX_CONNECTIONS=200
-      - POSTGRES_SHARED_BUFFERS=256MB
+    # No `environment` here. POSTGRES_MAX_CONNECTIONS=200 and
+    # POSTGRES_SHARED_BUFFERS=256MB used to be set, and the postgres image
+    # reads neither: the server has always run with its defaults, 100
+    # connections and 128MB (#665). To change them, pass the settings to
+    # the server itself in an override file:
+    #   command: postgres -c max_connections=200 -c shared_buffers=256MB
     networks: !override
       - data
     deploy:
@@ -128,7 +129,8 @@ services:
       - data
     environment:
       - ENVIRONMENT=production
-      - LOG_LEVEL=INFO
+      # No LOG_LEVEL and no REDIS_PASSWORD: identity has no log-level
+      # setting, and reads Redis's password from REDIS_URL (#665).
       - DEBUG=false
       # Comma-separated, like the other services; identity also accepts a
       # JSON list. It used to read JSON only and crash-looped on this value
@@ -137,7 +139,6 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS}
       # No ENABLE_METRICS: nothing read it, here as on the tools api (#743).
       # /metrics is always served.
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
       # Required in production: identity refuses to start without it (#648).
       # Repeated from the base file so the overlay states it on its own.
       - API_KEY_HASH_SECRET=${API_KEY_HASH_SECRET:?API_KEY_HASH_SECRET is required; see UPGRADING.md before setting it on an existing deployment}
@@ -201,7 +202,6 @@ services:
       - backend
       - data
     environment:
-      - ENVIRONMENT=production
       # No DJANGO_SETTINGS_MODULE: this used to name
       # config.settings.production, a module that does not exist, so gunicorn
       # failed to import the app. guardian.settings reads every production
@@ -240,7 +240,9 @@ services:
       - LOG_LEVEL=INFO
       - DEBUG=false
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - WORKER_CONCURRENCY=4
+      # No WORKER_CONCURRENCY: nothing read it. The responder starts one
+      # uvicorn process and Dramatiq with its own defaults
+      # (scripts/entrypoint.sh, #665).
     deploy:
       resources:
         limits:
@@ -271,10 +273,10 @@ services:
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
-      - DEBUG=false
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - WORKER_CONCURRENCY=4
-      - CELERY_WORKER_PREFETCH_MULTIPLIER=2
+      # No WORKER_CONCURRENCY or CELERY_WORKER_PREFETCH_MULTIPLIER: nothing
+      # read them. The worker's concurrency is set in scripts/entrypoint.sh
+      # and its prefetch in app/worker.py (#665).
       # Off unless the operator opts in (#652): no team-data tool is given
       # to the model, so no team data is sent to the model provider.
       # Repeated from the base file so the overlay states it on its own.
@@ -300,8 +302,9 @@ services:
       - frontend
       - backend
     environment:
-      - ENVIRONMENT=production
-      - LOG_LEVEL=warn
+      # ENVIRONMENT=production and LOG_LEVEL=warn used to be set here: the
+      # gateway reads neither (its error log level is `warn` in nginx.conf),
+      # so they are gone (#756).
       # As for the services below: only what the operator lists, and nothing
       # when it is empty (the dashboard on the gateway's own origin).
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -355,7 +358,6 @@ services:
         - NEXT_PUBLIC_USE_GATEWAY=${NEXT_PUBLIC_USE_GATEWAY:-true}
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
     environment:
-      - ENVIRONMENT=production
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
     deploy:
@@ -414,8 +416,13 @@ services:
       - ENVIRONMENT=production
 
   # The broker and the database are on data; egress for what the tasks
-  # reach outside the stack: port scans of asset addresses, threat-intel
-  # URLs, SMTP and chat webhooks. Nothing looks the worker up by name.
+  # reach outside the stack: discoveries and port scans of asset addresses,
+  # and the mail server. Nothing looks the worker up by name. From here the
+  # worker can also dial everything on data (PostgreSQL, Redis, identity),
+  # the Docker host and a cloud metadata address, which is why a scan of an
+  # internal address is refused unless GUARDIAN_ALLOWED_INTERNAL_TARGETS
+  # lists it (#748). The base file passes that variable to guardian and to
+  # this service; nothing here overrides it.
   # identity is on data too: the worker asks it there who may be e-mailed
   # about a team (#705), with GUARDIAN_CONTACTS_SECRET. It is not on
   # backend and holds no GATEWAY_INTERNAL_SECRET.
@@ -425,7 +432,6 @@ services:
       - data
       - egress
     environment:
-      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -442,7 +448,6 @@ services:
     networks: !override
       - data
     environment:
-      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -531,8 +536,6 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-    environment:
-      - ENVIRONMENT=production
 
   backup:
     networks: !override

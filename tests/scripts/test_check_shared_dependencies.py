@@ -9,7 +9,9 @@ the lock. These feed the checker modules, Dockerfiles and locks as text, run
 it on small trees, then on the repository itself.
 """
 
+import ast
 import importlib.util
+import re
 import subprocess
 import sys
 import textwrap
@@ -116,8 +118,8 @@ def test_imports_in_functions_and_for_type_checkers_do_not_count():
             from .auth_utils import AuthConfig
 
         def late():
-            from opentelemetry import trace
-            from .tracing import setup
+            from redis import Redis
+            from .cqrs import QueryBus
         """))
     assert third_party == set() and siblings == set()
 
@@ -129,20 +131,40 @@ def test_imports_in_functions_and_for_type_checkers_do_not_count():
         ("starlette.middleware.base", "fastapi"),
         ("jwt", "pyjwt"),
         ("prometheus_client", "prometheus-client"),
-        ("opentelemetry", "opentelemetry-api"),
-        ("opentelemetry.propagate", "opentelemetry-api"),
-        ("opentelemetry.sdk.trace.export", "opentelemetry-sdk"),
-        ("opentelemetry.propagators.b3", "opentelemetry-propagator-b3"),
-        (
-            "opentelemetry.exporter.otlp.proto.http.trace_exporter",
-            "opentelemetry-exporter-otlp-proto-http",
-        ),
+        ("redis.asyncio", "redis"),
+        ("sqlalchemy.ext.asyncio", "sqlalchemy"),
         ("numpy", None),
     ],
 )
+def test_the_distribution_of_an_import_is_the_one_of_its_prefix(module, distribution):
+    assert csd.provider(module) == distribution
+
+
+@pytest.mark.parametrize(
+    "module, distribution",
+    [
+        ("vendor", "vendor-api"),
+        ("vendor.propagate", "vendor-api"),
+        ("vendor.sdk.trace.export", "vendor-sdk"),
+        ("vendor.sdk.exporter.http.trace_exporter", "vendor-sdk-exporter-http"),
+        ("vendors", None),
+    ],
+)
 def test_the_distribution_of_an_import_is_the_longest_prefix_known(
-    module, distribution
+    monkeypatch, module, distribution
 ):
+    # No module of the package imports a namespace split over several
+    # distributions since tracing.py went (#665); the rule is kept for the
+    # next one, and tested on a table of its own.
+    monkeypatch.setattr(
+        csd,
+        "PROVIDERS",
+        {
+            "vendor": "vendor-api",
+            "vendor.sdk": "vendor-sdk",
+            "vendor.sdk.exporter.http": "vendor-sdk-exporter-http",
+        },
+    )
     assert csd.provider(module) == distribution
 
 
@@ -642,11 +664,111 @@ def test_the_package_has_no_core_dependency():
     assert document["project"]["dependencies"] == []
     assert set(document["project"]["optional-dependencies"]) == {
         "fastapi",
-        "auth",
         "metrics",
-        "events",
-        "tracing",
     }
+
+
+def _imports_of_the_package(source: str) -> set:
+    """The modules of open_security_shared a source file imports."""
+    init = (REPO / "open-security-shared" / "__init__.py").read_text(encoding="utf-8")
+    exports = dict(re.findall(r'"(\w+)": "(\w+)"', init))
+    found = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            parts = node.module.split(".")
+            if parts[0] != csd.PACKAGE:
+                continue
+            if len(parts) > 1:
+                found.add(parts[1])
+            else:
+                # from open_security_shared import <module or lazy export>
+                found.update(exports.get(a.name, a.name) for a in node.names)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                parts = alias.name.split(".")
+                if parts[0] == csd.PACKAGE and len(parts) > 1:
+                    found.add(parts[1])
+    return found
+
+
+def _modules_the_services_import() -> set:
+    used = set()
+    for service in sorted(REPO.glob("open-security-*")):
+        if service.name == "open-security-shared":
+            continue
+        for path in service.rglob("*.py"):
+            parts = set(path.relative_to(service).parts)
+            if parts & {"tests", "test", "node_modules", "venv", ".venv"}:
+                continue
+            used |= _imports_of_the_package(path.read_text(encoding="utf-8"))
+    return used
+
+
+def test_the_imports_of_the_package_are_read_in_every_form():
+    source = textwrap.dedent("""
+        import open_security_shared.scopes as scopes
+        from open_security_shared.gateway_auth import GatewayUser
+        from open_security_shared import install_error_handlers, tenancy
+
+        def late():
+            from open_security_shared.observability import outcome_counter
+        """)
+    assert _imports_of_the_package(source) == {
+        "scopes",
+        "gateway_auth",
+        "errors",
+        "tenancy",
+        "observability",
+    }
+    assert _imports_of_the_package("import fastapi\nfrom .errors import x\n") == set()
+
+
+def test_every_module_of_the_package_is_imported_by_a_service():
+    # Seven of the fifteen modules were imported by no service: tracing.py
+    # could not even be imported, and cqrs, event_sourcing, feature_flags,
+    # idempotency, security_middleware and auth_utils were libraries written
+    # ahead of a use that never came, each with requirements to lock and
+    # advisories to follow (#665). A module is here because a service's own
+    # code imports it, directly or through a module that one does; tests do
+    # not count, or a module with a test of its own would pass for used.
+    shared = REPO / "open-security-shared"
+    modules = {path.stem for path in shared.glob("*.py")} - {"__init__"}
+    used = _modules_the_services_import() & modules
+    assert used, "no service imports the package: the scan is wrong"
+    while True:
+        through = set()
+        for module in used:
+            source = (shared / f"{module}.py").read_text(encoding="utf-8")
+            _, siblings = csd.module_imports(source)
+            through |= siblings | _imports_of_the_package(source)
+        if through & modules <= used:
+            break
+        used |= through & modules
+    assert modules - used == set(), (
+        f"{sorted(modules - used)} of open-security-shared: no service imports "
+        "them. Remove the module, its row in [tool.wildbox.module-extras] and "
+        "any extra only it needed."
+    )
+
+
+def test_tracing_stays_removed():
+    # tracing.py imported the Jaeger Thrift exporter, whose last release does
+    # not import under a current OpenTelemetry SDK, and no image installed
+    # the extra: install_observability() tried it at every start-up and
+    # logged that it had failed. Module, extra and switch were removed
+    # (#665). Tracing comes back with an exporter that imports, an image
+    # that installs it and a collector that receives it, not as a file
+    # nothing can load.
+    shared = REPO / "open-security-shared"
+    document = tomllib.loads((shared / "pyproject.toml").read_text(encoding="utf-8"))
+    assert not (shared / "tracing.py").exists()
+    assert "tracing" not in document["project"]["optional-dependencies"]
+    assert "tracing" not in document["tool"]["wildbox"]["module-extras"]
+    assert not [name for name in csd.PROVIDERS if name.startswith("opentelemetry")]
+
+    observability = (shared / "observability.py").read_text(encoding="utf-8")
+    assert "enable_tracing" not in observability
+    assert "tracing" not in observability.lower()
 
 
 @pytest.mark.parametrize("name", FASTAPI_SERVICES)
@@ -676,7 +798,7 @@ def test_every_lock_meets_every_floor_of_the_package():
     package = csd.load_shared(REPO)
     floors = {
         csd.canonicalize_name(requirement.name): requirement
-        for extra in ("fastapi", "auth", "metrics")
+        for extra in ("fastapi", "metrics")
         for requirement in package.extras[extra]
     }
     locks = sorted(REPO.glob("open-security-*/requirements.txt"))

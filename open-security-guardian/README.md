@@ -315,7 +315,8 @@ one renderer, JSON, and a request that accepts only `text/html` answers 406
 
 Creating an asset with an IP address and no known ports queues a TCP connect
 port scan (`scan_asset_ports`, queue `scanning`). `POST .../assets/<id>/scan/`
-queues the same scan on demand.
+queues the same scan on demand. Neither scans an internal address: see
+[Scan targets](#scan-targets).
 
 ### Vulnerability
 
@@ -351,6 +352,8 @@ Settings are in `guardian/settings.py`. The root compose file passes:
   (`guardian/schedule.py`).
 - `GUARDIAN_RATE_LIMIT_USER`, on `guardian` only: see
   [Rate limit](#rate-limit).
+- `GUARDIAN_ALLOWED_INTERNAL_TARGETS`, on `guardian` and `guardian-worker`:
+  see [Scan targets](#scan-targets).
 - On `guardian-worker`: `GUARDIAN_ALERT_RENOTIFY_INTERVAL`, and what it
   needs to send e-mail (see [E-mail](../docs/guides/deployment.md#e-mail)):
   `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`,
@@ -387,6 +390,51 @@ Guardian throttles each user to `GUARDIAN_RATE_LIMIT_USER` requests:
 - `API_RATE_LIMIT` is the variable's former name. The root compose file
   never passed it, so it had no effect there; a Guardian run from its own
   `.env` still reads it when `GUARDIAN_RATE_LIMIT_USER` is unset.
+
+### Scan targets
+
+Asset discovery and port scans connect to the addresses a team's owner or
+admin names, from `guardian-worker`. The worker sits inside the stack's
+networks: on the one `wildbox` network with every other service in
+`docker-compose.yml`, and on `data` (PostgreSQL, Redis, identity) and `egress`
+in the production overlay. Guardian therefore scans no internal address
+unless the operator allows it (#748). Before, a discovery of the worker's own
+loopback, of the stack's Docker network or of a cloud metadata address was
+accepted and run.
+
+- **The policy** is the tools service's, from the one implementation the two
+  share (`open_security_shared.target_policy`): private, loopback, link-local,
+  multicast, reserved, shared and cloud-metadata addresses are refused, IPv4
+  and IPv6, an IPv4 address embedded in an IPv6 one included. A network with
+  one such address in it is refused whole. One discovery sweeps at most 1,024
+  addresses, allowed or not.
+- **Where it applies** (`apps/assets/networks.py`): when a discovery is asked
+  for, when a rule is saved and when a port scan is asked for (400, with the
+  reason, and nothing queued), and again in the worker when the task runs, for
+  a rule or an asset stored before the check. Guardian resolves no host name:
+  it scans networks in CIDR notation and asset addresses.
+- **An asset is recorded wherever it is.** An inventory lists internal hosts;
+  an asset at an internal address is stored, and not port scanned.
+- **`GUARDIAN_ALLOWED_INTERNAL_TARGETS`** (`guardian/scan_targets.py`) lists
+  the internal ranges guardian may scan: CIDR ranges with their host bits zero
+  and IP addresses, comma-separated. It is empty by default, so an upgraded
+  deployment scans nothing internal until its operator names the ranges: no
+  default can tell an operator's LAN from the stack, which Docker places in
+  the same private ranges. A host name is not an entry. A bad entry stops
+  `guardian` and `guardian-worker` when they start, with the variable and
+  the entry in the error. `TOOLS_ALLOWED_INTERNAL_TARGETS` is the tools
+  service's list and Guardian does not read it.
+
+```bash
+GUARDIAN_ALLOWED_INTERNAL_TARGETS=192.168.50.0/24,10.20.0.0/16
+```
+
+Nothing else in Guardian connects to an address a team supplies. The worker's
+other connections go where the operator points them: identity
+(`GUARDIAN_TEAM_CONTACTS_URL`) and the mail server (`EMAIL_HOST`).
+`GUARDIAN_BASE_URL` is only written into e-mails. The URLs a team stores (a
+scanner's or an external system's `base_url`, a ticket's `external_url`, a
+framework's `website`) are records: nothing fetches them.
 
 ## Monitoring
 

@@ -12,7 +12,8 @@ from celery.exceptions import Ignore, SoftTimeLimitExceeded, TimeLimitExceeded
 from app import async_metrics
 from app.celery_app import celery_app
 from app.execution_manager import ExecutionStatus, ToolAuthorizationError, authorize_tool_call
-from app.prerun import PRE_RUN_REFUSALS, check_tool_request, refusal_log
+from app.log_safety import error_site
+from app.prerun import PRE_RUN_REFUSALS, check_tool_request, refusal_log, refusal_text
 from app.task_ownership import TaskOwnershipUnavailable, get_task_ownership
 from app.tool_loader import load_tool_module as _shared_load_tool_module
 from app.logging_config import get_logger
@@ -20,6 +21,10 @@ from app.logging_config import get_logger
 logger = get_logger(__name__)
 
 TASK_NAME = 'app.tasks.execute_tool_async'
+
+# What a task's result says when its tool raised: the words of the
+# synchronous route's 500, followed by the class of the exception.
+TOOL_FAILED = "Tool execution failed"
 
 # Where the task body leaves the outcome of a run it ends by returning, for
 # _count_returned_task below. The result a client reads says "failed" for a
@@ -30,6 +35,36 @@ TASK_NAME = 'app.tasks.execute_tool_async'
 _OUTCOME_ATTRIBUTE = 'wildbox_outcome'
 
 
+ARGUMENTS_NOT_SHOWN = "<not shown>"
+
+
+def shown_arguments(kwargs: Optional[Dict[str, Any]]) -> str:
+    """What a task's message says its arguments are: all but the input.
+
+    Celery sends, beside the arguments a task runs with, a text of them for
+    people to read: ``kwargsrepr``. It is what the worker puts in the record
+    of "Task received" and of a failure, what ``celery inspect active``
+    answers, and what the task events carry to Flower, which shows it. By
+    default it is the first 1024 characters of ``repr(kwargs)``: the tool's
+    input, credentials included. The text is written here instead, with the
+    number of fields in place of the input.
+    """
+    if not isinstance(kwargs, dict):
+        return ARGUMENTS_NOT_SHOWN
+    shown = {
+        name: value
+        for name, value in kwargs.items()
+        if name in ("tool_name", "user_id", "timeout")
+        and isinstance(value, (str, int, float, type(None)))
+    }
+    if "input_data" in kwargs:
+        fields = kwargs["input_data"]
+        shown["input_data"] = (
+            f"<{len(fields)} field(s)>" if isinstance(fields, dict) else ARGUMENTS_NOT_SHOWN
+        )
+    return repr(shown)
+
+
 class ToolExecutionTask(Task):
     """Base task class with retry logic and error handling."""
 
@@ -38,6 +73,17 @@ class ToolExecutionTask(Task):
     retry_backoff = True
     retry_backoff_max = 600
     retry_jitter = True
+
+    def apply_async(self, args=None, kwargs=None, **options):
+        """Send the task with a description of its arguments that omits the input.
+
+        Here and not where the route submits it, so that it also holds for
+        the message a retry sends: Celery builds that one from the request
+        and does not carry the description over (#755).
+        """
+        options["argsrepr"] = ARGUMENTS_NOT_SHOWN if args else "()"
+        options["kwargsrepr"] = shown_arguments(kwargs)
+        return super().apply_async(args, kwargs, **options)
 
 
 # --- counting the asynchronous runs (#721) ----------------------------------
@@ -264,12 +310,32 @@ def execute_tool_async(
         # cloud metadata (#614). They run again here because the answer can
         # have changed since: a name resolves to another address, the
         # operator's allowlist changed, this worker has another set of tools.
-        # A refusal is a ValueError, so the task answers "failed" with the
-        # reason below and is not retried.
+        # A refusal is returned, not raised: the task answers "failed" with
+        # the reason and is not retried. The caller reads the refusal as the
+        # routes word it (refusal_text); the log has its kind and the fields
+        # concerned, not the target or the values it names (#755).
         try:
             checked = check_tool_request(tool_name, input_data, load=_load_tool_module)
         except PRE_RUN_REFUSALS as e:
-            raise ValueError(refusal_log(e)) from None
+            duration = time.time() - start_time
+            logger.warning(
+                f"Async tool execution refused before the run: {tool_name}",
+                extra={
+                    "tool_name": tool_name,
+                    "task_id": task_id,
+                    "reason": refusal_log(e),
+                    "duration": f"{duration:.3f}s",
+                    "status": "failed"
+                }
+            )
+            settled(async_metrics.REFUSED)
+            return {
+                'status': 'failed',
+                'error': refusal_text(e),
+                'duration': duration,
+                'tool_name': tool_name,
+                'task_id': task_id
+            }
         execute_func = checked.execute
         validated_input = checked.validated_input
 
@@ -364,23 +430,28 @@ def execute_tool_async(
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         duration = time.time() - start_time
-        error_msg = str(e)
-        
+        # What the tool raised while it worked on the caller's input. Its
+        # text can quote that input (the URL a client could not fetch, the
+        # value a parser refused), so it is neither logged nor stored: the
+        # log has the class and the line, and the result, which Redis keeps
+        # for an hour and the caller reads, says what the synchronous route
+        # says for the same failure, with the class (#755). This stored and
+        # logged str(e).
         logger.error(
             f"Async tool execution failed: {tool_name}",
             extra={
                 "tool_name": tool_name,
                 "task_id": task_id,
-                "error": error_msg,
+                "error_type": error_site(e),
                 "duration": f"{duration:.3f}s",
                 "status": "failed"
             }
         )
-        
+
         settled(async_metrics.FAILED if tool_started else async_metrics.REFUSED)
         return {
             'status': 'failed',
-            'error': error_msg,
+            'error': f"{TOOL_FAILED} ({type(e).__name__})",
             'duration': duration,
             'tool_name': tool_name,
             'task_id': task_id

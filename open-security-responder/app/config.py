@@ -8,19 +8,31 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables"""
-    
+    """Application settings loaded from environment variables.
+
+    Each field is read from the variable of its own name, in any case:
+    ``redis_url`` from ``REDIS_URL``. The fields used to say so with
+    ``Field(env="REDIS_URL")``, the pydantic v1 form, which v2 ignores: it
+    was harmless only while every name matched its field (#665).
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
     # Application settings
-    debug: bool = Field(default=False, env="DEBUG")
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
+    debug: bool = Field(default=False)
+    log_level: str = Field(default="INFO")
     
     # Redis configuration
-    redis_url: str = Field(default="redis://localhost:6381/0", env="REDIS_URL")
-    redis_key_prefix: str = Field(default="responder:", env="REDIS_KEY_PREFIX")
+    redis_url: str = Field(default="redis://localhost:6381/0")
+    redis_key_prefix: str = Field(default="responder:")
     
     # Wildbox service URLs. The connectors call the services here directly,
     # on the internal network, as the run's caller (app/caller.py). The
@@ -31,29 +43,20 @@ class Settings(BaseSettings):
     # the service does not start.
     wildbox_api_url: str = Field(
         default="http://open-security-tools:8000",
-        env="WILDBOX_API_URL",
         description="Tools service URL"
     )
     wildbox_data_url: str = Field(
         default="http://open-security-data:8002",
-        env="WILDBOX_DATA_URL",
         description="Data service URL"
     )
     wildbox_guardian_url: str = Field(
         default="http://open-security-guardian:8013",
-        env="WILDBOX_GUARDIAN_URL",
         description="Guardian service URL"
     )
-    # No connector calls the sensor. Kept so that an env file which sets it
-    # still loads: the settings refuse unknown keys from a .env file.
-    wildbox_sensor_url: str = Field(
-        default="http://open-security-sensor:8004",
-        env="WILDBOX_SENSOR_URL",
-        description="Sensor service URL (unused)"
-    )
+    # No WILDBOX_SENSOR_URL: no connector calls the sensor, and the setting
+    # was kept only so that a .env naming it still loaded (#665).
     wildbox_agents_url: str = Field(
         default="http://open-security-agents:8006",
-        env="WILDBOX_AGENTS_URL",
         description="Agents service URL"
     )
 
@@ -61,7 +64,6 @@ class Settings(BaseSettings):
         "wildbox_api_url",
         "wildbox_data_url",
         "wildbox_guardian_url",
-        "wildbox_sensor_url",
         "wildbox_agents_url",
     )
     @classmethod
@@ -85,49 +87,30 @@ class Settings(BaseSettings):
     # on the requests its connectors make (app/caller.py, #616).
     gateway_internal_secret: Optional[str] = Field(
         default=None,
-        env="GATEWAY_INTERNAL_SECRET",
         description="Shared secret proving a request comes from the gateway",
     )
 
     # API configuration
     # Binding all interfaces is intended: the service runs in a container and
     # is reached through the container network. Override with API_HOST if needed.
-    api_host: str = Field(default="0.0.0.0", env="API_HOST")  # nosec B104
-    api_port: int = Field(default=8018, env="API_PORT")
-    api_key: Optional[str] = Field(default=None, env="API_KEY")
+    api_host: str = Field(default="0.0.0.0")  # nosec B104
+    api_port: int = Field(default=8018)
     
     # Playbook configuration
     playbooks_directory: str = Field(
         default="./playbooks",
-        env="PLAYBOOKS_DIRECTORY",
         description="Directory containing playbook YAML files"
     )
     
-    # Execution settings
-    default_step_timeout: int = Field(
-        default=300,
-        env="DEFAULT_STEP_TIMEOUT",
-        description="Default timeout for step execution in seconds"
-    )
-    max_concurrent_executions: int = Field(
-        default=10,
-        env="MAX_CONCURRENT_EXECUTIONS",
-        description="Maximum number of concurrent playbook executions"
-    )
+    # Execution settings. DEFAULT_STEP_TIMEOUT, MAX_CONCURRENT_EXECUTIONS,
+    # DRAMATIQ_PROCESSES, DRAMATIQ_THREADS and API_KEY were declared here and
+    # read by nothing (#665): the engine applies no step timeout and no
+    # limit on concurrent runs, and the worker starts with Dramatiq's
+    # defaults (scripts/entrypoint.sh).
     execution_retention_days: int = Field(
         default=30,
-        env="EXECUTION_RETENTION_DAYS",
         description="Number of days to retain execution results"
     )
-    
-    # Dramatiq configuration
-    dramatiq_processes: int = Field(default=4, env="DRAMATIQ_PROCESSES")
-    dramatiq_threads: int = Field(default=4, env="DRAMATIQ_THREADS")
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
 
 
 # Global settings instance

@@ -495,30 +495,46 @@ BEFORE = [
     ("scanners", "0002_team_id"),
     ("integrations", "0003_webhook_path_unique_per_system"),
 ]
-AFTER = [
-    ("scanners", "0003_drop_stored_credentials"),
-    ("integrations", "0004_drop_stored_credentials"),
+#: The migrations to undo to get there, newest first, each with the one
+#: before it in its app. integrations.0005 (#665) came after the two this
+#: file is about and has to go first: the executor does not go back to a
+#: migration behind an applied one, so with it left in place the upgrade
+#: below would find nothing to apply.
+UNDO = [
+    (
+        ("integrations", "0005_drop_unwritten_log_payloads"),
+        ("integrations", "0004_drop_stored_credentials"),
+    ),
+    (
+        ("scanners", "0003_drop_stored_credentials"),
+        ("scanners", "0002_team_id"),
+    ),
+    (
+        ("integrations", "0004_drop_stored_credentials"),
+        ("integrations", "0003_webhook_path_unique_per_system"),
+    ),
 ]
 
 
 def _reverse():
-    """Undo the two migrations, as ``migrate <app> <previous>`` would.
+    """Undo the migrations, as ``migrate <app> <previous>`` would.
 
-    Returns the models of the schema that had the columns. The migrations'
+    Returns the models of the schema that had the columns. Each migration's
     own ``unapply`` runs, without the executor around it: going backwards,
     the executor renders the models of every migration of every app first,
     which takes longer than the rest of this file.
     """
     loader = MigrationLoader(connection)
-    before = loader.project_state(BEFORE)
     recorder = MigrationRecorder(connection)
-    for app, name in AFTER:
+    for (app, name), previous in UNDO:
         if (app, name) not in recorder.applied_migrations():
             continue
         with connection.schema_editor() as editor:
-            loader.get_migration(app, name).unapply(before, editor)
+            loader.get_migration(app, name).unapply(
+                loader.project_state([previous]), editor
+            )
         recorder.record_unapplied(app, name)
-    return before.apps
+    return loader.project_state(BEFORE).apps
 
 
 def _upgrade():

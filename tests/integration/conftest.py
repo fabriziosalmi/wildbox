@@ -404,6 +404,7 @@ _MODULE_SERVICE = {
     "test_gateway_security": "gateway",
     "test_guardian_monitoring": "guardian",
     "test_guardian_pagination_links": "guardian",
+    "test_guardian_scan_targets": "guardian",
     "test_guardian_tenancy": "guardian",
     "test_identity_comprehensive": "identity",
     "test_identity_service": "identity",
@@ -513,6 +514,108 @@ def provision_api_key():
     if minted:
         _os.environ["TEST_API_KEY"] = minted
     return minted
+
+
+# ---------------------------------------------------------------------------
+# The suite's pace and the gateway's per-address limit (#756)
+# ---------------------------------------------------------------------------
+#
+# The gateway refuses an address that sends faster than 100 requests a second
+# (5 a second on the login, registration and forgotten-password routes), with
+# nginx's own 429. A deployment's clients do not send that fast; this suite
+# does, from one address, one request after another, so with those rates a
+# test that had nothing to do with rate limiting failed now and then: the
+# fixture of test_guardian_pagination_links slept 25 ms between requests for
+# this, test_password_policy retried a 429.
+#
+# The suite does neither any more. It does not test that limit (the gateway
+# harness does, at the rates a deployment has:
+# open-security-gateway/test/rate_limit_tests.py), so the stack it runs
+# against is given higher rates, as the CI jobs do in .env:
+#
+#   GATEWAY_RATE_LIMIT_PER_SECOND=10000
+#   GATEWAY_AUTH_RATE_LIMIT_PER_SECOND=10000
+#   GATEWAY_STATIC_RATE_LIMIT_PER_SECOND=10000
+#
+# and no test paces itself or retries a 429: a 429 a test receives is one it
+# has to account for (the per-team limit, identity's lockout, a service's
+# own limit). What is checked here, once, before the first test, is that the
+# stack really does let the suite's pace through, so that a stack started
+# without those settings is reported as that, not as a failure of whichever
+# test happened to be sending when the allowance ran out.
+
+_PACE_SETTINGS = (
+    "GATEWAY_RATE_LIMIT_PER_SECOND",
+    "GATEWAY_AUTH_RATE_LIMIT_PER_SECOND",
+    "GATEWAY_STATIC_RATE_LIMIT_PER_SECOND",
+)
+# Requests sent one after another on one connection. At the production rates
+# the first refusal comes within 14 of them when each takes a millisecond,
+# within 100 when each takes 9; a client slower than that cannot exceed 100 a
+# second, and the suite on it is not exposed either.
+_PACE_PROBES = 120
+# On the auth routes the fifth of a quick run is refused at the production
+# rate (burst 3).
+_PACE_AUTH_PROBES = 8
+
+
+def _is_nginx_limit(response) -> bool:
+    """nginx's own 429, not the per-team limit's JSON or a service's."""
+    return (
+        response.status_code == 429
+        and "429 Too Many Requests" in response.text
+        and "text/html" in response.headers.get("content-type", "")
+    )
+
+
+def _pace_refusal(session, gateway: str) -> str:
+    """Which probe the gateway refused for its pace, or "" if none."""
+    probes = (
+        # Without a credential: the gateway answers 401 itself, after the
+        # limit, and no service and no team's budget is involved.
+        ("GET", f"{gateway}/api/v1/tools", _PACE_PROBES),
+        # Without a body: identity answers 422, and no login is attempted.
+        ("POST", f"{gateway}/auth/jwt/login", _PACE_AUTH_PROBES),
+    )
+    for method, url, count in probes:
+        for number in range(1, count + 1):
+            if _is_nginx_limit(session.request(method, url, timeout=10)):
+                return f"{method} {url}, request {number} of {count}"
+    return ""
+
+
+@pytest.fixture(scope="session", autouse=True)
+def gateway_lets_the_suites_pace_through():
+    """Fail the run, once and by name, on a gateway that limits the suite."""
+    if not _is_reachable("gateway"):
+        return
+    gateway = _SERVICE_URLS["gateway"].rstrip("/")
+    try:
+        with requests.Session() as session:
+            refused = _pace_refusal(session, gateway)
+    except requests.RequestException:
+        # Not this check's finding: the tests will say what is wrong.
+        return
+    if not refused:
+        return
+    message = (
+        f"The gateway at {gateway} refuses the pace of this suite with nginx's "
+        f"429 ({refused}, sent one after another). The suite does not test the "
+        "per-address limit and does not pace itself or retry a 429, so any "
+        "test can fail on it. Set "
+        + ", ".join(f"{name}=10000" for name in _PACE_SETTINGS)
+        + " in the stack's .env and restart the gateway "
+        "(docker compose up -d gateway), as the CI jobs do."
+    )
+    if _os.getenv("REQUIRE_ALL_SERVICES", "") in ("1", "true", "yes"):
+        pytest.exit(message, returncode=1)
+    # A developer's own stack: say so and go on. The pause lets the counters
+    # the probes filled drain before the first test.
+    import time
+    import warnings
+
+    warnings.warn(message, stacklevel=1)
+    time.sleep(1)
 
 
 # Services the default `docker compose up` does not start: each sits behind a

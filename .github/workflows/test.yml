@@ -231,7 +231,7 @@ jobs:
           pip install --quiet --require-hashes -r tests/ci-tools/requirements.txt
           # The extras of the modules tests/shared imports: the package
           # itself requires nothing (#722).
-          pip install "./open-security-shared[fastapi,auth,metrics]"
+          pip install "./open-security-shared[fastapi,metrics]"
 
       - name: Run shared package tests
         # open_security_shared holds gateway_auth and tenancy -- the trust and

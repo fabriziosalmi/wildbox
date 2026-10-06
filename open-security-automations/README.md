@@ -64,6 +64,16 @@ the error; nothing is sent.
    of the first start, and no basic auth: the `N8N_BASIC_AUTH_*` variables
    earlier releases set were ignored, and are gone.
 
+   n8n encrypts the credentials saved in it with a key it generates on this
+   first start and keeps in its data directory: the `config` file of
+   `open-security-automations/n8n-data/` (`/home/node/.n8n/config` in the
+   container). Keep that file with every backup of n8n's database: without
+   it the saved credentials cannot be decrypted. Compose passes n8n no
+   `N8N_ENCRYPTION_KEY`, and the one `make generate-secrets` used to write
+   to `.env` was never used. Do not set the variable on an instance that
+   already has a key: n8n 1.74 exits with `Mismatching encryption keys`
+   when it differs from the file.
+
 3. Create a personal API key in the dashboard (Settings > API keys) with the
    `read` scope, and set the variables in the root `.env`:
 

@@ -34,6 +34,25 @@ pip install -r tests/requirements.txt
 docker compose up -d --wait --wait-timeout 600
 ```
 
+The integration suite sends every request from one address, one after
+another, and neither paces itself nor retries a `429`. Give the stack it runs
+against rate limits it does not reach, in `.env`, before starting it, as
+`.github/workflows/integration-tests.yml` does:
+
+```bash
+RATE_LIMIT_PER_HOUR=1000000
+GATEWAY_RATE_LIMIT_PER_SECOND=10000
+GATEWAY_AUTH_RATE_LIMIT_PER_SECOND=10000
+GATEWAY_STATIC_RATE_LIMIT_PER_SECOND=10000
+```
+
+With the defaults, which are a deployment's limits, the suite warns before
+its first test that the gateway refuses its pace (`tests/integration/conftest.py`),
+and a test can then fail with nginx's `429` whatever it is testing. In CI
+that warning is an error. The limits themselves are tested at their default
+rates by the gateway harness
+(`open-security-gateway/test/rate_limit_tests.py`).
+
 CI runs the suite as `python -m pytest tests/integration/ -v -rs --tb=short -o addopts=""`
 (`.github/workflows/integration-tests.yml`).
 

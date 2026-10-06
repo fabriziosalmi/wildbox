@@ -216,7 +216,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
         
     except ValueError as e:
         # Input validation errors - return error with clear message
-        logger.error(f"Input validation error: {e}")
+        logger.error(f"Input validation error: {type(e).__name__}")
         return APISecurityTesterOutput(
             success=False,
             api_base_url=data.api_base_url,
@@ -247,7 +247,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
         )
     except (ConnectionError, TimeoutError) as e:
         # Infrastructure failures - report as infrastructure issue, NOT security finding
-        logger.error(f"Infrastructure error during API testing: {e}")
+        logger.error(f"Infrastructure error during API testing: {type(e).__name__}")
         return APISecurityTesterOutput(
             success=False,
             api_base_url=data.api_base_url,
@@ -283,7 +283,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
         )
     except (KeyError, TypeError) as e:
         # Data structure errors - likely API response format issue
-        logger.error(f"Data parsing error: {e}")
+        logger.error(f"Data parsing error: {type(e).__name__}")
         return APISecurityTesterOutput(
             success=False,
             api_base_url=data.api_base_url,
@@ -343,7 +343,7 @@ async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers
             if endpoint_info:
                 endpoints.append(endpoint_info)
         except Exception as e:
-            logger.debug(f"Failed to probe {path}: {e}")
+            logger.debug(f"Failed to probe {path}: {type(e).__name__}")
             continue
     
     logger.info(f"Discovered {len(endpoints)} endpoints from {len(paths_to_test)} probes")
@@ -400,7 +400,7 @@ async def parse_api_specification(spec_url_or_content: str, base_url: str) -> Li
                         ))
     
     except Exception as exc:
-        logger.warning("API specification not used: %s", exc)
+        logger.warning("API specification not used: %s", type(exc).__name__)
     
     return endpoints
 
@@ -545,7 +545,7 @@ async def test_broken_object_level_authorization(base_url: str, endpoints: List[
                 except asyncio.TimeoutError:
                     test.findings.append(f"Timeout testing {test_id}")
                 except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                    logger.error(f"Unexpected error testing object access {test_id}: {e}")
+                    logger.error(f"Unexpected error testing object access {test_id}: {type(e).__name__}")
                     test.findings.append(f"Error testing {test_id}: {str(e)}")
                 
                 await asyncio.sleep(delay)
@@ -612,7 +612,7 @@ async def test_broken_user_authentication(base_url: str, endpoints: List[APIEndp
                                     ))
                                     test.passed = False
                             except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
-                                logger.debug(f"Error in injection testing: {e}")
+                                logger.debug(f"Error in injection testing: {type(e).__name__}")
                                 pass
             
             except Exception:
@@ -671,7 +671,7 @@ async def test_excessive_data_exposure(base_url: str, endpoints: List[APIEndpoin
                                     test.passed = False
                                     test.findings.append(f"Sensitive field found: {pattern}")
                         except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
-                            logger.debug(f"Error in sensitive data testing: {e}")
+                            logger.debug(f"Error in sensitive data testing: {type(e).__name__}")
                             pass
         
         except Exception:

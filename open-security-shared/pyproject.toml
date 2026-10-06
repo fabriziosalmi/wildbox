@@ -13,8 +13,8 @@ authors = [{ name = "Wildbox" }]
 
 # The core has no third-party dependency: importing the package resolves
 # nothing eagerly (see __init__.py), and the modules every service can use
-# without an extra (api_docs, circuit_breaker, environment, scopes) need the
-# standard library only.
+# without an extra (api_docs, circuit_breaker, environment, log_safety, scopes,
+# target_policy) need the standard library only.
 #
 # It used to require fastapi, pydantic, passlib, PyJWT and prometheus-client
 # of every service, while the images installed the package with --no-deps:
@@ -32,35 +32,12 @@ dependencies = []
 #
 # A floor here must be met by the lock of every service that uses the extra.
 
-# errors, gateway_auth, tenancy, security_middleware. Starlette comes with
-# FastAPI, in the range FastAPI supports.
+# errors, gateway_auth, tenancy. Starlette comes with FastAPI, in the range
+# FastAPI supports.
 fastapi = ["fastapi>=0.110", "pydantic>=2"]
-# auth_utils: JWT and password hashing helpers.
-auth = ["fastapi>=0.110", "passlib[bcrypt]>=1.7", "PyJWT>=2.10"]
 # observability: request metrics and the /metrics route. Without
 # prometheus-client the module still imports, and serves no metric.
 metrics = ["fastapi>=0.110", "prometheus-client>=0.20"]
-# cqrs, event_sourcing, feature_flags; idempotency with the fastapi extra.
-# sqlalchemy[asyncio]: the modules import sqlalchemy.ext.asyncio, which needs
-# greenlet.
-events = ["redis>=5", "sqlalchemy[asyncio]>=2"]
-# tracing: the distributions the module imports at the top, exporters and
-# instrumentations included. No service image installs it, and installing it
-# does not make the module importable today: tracing.py imports the Jaeger
-# Thrift exporter, whose last release (1.21.0) does not import under a
-# current OpenTelemetry SDK. install_observability() logs that and goes on
-# without tracing. The module has to move to OTLP before a service uses it.
-tracing = [
-    "opentelemetry-api",
-    "opentelemetry-sdk",
-    "opentelemetry-exporter-jaeger-thrift",
-    "opentelemetry-exporter-otlp-proto-http",
-    "opentelemetry-instrumentation-fastapi",
-    "opentelemetry-instrumentation-httpx",
-    "opentelemetry-instrumentation-redis",
-    "opentelemetry-instrumentation-sqlalchemy",
-    "opentelemetry-propagator-b3",
-]
 
 [tool.setuptools]
 # The modules live flat in this directory; expose them under the importable
@@ -76,17 +53,12 @@ open_security_shared = "."
 # scripts/check_shared_dependencies.py.
 [tool.wildbox.module-extras]
 api_docs = []
-auth_utils = ["auth"]
 circuit_breaker = []
-cqrs = ["events"]
 environment = []
 errors = ["fastapi"]
-event_sourcing = ["events"]
-feature_flags = ["events"]
 gateway_auth = ["fastapi"]
-idempotency = ["fastapi", "events"]
+log_safety = []
 observability = ["metrics"]
 scopes = []
-security_middleware = ["fastapi"]
+target_policy = []
 tenancy = ["fastapi"]
-tracing = ["tracing"]

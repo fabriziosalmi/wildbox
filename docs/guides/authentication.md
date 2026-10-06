@@ -84,7 +84,7 @@ The [Quick Start](quickstart.md#5-log-in-and-call-the-api) shows where
 | 200 with `access_token` and `token_type: bearer` | Logged in |
 | 400 | Wrong email or password |
 | 429 with a `Retry-After` header | The account is locked after repeated failures; see [Failed-login lockout](#failed-login-lockout) |
-| 429 without `Retry-After` | The gateway's rate limit on `/auth/jwt/`: 5 requests per second per client address, burst 3 |
+| 429 without `Retry-After` | The gateway's rate limit on `/auth/jwt/`: 5 requests per second per client address, burst 3 (`GATEWAY_AUTH_RATE_LIMIT_PER_SECOND`, 5 unless the operator changed it) |
 
 ---
 

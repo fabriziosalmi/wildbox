@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The data service's statistics no longer count other teams' collection
+  runs** (#755). `GET /api/v1/data/stats` answered `recent_collections` as
+  the number of collection runs of every team's sources in the last 24
+  hours, on a route any member of any team can call. It counts the runs of
+  the sources the caller can see: its team's and the global ones. Every
+  other figure of that answer, and every other route of the service, was
+  already scoped; `open-security-data/tests/unit/test_team_isolation.py`
+  now lists the routes from the application and holds each to a database
+  with two teams' rows, so that a route added later fails until it has a
+  probe.
 - **The Redis health check no longer carries the password on its command
   line, and fails when the password is wrong** (#740). Every compose file
   checked Redis with `redis-cli -a <password> ping`, or with
@@ -542,9 +552,234 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard image: the devtools are rendered in development only,
   nothing calls `fromJSON()`, and the standalone output holds no code
   of solid-js, seroval or source-map-js, before or after.
+- **guardian's discovery and port scans refuse internal targets** (#748).
+  A team's owner or admin could point an asset discovery, a discovery
+  rule or a port scan at any network, and `guardian-worker`, which
+  connects to it, sits inside the stack's networks: with every service
+  in `docker-compose.yml`, and on `data` (PostgreSQL, Redis, identity)
+  and `egress` in the production overlay. A discovery of the worker's
+  own loopback, of the range Docker gave the stack, of `10.0.0.0/24` or
+  of `169.254.169.254/32` was accepted, stored in a rule and dialed. The
+  tools service has refused such targets since 0.11.0 (#614); guardian
+  now applies the same policy. Private, loopback, link-local, multicast,
+  reserved, shared and cloud-metadata addresses are refused, IPv4 and
+  IPv6, an IPv4 address written inside an IPv6 one included
+  (`::ffff:10.0.0.1`, 6to4, NAT64), and a network is refused whole when
+  any address of it is internal. `assets/assets/discover/`, a discovery
+  rule that is created or changed, and `assets/assets/{id}/scan/` answer
+  400 with the reason and queue nothing; the worker checks again when
+  the task runs, for a rule or an asset stored before. An asset at an
+  internal address is still recorded, and is not port scanned.
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists the internal ranges the
+  operator allows; it is empty by default (see Changed).
+
+- **The tools service no longer records the input of a run** (#755). The
+  record "Executing tool" carried the whole validated input of every run:
+  a password to grade, a token to decode, a key to test. The service's own
+  formatter read a field no record has and so wrote none of a record's
+  fields, the request id included; the input was in the record for any
+  other handler, and would have reached the log the day the formatter was
+  mended. It is mended now, and writes the fields named in `LOGGED_FIELDS`
+  and no other. A run is logged with the tool, the caller's user and team
+  ids, the request id and the names of the fields the caller set, for the
+  synchronous route and for a submission alike. A request is logged by its
+  path, without its query string. An error a tool raises over its input is
+  logged by class and line, a refused target as a refusal without the
+  target, and an authorization by the host of its target. The module no
+  longer logs the broker URL, which holds the Redis password.
+- **A task's message describes its arguments without the input, and a
+  failed task does not store what its tool raised** (#755). Celery sends,
+  beside a task's arguments, a text of them for worker logs,
+  `celery inspect` and Flower, which shows it: the first 1024 characters of
+  the tool's input. The text now says how many fields the input has, for a
+  retry's message too. The result of a task whose tool raised stored the
+  text of the error for an hour, and the caller read it back; it says
+  `Tool execution failed (<class>)` now. The input itself is still the
+  body of the message, which the tool needs to run:
+  `open-security-tools/README.md` says how long Redis holds it.
+- **A workflow step that fails in its tool answers a reason code, not the
+  tool's error** (#755). The orchestrator answered a step whose tool raised
+  a `ValueError`, `KeyError` or `TypeError` with the text of the error, and
+  stored `str(e)` of anything else that reached the step. Every failed step
+  now has an `error_code`, and the four codes of a failure inside the
+  service have one fixed sentence each; what was raised is logged by class
+  and line.
+- **The tools do not log the URLs they are given** (#755). Some eighty
+  log lines of the tools named their target by its whole URL, user,
+  password, path and query included, and ended with the text of the HTTP
+  client's error, which repeats it. Three tools printed the text of a
+  failed lookup's error to the container's output. A target is named by
+  its host and an error by its class. httpx, which logs the URL of every request at INFO, is held to
+  warnings in the API and in the worker.
+- **No service logs the query string of a request** (#755). uvicorn's
+  access log wrote the request line of every request to each of the six
+  FastAPI services, and the gateway's access log `$request` and
+  `$http_referer`: every search term, indicator and filter, and any token
+  a client put in a query string. Both now log the method, the path and
+  the status. The shared package does it for the services where they
+  install their error handlers, and also holds httpx, urllib3 and botocore
+  to warnings and errors whatever `LOG_LEVEL` is: botocore, at DEBUG, logs
+  the request it signs with the session token of the account cspm scans.
+- **What else held a request, or a secret, in a log** (#755): the shared
+  error handler put the `detail` of every HTTP error in its record; the
+  shared request-logging middleware every header but `Authorization`,
+  `X-API-Key` and `Cookie`, which left `X-Gateway-Secret`; responder every
+  parameter of every connector action but those of six key names; agents
+  the indicator under analysis, and the URL of a failed search with the
+  indicator in it; identity the address typed into the login form of a
+  locked account, and with `DEBUG` every SQL statement with its
+  parameters; data the URL of a feed that failed, key included, which it
+  also stored as the run's error and the source's `last_error`; the
+  gateway the body of an unexpected answer from identity; the sensor the
+  value of a variable it could not read as an integer. Each now logs a
+  name, a count, a host, an id or a class.
+  `tests/scripts/test_no_request_values_in_logs.py` reads every logging
+  call of every service, and the gateway's log formats and Lua, and fails
+  when one is handed a request, a part of one or a credential.
+- **cspm's health answer no longer names the exception a check raised**
+  (#755). `GET /health`, which needs no credential, answered
+  `"error": "ValueError"`. It answers the status and `Health check
+  failed`; the cause is logged with its traceback.
 
 ### Removed
 
+- **gateway: five variables Compose passed it and nothing read** (#756).
+  `docker-compose.yml` gave the gateway `ENVIRONMENT`, `WILDBOX_ENV`,
+  `GATEWAY_LOG_LEVEL` and `NGINX_ENVSUBST_OUTPUT_DIR`, and
+  `docker-compose.prod.yml` `ENVIRONMENT` and `LOG_LEVEL`. No nginx
+  directive, Lua module or script of the gateway reads any of them: the
+  error log level is `warn` in `nginx.conf`, and the last is a setting of
+  the official nginx image's entrypoint, which this image does not use.
+  They are no longer passed, and the gateway's entries are gone from the
+  list of unread variables in
+  `tests/scripts/test_compose_variables_are_read.py`.
+- **gateway: the Compose file of its own, which could not start, and
+  what drove it** (#756). `open-security-gateway/docker-compose.yml`
+  started the gateway and a Redis it does not use on a network of their
+  own, where nginx stopped with `host not found in upstream
+  "open-security-identity:8001"`: the gateway resolves every service's
+  name when it starts. Removed with it: the `Makefile`,
+  `scripts/setup.sh` and `test/integration_test.sh`, which started that
+  file; `scripts/test_config.sh`, which reported the configuration valid
+  after checking one it had written itself; and the directory's
+  `.env.example`, which only that file read. The gateway runs in the root
+  stack; its README says how the harness runs it against stand-ins.
+- **gateway: the `per_ip` rate-limit zone** (#756), 10 MB of shared
+  memory that no location used, and a commented-out `limit_req` on the
+  tools route that said rate limiting was disabled there. It is not: the
+  server-wide limit applies to that route as to the others.
+- **The sensor's `user_events.logon_events` osquery query, on Windows**
+  (#754). It was the one event-table query #745 left, for want of a
+  Windows host to try it on. osquery's specification of the table
+  settles it without one: `windows_events` is an event subscriber's
+  table, like the three removed then, and the query filtered on a
+  `channel` column the table does not have (it has `source`), so it
+  could only fail at every cycle. Logons are read from the `Security`
+  log by a log source of type `windows_event`, which keeps its
+  position. Not run on a Windows host.
+- **Variables the root Compose files passed to containers that read
+  none of them** (#665). The test added in #743 listed 26; every one
+  but the gateway's, which #756 removed, is settled here, and the test
+  found more once it stopped counting a variable as read by a service
+  because some module of the shared package the service does not import
+  reads it.
+  - dashboard: `ENVIRONMENT`, `NEXT_PUBLIC_DEBUG`, `NEXTAUTH_SECRET`
+    and `NEXTAUTH_URL`; in `docker-compose.dev.yml` five
+    `NEXT_PUBLIC_*_API_URL` and the two `NEXTAUTH_*`, with the
+    requirement that `NEXTAUTH_SECRET` be set. The dashboard has no
+    NextAuth: its sessions are identity's tokens.
+  - guardian, guardian-worker and guardian-beat: `ENVIRONMENT`.
+    guardian reads none. What it does differently in development (the
+    API schema pages, Django's debug pages, no HTTPS redirect) follows
+    `DEBUG`, which is false unless set.
+  - guardian: `LOG_FILE`, and the `guardian_logs` volume mounted for
+    it. guardian logs to the console only; the volume stayed empty.
+  - sensor: `DEBUG` and `LOG_LEVEL`. Its level is
+    `SENSOR_LOGGING_LEVEL`, which was already passed.
+  - agents: `DEBUG`, and in the production overlay
+    `WORKER_CONCURRENCY` and `CELERY_WORKER_PREFETCH_MULTIPLIER`. The
+    worker's concurrency is set in `scripts/entrypoint.sh` and its
+    prefetch in `app/worker.py`.
+  - identity (production overlay): `LOG_LEVEL` and `REDIS_PASSWORD`;
+    responder (production overlay): `WORKER_CONCURRENCY`.
+  - postgres and automations: `ENVIRONMENT`, which neither image reads;
+    and, in the production overlay, `POSTGRES_MAX_CONNECTIONS=200` and
+    `POSTGRES_SHARED_BUFFERS=256MB`, which the postgres image does not
+    read either: the server has always run with its defaults, 100
+    connections and 128MB. A comment says how to pass the two settings
+    to the server itself.
+
+  Nothing changes for a running stack except that the empty
+  `guardian_logs` volume is no longer mounted.
+- **`NEXTAUTH_SECRET`, `GRAFANA_ADMIN_PASSWORD`, `GUARDIAN_DB_PASSWORD`
+  and five "security settings" in `.env.example`** (#665). No Compose
+  file passed any of them to a container. `SESSION_TIMEOUT`,
+  `MAX_LOGIN_ATTEMPTS`, `LOCKOUT_DURATION`,
+  `REQUIRE_EMAIL_VERIFICATION` and `REQUIRE_MFA` read as switches and
+  switched nothing: identity locks an account for 15 minutes after 5
+  failed logins, its access tokens last 30 minutes, and it has no
+  e-mail verification and no MFA. `generate_secrets.py` no longer
+  writes the first two, `validate_secrets.py` no longer asks for
+  `NEXTAUTH_SECRET` or looks for the Stripe keys of a billing
+  integration removed long ago, and `rotate_secrets.sh` no longer
+  rotates `NEXTAUTH_SECRET` (it answers "not a rotatable secret").
+  `make setup` no longer requires it either
+  (`scripts/shell-scripts/validate_env.sh`). Leftover lines in an
+  existing `.env` are ignored. Two tests now hold the template to the
+  code: every variable `.env.example` offers is interpolated by a root
+  Compose file, and every secret the generator writes or the validator
+  asks for is a variable of the template.
+- **`N8N_ENCRYPTION_KEY`** (#665). `make generate-secrets` wrote one to
+  `.env` and the credentials guide listed it, but no Compose file
+  passed it to n8n, which makes its own key on its first start and
+  keeps it in its data directory
+  (`open-security-automations/n8n-data/config`). The variable is no
+  longer generated or documented as a setting, and it is still not
+  passed: with the pinned image, an instance that has a key exits with
+  `Mismatching encryption keys` when it is given a different one, so
+  passing the value in `.env` would have stopped every existing n8n.
+  The automations README says where the key is and that it belongs in
+  every backup of n8n's database.
+- **Settings that no code read** (#665), found by reading every
+  settings class against its service.
+  - tools: `API_KEY_NAME`, `LOG_FORMAT`, `TOOL_RESULT_TTL`,
+    `ENABLE_CACHING`, `DATABASE_URL`, `ENABLE_AUDIT_LOGGING`,
+    `ENABLE_SECURITY_HEADERS`, `TOOLS_DIRECTORY` and
+    `AUTO_RELOAD_TOOLS`; `get_secret_key()`, which read a field
+    removed before it; `app/security/config.py`, which nothing
+    imported; and `.env.template`, a second template whose copy
+    stopped the service.
+  - responder: `WILDBOX_SENSOR_URL`, `API_KEY`,
+    `DEFAULT_STEP_TIMEOUT`, `MAX_CONCURRENT_EXECUTIONS`,
+    `DRAMATIQ_PROCESSES` and `DRAMATIQ_THREADS`.
+  - cspm: `REDIS_PASSWORD`, `ACCESS_TOKEN_EXPIRE_MINUTES`,
+    `REPORTS_STORAGE_PATH`, `PROMETHEUS_ENABLED`, `PROMETHEUS_PORT`,
+    `WILDBOX_IDENTITY_URL`, `WILDBOX_API_URL`, `WILDBOX_GUARDIAN_URL`,
+    and a second class with `AWS_ENABLED`, `GCP_ENABLED`,
+    `AZURE_ENABLED` and a default region and retry count for each
+    provider.
+  - agents: `DEBUG`, `INTERNAL_API_KEY` and `MAX_CONCURRENT_TASKS`.
+  - data: 47 of the 63 variables `app/config.py` parsed, among
+    them `REDIS_URL` (the service uses no Redis),
+    `RATE_LIMIT_ENABLED`, `COLLECTION_INTERVAL`,
+    `DATA_RETENTION_DAYS`, `BACKUP_ENABLED`, `JWT_EXPIRATION`,
+    `ALLOWED_SOURCES`, `LOG_FILE_ENABLED`, `SENTRY_DSN` and
+    `METRICS_PORT`. Importing the configuration no longer creates
+    `data/` and `logs/` directories, which nothing wrote to.
+  - guardian: `SCANNER_SETTINGS`, `TICKETING_SETTINGS`,
+    `COMPLIANCE_SETTINGS`, `RISK_CALCULATION_SETTINGS`,
+    `PERFORMANCE_SETTINGS` and the Slack and Teams entries of
+    `NOTIFICATION_SETTINGS`: forty variables, `NESSUS_PASSWORD` and
+    `JIRA_API_TOKEN` among them, read into dictionaries no code used.
+
+  In the environment a removed variable is ignored. In a `.env` file in
+  the directory of tools, responder, cspm or agents, which only a run
+  outside the Compose stack reads, it now stops the service at start,
+  as every key those settings do not know does: remove the line. The
+  services' own `.env.example` files are rewritten to what each
+  service reads (guardian's offered 119 variables, of which guardian
+  used fewer than thirty; data's offered 67 for the 17 the service
+  reads), and a test holds them to it.
 - **`ENABLE_METRICS` for identity in `docker-compose.prod.yml`, and
   `ENABLE_METRICS` and `METRICS_PORT` in `.env.example`** (#743). No
   code reads the first, and no Compose file passed the other two to a
@@ -552,10 +787,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it. A test now reads the root Compose files and the code of every
   service built from this repository, and fails when a variable passed
   to a container is neither a field of its settings nor read by its
-  code. The 26 it finds today and this change does not fix are listed
-  in `tests/scripts/test_compose_variables_are_read.py`, by file and
-  service; they include `CORS_ALLOWED_ORIGINS` for guardian in the
-  production overlay, which guardian does not read.
+  code. The 26 it found that the change did not fix were listed in
+  `tests/scripts/test_compose_variables_are_read.py`, by file and
+  service; they are settled by #665 (an entry of this section, and
+  guardian's `CORS_ALLOWED_ORIGINS` under Fixed) and, for the gateway's,
+  by #756. The list is empty.
 - **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
   client that was its only reader.** `WildboxAPIClient.health_check()`
   had no caller, and no tool of the agent calls the responder. The
@@ -724,6 +960,215 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vulnerability, so the list was always empty; and the `file` of an
   attachment would have been a `/media/` URL, which nothing serves. The
   route answers 404 and its serializer is gone. The table stays, unused.
+- **`open-security-data/scripts/init_feeds.py`, and the source types `http`,
+  `https`, `json`, `csv`, `txt`, `rss` and `atom`** (#665, #755). The
+  script was a second list of default sources, of types no collector was
+  registered for; nothing ran it. The seven types were registered to the
+  two base classes of the collectors, which have no `parse_item` and
+  cannot be instantiated: a source of one of them never collected
+  anything. Default sources that cannot be collected as they are were
+  left out of the one remaining list: Malware Domain List (its feed
+  answers 403), PhishTank (404 without an application key), ThreatFox and
+  MalwareBazaar (401 without an abuse.ch key), AbuseIPDB and URLVoid
+  (offered with a placeholder for a key). Their collectors are still
+  registered, for a source that is given what its feed asks for.
+  route answers 404 and its serializer is gone. The table, unused, is
+  dropped by a later change (#665, below).
+- **shared: the tracing module, which could not be imported** (#665).
+  `open-security-shared/tracing.py` imported the Jaeger Thrift exporter,
+  whose last release (1.21.0) does not import under a current
+  OpenTelemetry SDK, and no image installed OpenTelemetry at all. Every
+  FastAPI service still tried it at start-up, through
+  `install_observability()`, and logged that tracing was not set up. The
+  module, the `tracing` extra of the package and the `enable_tracing`
+  argument of `install_observability()` are removed; that log line no
+  longer appears. Nothing traced before, so nothing stops tracing. The
+  observability roadmap now says what tracing needs (an OTLP exporter,
+  locked requirements, a collector) instead of showing the Jaeger
+  example, and the page on architectural patterns loses the section that
+  described the module as written.
+- **agents: the `task:<id>:status` key in Redis** (#665). The worker
+  wrote `running`, `completed` or `failed` under it for every analysis,
+  and nothing read it: the API takes a task's status from Celery and
+  the reason of a failure from `task:<id>:error`. The three writes are
+  removed. A key already in Redis expires when its task does.
+- **sensor: the `security-sensor` and `ossensor` console scripts, and
+  the `dev`, `windows` and `macos` extras of `setup.py`** (#665). Both
+  scripts pointed at `main:main`, and `main.py` is not part of what
+  `setup.py` packages: after `pip install .` each failed with
+  `ModuleNotFoundError: No module named 'main'`. They answered only
+  inside the image, where an editable install puts `/app` on the path,
+  and nothing ran them there: the image starts `python main.py`, which
+  is also what the README tells an operator to run. The extras named
+  `pywin32`, `wmi` and `pyobjc-framework-Cocoa`, which no module of the
+  sensor imports. Start the sensor with `python main.py --config <file>`.
+- **Seventy requirements that no line of code imported** (#665). Seven
+  of the eight `requirements.in` files declared packages their service
+  never imports, and each was built into the image, scanned for
+  advisories and upgraded for them: `multidict` and `yarl` were in the
+  cspm and guardian images only because of an `aiohttp` and a
+  `pytenable` nobody used. Removed, with what only they brought in:
+  - data (124 packages locked, now 67): `spacy`, `scikit-learn`,
+    `pandas`, `numpy`, `plotly`, `openpyxl`, `tabulate`, `geoip2`,
+    `maxminddb`, `pyasn`, `dnspython`, `python-whois`, `redis` and
+    `hiredis` (the service uses no Redis), `passlib[bcrypt]`,
+    `cryptography`, `pydantic-settings`, `structlog`, `gunicorn`, `pytz`,
+    `python-dateutil`, `pyyaml`, `python-dotenv`, and `aiofiles` 23.2.0,
+    a release yanked from PyPI;
+  - guardian (138, now 83): the clients of systems it does not contact
+    (`pytenable`, `qualysapi`, `python-libnmap`, `atlassian-python-api`,
+    `servicenow-api`), `django-oauth-toolkit`, `pandas`, `numpy`,
+    `pydantic`, `httpx`, `cryptography`, `structlog`, `psutil`,
+    `python-magic`, `validators`, `netaddr`, `factory-boy`, `freezegun`,
+    and `ipaddress`, a Python 2 backport of a module of the standard
+    library;
+  - cspm (73, now 49): `google-auth` and `azure-identity`, which the
+    worker stopped importing when the service became AWS-only (#624),
+    `aiohttp`, `jinja2`, `structlog`, `gunicorn`, and the direct pins of
+    `click` and `python-dateutil`, which Celery and botocore still bring;
+  - sensor (50, now 36): `asyncio-mqtt`, `feedparser`, `jsonschema`,
+    `watchdog`, `structlog`, `certifi`, `python-dateutil`, `pysystemd`
+    and the Windows and macOS pins (`pywin32`, `wmi`,
+    `pyobjc-framework-Cocoa`): the sensor reads those systems' logs by
+    running their own commands;
+  - tools (79, now 72): `beautifulsoup4`, `slowapi`, `psutil`;
+  - identity (66, now 63): `passlib[bcrypt]` (passwords are hashed by
+    fastapi-users' helper since #501), `psycopg2-binary` (the only
+    engine is asyncpg) and `urllib3`;
+  - responder (46, now 44): `gunicorn`, `structlog`.
+
+  No version of a package that stays has moved. Every image was rebuilt:
+  the offline install of the shared package and `pip check` pass, and
+  each service's unit tests pass on the new lock. A test now reads the
+  eight files and the code beside them: a requirement must be imported
+  by a Python file of its service or be listed with what uses it (a
+  database driver named by a URL, a Django application, a server
+  started from a command line, a pytest plugin), and the list must stay
+  exact.
+- **The standalone Compose files of the gateway and the dashboard, and
+  what drove them** (#665).
+  - `open-security-gateway/docker-compose.yml` started the gateway and a
+    Redis and nothing else, and the gateway cannot start that way: nginx
+    exits with `host not found in upstream
+    "open-security-identity:8001"`. Its `Makefile`, `scripts/setup.sh`
+    and `test/integration_test.sh` all ran that file, and
+    `scripts/generate_certs.sh` was called by those two only (the image's
+    entrypoint writes the development certificate).
+    `scripts/test_config.sh`, the `make config` check, wrote an nginx
+    configuration of its own,
+    with an upstream for the automations route removed in #714, and
+    tested that one, not the files in `nginx/`. The gateway runs from the
+    root `docker-compose.yml`, and is tested without the stack as
+    `.github/workflows/gateway-tests.yml` does.
+  - `open-security-dashboard/docker-compose.yml` passed service URLs and
+    `NEXTAUTH_*` variables the dashboard does not read, and checked its
+    health with `curl` on `/api/health`: the image has no `curl` and the
+    dashboard no such route. The dashboard's `Makefile` wrapped that file
+    and an `npm run test` script that does not exist.
+- **tools: the files beside the service that nothing read** (#665).
+  `audit_tools.py`, `setup_security.sh`, `test_security_integration.sh`,
+  `scripts/setup.sh`, `scripts/health-check.sh`, and
+  `scripts/security_scanner.py` with the `security_scan_report.json` it
+  once wrote: no workflow, image or page ran them. Three files of
+  `config/` (`logging_config.json`, `rate_limiting.json`,
+  `security_config.json`) that no code opened; the two
+  `*.json.example` files stay, they are the format of the
+  authorization files the service does read. The `Makefile`, which no
+  page mentioned: its `dev` target copied `.env.example` over an
+  existing `.env`, `fix-db` called a script that is not in the
+  repository, and `clean` pruned every unused Docker volume and network
+  of the host, not only this stack's.
+- **Scripts that nothing ran, and that could not have worked** (#665).
+  No workflow, Makefile target or page told anyone to run them, and each
+  was written for a stack that no longer exists:
+  - `scripts/setup.sh`, a "one-command deployment" that copied
+    `.env.example` to `.env` with its placeholders, needed the
+    `docker-compose` v1 binary, and ended by printing `admin123` as the
+    administrator's password and `http://localhost:8080` as the
+    gateway's address. Use `make generate-secrets` and `make start`, as
+    the [quickstart](docs/guides/quickstart.md) says.
+  - In `tests/`: `test_all_pages.sh`, `test_integration.sh`,
+    `verify_all_endpoints.sh`, `verify_endpoints.sh`, `verify_auth.sh`,
+    `test_dashboard_auth_fix.sh`, `test_gateway_auth_complete.sh` and
+    five `.js` files. They called the services on their own ports without the
+    gateway's identity headers, or the gateway over plain HTTP on paths
+    it does not serve. The `integration-tester` service of
+    `docker-compose.dev.yml` goes with `test_integration.sh`: it mounted
+    that Bash script into an image without Bash, where `localhost` is
+    the container itself.
+  - `scripts/shell-scripts/security_validation.sh` (superseded by
+    `security_validation_v2.sh`, which CI runs) and
+    `final_auth_verification.sh`.
+  - identity: `setup.sh`, `scripts/setup.sh` and `demo.py`, with the
+    `setup` target of its `Makefile`. `scripts/setup.sh` began with
+    `docker-compose down -v`, deleting the database volume without a
+    question.
+  - guardian: `setup_dev.sh`, which stopped at
+    `manage.py setup_guardian --demo-data`, an option the command does
+    not have.
+  - dashboard: `setup.sh`, which ran `npm install` for packages by name
+    and so rewrote `package.json`, and `test_auth_integration.sh`.
+
+  Two hints that pointed at a page that is not served were corrected
+  where the file stays: `open-security-cspm/Makefile` and
+  `open-security-responder/Makefile` printed a `/docs` URL, which answers
+  `404` unless `ENVIRONMENT=development`.
+- **shared: six modules that no service imported** (#665).
+  `auth_utils`, `security_middleware`, `idempotency`, `event_sourcing`,
+  `cqrs` and `feature_flags` were libraries written ahead of a use that
+  never came: no service's code imported any of them, and no image
+  installed the `auth` and `events` extras they needed (PyJWT, passlib,
+  Redis, SQLAlchemy). They are removed with the two extras, the eight
+  names `open_security_shared` re-exported from `auth_utils`, the tests
+  of `auth_utils`, and `docs/FAANG_PATTERNS_IMPLEMENTATION.md`, the page
+  that described them as implemented. The package is now eight modules,
+  each imported by at least one service, with the `fastapi` and
+  `metrics` extras; a test fails for a module that no service imports.
+  Nothing a running service used has changed.
+- **guardian: the attachment table, the payload columns of the
+  integration log, the `/admin/` route and two blocks of code nothing
+  read** (#665).
+  - `VulnerabilityAttachment` was a model without a writer: there has
+    never been an upload route, a task or a command that creates a row,
+    and its one reader went in #724. Migration
+    `vulnerabilities.0004_drop_unused_attachments` drops the table when
+    it is empty, which is every database guardian itself has written.
+    When it has rows, written by hand, the migration refuses before it
+    changes anything, names the table and the number of rows, and
+    guardian does not start until they are dealt with. The reverse
+    creates the table again, empty.
+  - `IntegrationLog.request_data` and `response_data` were columns for
+    the raw request and response of calls guardian does not make.
+    Nothing wrote them and the API never returned them. Migration
+    `integrations.0005_drop_unwritten_log_payloads` blanks and drops
+    them, and logs how many rows held a value when any did.
+  - `/admin/` was Django's admin site with no model of guardian
+    registered. In the image its login page answered `500` (it needs
+    the static files' manifest, which the image does not build), and
+    the gateway never routed to it. The route is removed and answers
+    `404`; the deployment guide no longer says that the admin shows
+    guardian's scheduled tasks.
+  - `WILDBOX_SETTINGS` in the settings (an API URL, a data URL that
+    named identity's port, and two API keys) and `apps/core/utils.py`
+    were read and imported by nothing. `WILDBOX_API_URL` and
+    `WILDBOX_DATA_URL` leave guardian's own `docker-compose.yml`; a
+    value still set in the environment is ignored.
+- **dashboard: a rewrite to nowhere, a CORS grant nobody asked for, and
+  a guarded route without a page** (#665). `next.config.js` rewrote
+  `/api/proxy/*` to `API_BASE_URL`, which nothing sets, so to
+  `http://localhost:8000` inside the container; no page calls that path.
+  For the same proxy it answered every `/api/*` route of the dashboard
+  with `Access-Control-Allow-Origin: http://localhost:3000` (or
+  `CORS_ORIGIN`, which nothing sets either) and
+  `Access-Control-Allow-Credentials: true`, in production too. It also
+  exposed a `CUSTOM_KEY` variable that no code read. All three are
+  removed: `/api/proxy/*` answers `404`, and the dashboard's own routes
+  carry no CORS header, as a same-origin application needs none. The
+  security headers (the Content Security Policy, `X-Frame-Options`,
+  HSTS) are unchanged. `src/proxy.ts` no longer lists `/endpoints`
+  among the routes that need a session: there is no such page. The
+  `CloudAccount` type, with its `azure` and `gcp` providers, was used
+  by nothing.
 
 ### Fixed
 
@@ -737,6 +1182,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/api/v1/guardian/...` too. `open-security-gateway/test/redirect_tests.sh`
   checks the three forms of `Location` against the production image, in the
   Gateway Tests workflow.
+- **The sensor no longer loses the event it had just taken when it
+  stops** (#754). Before it stops its pipeline the sensor waits for the
+  events already collected to reach the sender. It decided that nothing
+  was left by looking, every 20 ms, at the size of its two queues and at
+  a count the processor's workers kept. A worker took an event with
+  `asyncio.wait_for(queue.get())`, which on Python 3.11 (the image's)
+  runs the `get` in a task of its own: the event left the queue in one
+  turn of the event loop, and the worker had it, and counted it, two
+  turns later. A look in between found two empty queues and nothing in
+  hand, the pipeline was stopped, and the worker put the event on a
+  queue nobody read any more, with no count and no log line. An event
+  its collector can read again (a line of a log with a saved position,
+  a file change against a saved baseline) was sent after the next
+  start; any other was lost. A trace of a failing run shows the four
+  steps in consecutive turns. This is what made
+  `test_what_was_collected_just_before_the_stop_still_reaches_the_gateway`
+  fail about once in fifty runs. Each queue now counts an event from the
+  moment it is put there until its reader says it has finished with it
+  (`task_done()`), and the stop waits on those two counts (`join()`),
+  the collectors' queue first: there is no state in which an event is
+  in neither. The worker awaits the queue directly.
+- **Events the sensor's processor holds when the sensor stops are
+  counted, and its workers end** (#754). Stopping the processor set a
+  flag that its workers read when they next came round: a worker that
+  held an event at that moment (in a reverse DNS lookup, or waiting for
+  room behind a full buffer) finished it afterwards and put it where
+  nothing read it, after the sensor had logged how many events were
+  left. The workers are now stopped with the processor and waited for;
+  what they held is in that log line, `Stopped with N events still on
+  their way to the sender`, with what the queues held, and the events of
+  a log source among them are read again after the restart. An event
+  that raises in a worker is counted under `errors` and its log line's
+  position released; it used to keep the position of its file where it
+  was for as long as the sensor ran. `events_in_pipeline` in
+  `GET /api/v1/stats` includes the events in the workers' hands and the
+  one the sender holds while its buffer is full, so the counters add up
+  without the "give or take" the README allowed for.
+- **A sensor stopped while it writes its log positions writes them
+  again** (#754). The periodic write is made in a thread; the stop
+  cancelled the task waiting for it, which had already marked the
+  positions as written. When that write then failed, the stop wrote
+  nothing, and the lines accepted since the last write were sent a
+  second time after the restart. The file monitor's baseline already
+  handled this.
+- **guardian reads `CORS_ALLOWED_ORIGINS`** (#665).
+  `docker-compose.prod.yml` has always passed the deployment's
+  `CORS_ORIGINS` to guardian under that name, and guardian's list of
+  origins was written in its settings: a production guardian allowed
+  eight development origins (`http://localhost:3000` and the like),
+  with credentials, and not the origin the operator had named. The
+  variable is now read, by the grammar the gateway reads `CORS_ORIGINS`
+  with, since under the overlay the two are one value: origins
+  separated by commas, or a JSON list of them. Unset, the development
+  origins, as before; set, exactly the origins it lists; set and empty,
+  or `[]`, none, which is right behind the gateway. An entry that is
+  not an origin (a wildcard, a host with no scheme, a URL with a path
+  or a trailing slash) stops guardian at start-up with a message that
+  names it, as it stops the gateway: guardian refuses nothing the
+  gateway starts on.
+- **One version per service, wherever it is written** (#665). cspm
+  stated its version in `app/__init__.py` and again as a settings
+  field, the responder in `app/__init__.py` and again in `app/main.py`,
+  the sensor a second time as the `processor_version` it stamps on
+  events, and guardian said `1.0.0` in `guardian/__init__.py` and
+  `0.1.6` in its API schema. Each now has one literal, which the other
+  places read; guardian's is `0.1.6`. The example in cspm's health
+  schema said `1.0.0` and now shows the service's version. The test of
+  #743 followed the two arguments of the FastAPI services only; it now
+  reads every Python service for a version written as an assignment,
+  an annotated field or a dictionary entry.
 - **agents and data report one version** (#743). Each passed one
   version literal to the application and a second to the middleware
   that writes the `X-API-Version` header of every response. Both now
@@ -1742,9 +2257,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/CRITICAL_FIXES_QUICKSTART.md`, a list of urgent tasks that were
   all done or false, is removed. `manage.py assign_guardian_team --help`
   names the release whose upgrade needs it, 0.11.0.
+- **The data service no longer answers 200 for a telemetry batch it did not
+  store** (#755). `POST /api/v1/data/ingest` answered 200 with
+  `events_ingested: 0` when the commit failed with an error that was not
+  SQLAlchemy's. On PostgreSQL a NUL character in `source_host` or
+  `raw_data` did that, and the other events of the batch were lost with
+  it. An event the service could not process was left out of a batch that
+  was otherwise stored, after its sensor's record had counted it. A value
+  the validation let through and a column could not hold (a `sensor_id` of
+  300 characters) was a 503 "send it again" for as long as it was sent,
+  which a sensor obeys: one such event stopped a sensor's delivery for
+  good. A batch is now stored in one transaction, all of it or none.
+  A 200 means all, and `events_ingested` is what was stored. What the
+  database would refuse about an event the validation refuses first, with
+  a 422 that names the event by its place in the batch (`sensor_id` and
+  `source_host` of more than 255 characters; a NUL in `sensor_id`,
+  `source_host` or `raw_data`); a value the database still refuses is a
+  422 with code `BATCH_NOT_STORABLE`; a database that did not take the
+  batch stays a 503 with `Retry-After`; a fault of the service is a 500.
+  The sensor splits a batch on a 422 and keeps it on a 5xx, and
+  `tests/shared/ingest_answer_vectors.json` holds the answers for the
+  tests of both services.
+- **The default threat-intelligence sources can be collected** (#665,
+  #755). `manage.py sources add-defaults` created five sources of type
+  `txt` or `json`, and `scripts/init_feeds.py` six of type `api` or
+  `feed`. The first two types were registered to a collector class that
+  cannot be instantiated and the other two to nothing, so every one of
+  the eleven failed each time the scheduler tried it, and counted as an
+  active feed meanwhile. There is one list now
+  (`open-security-data/app/collectors/defaults.py`), of sources a fresh
+  deployment can collect from as it is: Feodo Tracker, whose feed needs no
+  key. `sources add-defaults` repairs in place the "Feodo Tracker" an
+  earlier release created with a type that had no collector.
+  `sources enable` refuses a source whose type has no collector, and the
+  scheduler disables such a source when it meets one, with the reason in
+  its `last_error`.
+- **identity reads the user of an authenticated request once** (#665).
+  Two dependencies resolve the bearer token of a request to an
+  authenticated route, the route's own and the one that refuses an
+  account that must change its password, and fastapi-users makes a
+  separate dependency of each: every request asked Redis twice whether
+  the token was revoked and read the user from the database twice. The
+  token strategy, which FastAPI creates once per request, now remembers
+  what it read for that request. What a request is refused for has not
+  moved, and each case has a test: a revoked token, a token older than
+  a password change, an inactive or deleted account, an account that is
+  not a superuser, one that must change its password, and a token
+  revoked between two requests. Five `logger.debug` lines of the
+  account-deletion route were written without the `f` prefix and logged
+  their placeholders (`user_id={user_id}`); they now log the values, and
+  the caller's id where the first named the caller's e-mail address.
+  Also removed: `get_current_user` and `get_current_active_user` of
+  `app/auth.py`, a second token dependency that no route used.
+- **tools: the standalone Compose files ask for `API_KEY` instead of
+  defaulting to one the service refuses** (#665).
+  `open-security-tools/docker-compose.yml` and `docker-compose.dev.yml`
+  set `API_KEY` to a placeholder when the variable was unset, and the
+  service's own validation rejects both placeholders (one names a weak
+  pattern, the other is shorter than 32 characters): `docker compose up`
+  built the image and the API exited at once. The variable is now
+  required, and Compose says so before it builds anything. With a
+  generated key the API starts and answers `/health`.
 
 ### Changed
 
+- **guardian scans an internal network only if
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists it** (#748). This changes a
+  deployment that uses guardian to discover or port scan its own LAN:
+  after the upgrade those requests answer 400, and a stored discovery
+  rule skips each internal network on every run (`guardian-worker` logs
+  the network and the variable). To keep scanning, set the variable in
+  `.env` to the ranges, as comma-separated CIDR ranges and IP addresses
+  (`192.168.50.0/24,10.20.0.0/16`), and recreate `guardian` and
+  `guardian-worker`. It is empty by default because no default can tell
+  a LAN from the stack: Docker takes the stack's networks from the same
+  private ranges. A discovery must lie inside the listed ranges
+  entirely, and the limit of 1,024 addresses still applies. A host name
+  is not an entry, and an entry that is not a range or an address stops
+  both containers at start-up, naming the variable and the entry. It is
+  guardian's own list: `TOOLS_ALLOWED_INTERNAL_TARGETS` is not read, and
+  a deployment where both services scan a lab sets both.
+- **One implementation of what may be scanned** (#748).
+  `open_security_shared.target_policy` now holds what the tools service
+  decided in `app/target_policy.py`: which addresses and names are
+  internal, how a host is parsed, what an allowlist covers and the limit
+  of 1,024 addresses. The tools service and guardian both use it, and
+  one file of cases, `tests/shared/target_policy_vectors.json`, is run
+  by the shared package's tests, the tools service's and guardian's. The
+  module needs the standard library only, so guardian's image installs
+  the shared package with no extra, as before. The tools service answers
+  as it did: its refusals, their wording and its setting are unchanged.
+- **The sensor asks osquery for the inventory once an hour, not every
+  ten seconds** (#754). Every query of every pack ran at every cycle
+  (`performance.query_interval`, 10 seconds), the seven of
+  `system_inventory` among them. Measured in the sensor's image, those
+  seven answers were 36.0 of the 36.9 kB one cycle produced, and six of
+  them were identical ten seconds later: about 7,000 copies a day of the
+  list of installed packages, sent and stored as events. They now run
+  when the sensor starts and every `performance.inventory_interval`
+  seconds after that (3600 by default, at most a week; 0 restores the
+  old pace), each counted from its own last answer, and one that fails
+  is asked again at the next cycle. The processes, sockets and users
+  packs still run at every cycle. `GET /api/v1/config` reports the
+  setting.
+- **No pydantic v1 form is left in the services** (#665). The
+  responder and cspm declared 48 settings as
+  `Field(env="REDIS_URL")`, which pydantic-settings v2 ignores: each
+  was read from the variable of the field's own name, and worked only
+  because the two matched. The argument is gone, and a test in each
+  service sets every field through its variable. The forms pydantic 2
+  still honors and has announced it will drop are rewritten too: 25
+  nested `class Config` as `model_config`, 13 `@validator` as
+  `@field_validator`, and 30 `Field(example=...)` in the tools'
+  schemas as `json_schema_extra`. The JSON schema of every model is
+  unchanged, so the dashboard's tool forms show the same examples. A
+  test reads the services and fails on any of the four forms.
 - **Images install only the OS packages they name** (#726). agents,
   data, identity, sensor and the tools development image ran
   `apt-get install -y` and took every recommended package with it:
@@ -2005,9 +2632,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now reads `sent`, `sent to the team's owners and admins (no assignee
   to e-mail)` or `not sent (<reason>)`, and an assignment notification
   adds an entry of its own.
+- **dashboard: `@tanstack/react-query-devtools` is a development
+  dependency** (#665). It was under `dependencies`, although the page
+  renders it under `next dev` only, which is why the two `seroval`
+  advisories of October 2026 were reported against the production
+  dependencies. Nothing changes in what is built or shipped: the image
+  installs with `npm ci`, development packages included, as the build
+  needs them anyway, and the standalone output it copies holds the same
+  packages as before (compared file by file between the two images).
+  `npm audit --omit=dev` reports nothing. The `overrides` for `seroval`
+  and `seroval-plugins` stay: solid-js 1.9.15 still asks for `~1.5.4`,
+  and without them `npm audit` reports both advisories again.
 
 ### Added
 
+- **The gateway's per-address rate limits are settings** (#756).
+  `GATEWAY_RATE_LIMIT_PER_SECOND` (100), `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND`
+  (5) and `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` (500) are the requests a
+  second the gateway accepts from one client address: on every route, on
+  the login, registration and forgotten-password routes, and for the
+  dashboard's static assets. The defaults are the rates that were written
+  in `nginx.conf`, so a deployment that sets nothing is limited as before;
+  the bursts are unchanged. An operator whose users all arrive from one
+  address, behind a NAT or another proxy, can now raise a rate without
+  editing the configuration. nginx takes a zone's rate as a literal, so
+  the entrypoint writes the zones before it starts nginx
+  (`scripts/render_rate_limits.sh`). A value that is not a whole number
+  from 1 to 100000 stops the gateway at start with a message that names
+  the setting, as `RATE_LIMIT_PER_HOUR` does, and the gateway logs the
+  rates it runs with. The limits are counted by the address of the
+  connection: nothing a client sends changes them. The deployment guide
+  and the gateway's README say what each protects.
 - **The dashboard has an AI analysis page** (#727). `/ai-analysis`, in
   the sidebar, submits an indicator to the agents service and follows
   the task: queued, running with the worker's progress, failed with the
@@ -2102,6 +2757,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The integration and Playwright suites no longer meet the gateway's
+  per-address rate limit** (#756). The gateway allows one address 100
+  requests a second with a burst of 10, and 5 a second on the login and
+  registration routes. Every request of a suite comes from the runner,
+  one after another, and the stack answers in a few milliseconds: at one
+  request every 7 ms the 35th of a run got nginx's `429`, whatever the
+  test was about (`test_guardian_pagination_links`, then
+  `test_api_key_scopes_backends`). The Integration Tests, Production
+  Stack and E2E Full-Stack jobs now start their stack with the three
+  rates at 10000, and the suite checks before its first test that the
+  gateway lets its pace through, failing the run by name if it does not.
+  What had been added to live with the limit is removed: the 25 ms pause
+  between requests in the pagination test's fixture, the retry of a `429`
+  in `test_password_policy`, the same retry in the Playwright helpers for
+  login, logout and registration, which also retried identity's `429` for
+  a locked account, and the 450 ms pause between iterations of the logout
+  race spec. No test paces itself or retries a `429` for the gateway any
+  more. The chaos job keeps a deployment's rates: its load experiment
+  takes a `429` as an answer.
+- **The gateway harness tests the per-address limits at the rates a
+  deployment has** (#756). Nothing did: the suites only ever met them by
+  accident. `open-security-gateway/test/rate_limit_tests.py` runs against
+  the production image with none of the settings: a volley from one
+  address is refused past the burst and a stream is held to the rate, in
+  the `global` zone and in the `auth` zone, with bounds a rate of half or
+  twice the default fails; a refusal is nginx's `429` and the count the
+  client receives is the count nginx logs for that zone; requests
+  without a credential are counted and the ones let through answered
+  `401`; a refused method, a preflight, `/health` and an unknown API path
+  are not counted; login and registration share one counter; static
+  assets are not under the global limit; and a gateway started with the
+  rates the suites set lets through the sequences refused at the
+  defaults. `startup_config_tests.sh` checks, in the test image and the
+  production one, that a rate that is not a whole number in range stops
+  the gateway.
+- **The sensor's stop test waits for its events, not for the clock**
+  (#754).
+  `test_what_was_collected_just_before_the_stop_still_reaches_the_gateway`
+  gives nine events 0.9 seconds of work and expected all of them within
+  the two seconds the sensor allows before it stops its pipeline. Those
+  are seconds of the clock: with the event loop held for 1.5 seconds,
+  as a host that does not schedule the process holds it, the ninth
+  event is left behind at the deadline, every time, and with the CPUs
+  taken the same wait was measured at 2.6 seconds. The test now sets
+  the deadline out of reach; what the deadline leaves behind has tests
+  of its own, which hold the events instead of timing them.
+- **The sensor's statistics tests measure a stand-in, not the test
+  process** (#754). `test_agent_stats.py` started the real resource
+  monitor, which measured pytest's own process, and expected no alert:
+  true for as long as the suite, its plugins and the coverage tracer
+  stayed under `performance.max_memory_mb` (128 MB) on whatever host ran
+  them, and the test that wanted an alert set the threshold to 1 MB to
+  get one. The monitor now reads a stand-in process whose memory and
+  CPU the tests set.
 - **Path-filtered workflows follow what they build and run** (#736).
   Docker Build Validation was triggered by `open-security-*/app/**`, the
   lock, the Dockerfile, `pyproject.toml` and `manage.py`: a change to

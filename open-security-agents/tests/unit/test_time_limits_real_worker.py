@@ -343,7 +343,7 @@ def test_the_api_records_from_celerys_state_what_the_worker_could_not(
     reads the exception Celery stored, records its code, counts it once."""
     task_id = ended.ids[behavior]
     before = stack.failed_today()
-    stack.redis.delete(f"task:{task_id}:error", f"task:{task_id}:status")
+    stack.redis.delete(f"task:{task_id}:error")
 
     for _ in range(3):
         body = stack.read(task_id)

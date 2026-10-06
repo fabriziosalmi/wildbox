@@ -30,7 +30,7 @@ What the script does:
 
 1. Accepts only these names: `GATEWAY_INTERNAL_SECRET`, `JWT_SECRET_KEY`,
    `API_KEY_HASH_SECRET`, `API_KEY`, `CSPM_CREDENTIAL_KEY`, `REDIS_PASSWORD`,
-   `POSTGRES_PASSWORD`, `NEXTAUTH_SECRET`. Any other name exits with an error.
+   `POSTGRES_PASSWORD`. Any other name exits with an error.
 2. Works on `.env` in the repository root, or on the file named by the
    `ENV_FILE` environment variable, and exits if the file does not exist.
 3. Refuses `JWT_SECRET_KEY` until identity receives a separate
@@ -269,11 +269,6 @@ Until then they keep the connections they already have and fail to open new
 ones. The `postgres` container itself keeps running. If you run the `backup`
 profile, recreate that container too; the script names it apart from the
 command.
-
-### NEXTAUTH_SECRET
-
-Passed to the dashboard container, but the dashboard source does not read it,
-so rotating it has no visible effect, and the script says so.
 
 ## API keys issued to users and teams
 

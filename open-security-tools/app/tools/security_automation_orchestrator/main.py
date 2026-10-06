@@ -12,6 +12,7 @@ from open_security_shared.errors import field_errors
 from pydantic import ValidationError
 
 from ...execution_manager import tool_acts_for_caller
+from ...log_safety import error_site
 from ...target_policy import TargetRefused, enforce_target_policy
 from ...tool_loader import find_schema_classes
 from .schemas import (
@@ -23,6 +24,44 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Why a step failed, as a word a client can branch on (``error_code`` of the
+# step) beside the sentence a person reads (``error_message``). The codes of
+# a failure inside the service have one fixed sentence each: what was raised
+# is logged, never put in the result (#735, #755).
+TOOL_NOT_AVAILABLE = "tool_not_available"
+STEP_REFUSED = "step_refused"
+INVALID_PARAMETERS = "invalid_parameters"
+TOOL_REJECTED_INPUT = "tool_rejected_input"
+TOOL_FAILED = "tool_failed"
+SERVICE_UNAVAILABLE = "service_unavailable"
+INTERNAL_ERROR = "internal_error"
+STEP_FAILED = "step_failed"
+
+STEP_MESSAGES = {
+    TOOL_REJECTED_INPUT: "Tool execution failed: the tool could not process its input",
+    TOOL_FAILED: "Tool execution failed",
+    SERVICE_UNAVAILABLE: "Tool execution failed: a service it needs is unavailable",
+    INTERNAL_ERROR: "Internal error executing tool",
+    STEP_FAILED: "The step failed",
+}
+
+# The code of a refusal raised as a plain HTTPException, by its status.
+REASON_BY_STATUS = {
+    400: STEP_REFUSED,
+    403: STEP_REFUSED,
+    404: TOOL_NOT_AVAILABLE,
+    422: INVALID_PARAMETERS,
+    501: TOOL_NOT_AVAILABLE,
+}
+
+
+class StepFailure(HTTPException):
+    """A step that failed for a reason with a fixed sentence."""
+
+    def __init__(self, status_code: int, code: str):
+        super().__init__(status_code=status_code, detail=STEP_MESSAGES[code])
+        self.code = code
 
 
 class SecurityAutomationOrchestrator:
@@ -199,19 +238,33 @@ class SecurityAutomationOrchestrator:
                     step.output = tool_result
                 else:
                     step.status = "failed"
-                    step.error_message = tool_result.get("error", "Tool execution failed")
+                    step.error_code = TOOL_FAILED
+                    step.error_message = STEP_MESSAGES[TOOL_FAILED]
             else:
                 step.status = "failed"
+                step.error_code = TOOL_NOT_AVAILABLE
                 step.error_message = f"Tool {step.tool_name} not available"
-                
+
         except HTTPException as e:
             # A refused step (SSRF target, tool acting for a caller, invalid
             # input) fails the step; it does not abort the whole workflow.
             step.status = "failed"
+            step.error_code = getattr(e, "code", None) or REASON_BY_STATUS.get(
+                e.status_code, STEP_FAILED
+            )
             step.error_message = str(e.detail)
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+            # Which step and what kind of failure, in the result that is
+            # returned and kept; the class and the line in the log. This
+            # stored str(e), the text of whatever was raised (#755).
+            logger.error(
+                "Workflow step %s failed outside its tool: %s",
+                step.step_id,
+                error_site(e),
+            )
             step.status = "failed"
-            step.error_message = str(e)
+            step.error_code = STEP_FAILED
+            step.error_message = STEP_MESSAGES[STEP_FAILED]
 
         step.end_time = datetime.now()
 
@@ -321,22 +374,24 @@ class SecurityAutomationOrchestrator:
                 detail=f"Tool '{tool_name}' not found"
             )
         except (ValueError, KeyError, TypeError) as e:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Tool execution failed due to invalid input: {str(e)}"
+            # What the running tool raised over the step's parameters. Its
+            # text can quote them (the URL a client could not fetch, the
+            # value a parser refused), and this answered with it, into a
+            # result that is returned and can be kept. The step now says
+            # that its tool failed on its input, with a reason code; the log
+            # has the class of the error and the line that raised it (#755).
+            logger.error(
+                "Workflow step: tool %s failed on its input: %s",
+                tool_name,
+                error_site(e),
             )
+            raise StepFailure(422, TOOL_REJECTED_INPUT)
         except (ConnectionError, TimeoutError):
             logger.exception("Workflow step: tool %s could not reach a service", tool_name)
-            raise HTTPException(
-                status_code=503,
-                detail="Tool execution failed: a service it needs is unavailable"
-            )
+            raise StepFailure(503, SERVICE_UNAVAILABLE)
         except Exception:
             logger.exception("Workflow step: unexpected error executing tool %s", tool_name)
-            raise HTTPException(
-                status_code=500,
-                detail="Internal error executing tool"
-            )
+            raise StepFailure(500, INTERNAL_ERROR)
     
     def _validate_tool_parameters(self, tool_name: str, parameters: Dict[str, Any]) -> bool:
         """Validate tool parameters for security"""
