@@ -201,7 +201,6 @@ services:
       - backend
       - data
     environment:
-      - ENVIRONMENT=production
       # No DJANGO_SETTINGS_MODULE: this used to name
       # config.settings.production, a module that does not exist, so gunicorn
       # failed to import the app. guardian.settings reads every production
@@ -425,7 +424,6 @@ services:
       - data
       - egress
     environment:
-      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -442,7 +440,6 @@ services:
     networks: !override
       - data
     environment:
-      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:

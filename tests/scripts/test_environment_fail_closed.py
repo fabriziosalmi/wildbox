@@ -95,7 +95,10 @@ def _load(relative: str, name: str):
 
 def test_the_base_file_requires_the_variable_of_every_service_it_gives_it_to():
     values = environments(BASE)
-    assert len(values) == 18, sorted(values)
+    # 18 until guardian, guardian-worker and guardian-beat stopped getting
+    # it: guardian reads no ENVIRONMENT (its development mode is DEBUG), and
+    # the shared module that read it for every service is gone (#665).
+    assert len(values) == 15, sorted(values)
     for service, value in values.items():
         assert REQUIRED.match(value), (service, value)
 
@@ -221,7 +224,7 @@ def test_the_rendered_production_stack_is_production_whatever_the_env_file_says(
         for name, service in services.items()
         if "ENVIRONMENT" in (service.get("environment") or {})
     }
-    assert len(rendered) == 18, sorted(rendered)
+    assert len(rendered) == 15, sorted(rendered)
     assert set(rendered.values()) == {"production"}, rendered
 
 

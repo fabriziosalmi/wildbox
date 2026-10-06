@@ -887,6 +887,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     were read and imported by nothing. `WILDBOX_API_URL` and
     `WILDBOX_DATA_URL` leave guardian's own `docker-compose.yml`; a
     value still set in the environment is ignored.
+- **`ENVIRONMENT` for guardian, its worker and its scheduler in
+  `docker-compose.yml` and `docker-compose.prod.yml`** (#665). guardian
+  reads no `ENVIRONMENT`: what it serves in development follows `DEBUG`.
+  The one reader the variable had in those three containers was
+  `security_middleware.py` of the shared package, which guardian never
+  imported and which is removed above. Nothing changes in how guardian
+  runs; `ENVIRONMENT` in `.env` is still required by the other services.
 
 ### Fixed
 
