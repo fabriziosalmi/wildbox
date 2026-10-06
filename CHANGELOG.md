@@ -2133,6 +2133,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now reads `sent`, `sent to the team's owners and admins (no assignee
   to e-mail)` or `not sent (<reason>)`, and an assignment notification
   adds an entry of its own.
+- **dashboard: `@tanstack/react-query-devtools` is a development
+  dependency** (#665). It was under `dependencies`, although the page
+  renders it under `next dev` only, which is why the two `seroval`
+  advisories of October 2026 were reported against the production
+  dependencies. Nothing changes in what is built or shipped: the image
+  installs with `npm ci`, development packages included, as the build
+  needs them anyway, and the standalone output it copies holds the same
+  packages as before (compared file by file between the two images).
+  `npm audit --omit=dev` reports nothing. The `overrides` for `seroval`
+  and `seroval-plugins` stay: solid-js 1.9.15 still asks for `~1.5.4`,
+  and without them `npm audit` reports both advisories again.
 
 ### Added
 

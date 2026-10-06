@@ -88,10 +88,13 @@ version that is needed, and it stays until one does:
   `@tanstack/react-query-devtools` brings in, declares `~1.5.4` for both, and
   the two advisories of October 2026 (GHSA-p6vx-979v-rg4c, GHSA-jp82-f5mq-hwhp)
   are fixed from 1.6.2 and 1.6.3 only. The two packages are released together,
-  so they are overridden together. Remove both entries when
-  `npm view solid-js dependencies` shows a range that admits `seroval` 1.6.3
-  or later, or when the devtools no longer depend on solid-js 1.x, then run
-  `npm install` and check `npm ls seroval`.
+  so they are overridden together. The devtools are a development dependency
+  (the page renders them under `next dev` only, and `npm audit --omit=dev`
+  does not count them), but `npm ci` installs them for every build, and
+  without the override `npm audit` reports the two advisories again. Remove
+  both entries when `npm view solid-js dependencies` shows a range that admits
+  `seroval` 1.6.3 or later, or when the devtools no longer depend on solid-js
+  1.x, then run `npm install` and check `npm ls seroval`.
 
 ## Compiling the Locks
 
