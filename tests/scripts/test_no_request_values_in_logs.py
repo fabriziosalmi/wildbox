@@ -553,8 +553,9 @@ def test_the_gateways_access_logs_name_no_query_string_and_no_credential():
             read += 1
             named = sorted({m.group(0) for m in _REQUEST_VARIABLES.finditer(body)})
             assert not named, f"{path}: log_format {name} names {named}"
-    # nginx.conf has two, and the configuration scripts/test_config.sh writes one.
-    assert read >= 3, read
+    # nginx.conf has two. Every tracked file that could hold one is read:
+    # the configurations, and the scripts and templates that write them.
+    assert read >= 2, read
 
 
 def test_the_path_the_access_log_names_is_cut_at_the_query():

@@ -52,6 +52,11 @@ jobs:
       # Likewise the user-schedule dispatcher, every 15 s instead of every
       # minute (#548).
       GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
+      # The one internal range guardian may scan here: loopback, where
+      # guardian-worker scans itself (#748). The integration suite's port
+      # scan and discovery rule need a host that answers, and it reads the
+      # variable to know the stack allows one; see integration-tests.yml.
+      GUARDIAN_ALLOWED_INTERNAL_TARGETS: "127.0.0.0/8"
 
     steps:
       - name: Checkout code
@@ -84,10 +89,21 @@ jobs:
           python3 scripts/generate_secrets.py --force
           python3 scripts/validate_secrets.py
 
-      - name: Raise the rate limit for the suite
+      - name: Raise the rate limits for the suite
         # See integration-tests.yml: the suite makes several hundred requests
-        # with one key and would otherwise meet the limiter part-way through.
-        run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
+        # with one key and would otherwise meet the per-team limiter part-way
+        # through, and it sends them all from this runner, faster than a
+        # deployment allows one address (#756). A key that is not in .env
+        # fails the step.
+        run: |
+          for setting in RATE_LIMIT_PER_HOUR=1000000 \
+                         GATEWAY_RATE_LIMIT_PER_SECOND=10000 \
+                         GATEWAY_AUTH_RATE_LIMIT_PER_SECOND=10000 \
+                         GATEWAY_STATIC_RATE_LIMIT_PER_SECOND=10000; do
+            name="${setting%%=*}"
+            grep -q "^$name=" .env || { echo "::error::$name is not in .env"; exit 1; }
+            sed -i "s/^$name=.*/$setting/" .env
+          done
 
       - name: Segmentation in the rendered production configuration
         # base + prod only, every profile included: the configuration an

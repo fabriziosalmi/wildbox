@@ -1,24 +1,59 @@
-"""What a discovery may sweep (#724).
+"""What a discovery may sweep and a port scan may reach (#724, #748).
 
 ``assets/assets/discover/`` queued whatever it was given as
 ``network_range``: a string that is not a network was found out by the
 worker, three retries later, and ``10.0.0.0/8`` was sixteen million
 connection attempts in one task. A discovery rule checked that its networks
-parse, and not their size.
+parse, and not their size (#724).
 
-One sweep covers at most ``MAX_SCAN_ADDRESSES`` addresses, the bound the
-tools service puts on a scan target (``MAX_TARGET_ADDRESSES`` in
-open-security-tools/app/target_policy.py: its network scanner sweeps no
-more). The request that asks for a discovery, the rule that schedules one
-and the task that runs it all go through ``scan_network``, so a range is
-refused where it is typed and, for a rule stored before the check existed,
-where it would run.
+And nothing looked at where a range is (#748). ``guardian-worker`` runs
+inside the stack's networks, so a team's owner or admin could sweep them:
+the worker's own loopback, PostgreSQL, Redis and identity next to it, the
+Docker host, a cloud provider's metadata address. The tools service has
+refused such targets since 0.11.0 (#614); guardian now applies the same
+policy, from the same implementation, ``open_security_shared.target_policy``:
+
+* one sweep covers at most ``MAX_SCAN_ADDRESSES`` addresses, which is that
+  module's ``MAX_TARGET_ADDRESSES`` and not a number of guardian's own;
+* an internal address is not scanned: private, loopback, link-local,
+  multicast, reserved, shared and cloud-metadata addresses, IPv4 and IPv6,
+  an IPv4 address embedded in an IPv6 one included. A range with one such
+  address in it is refused whole, however much of it is public;
+* unless the operator lists the range in
+  ``GUARDIAN_ALLOWED_INTERNAL_TARGETS`` (``guardian/scan_targets.py``),
+  which is empty by default. A range a caller names must lie inside the
+  listed ranges entirely.
+
+guardian scans addresses only: a network in CIDR notation, or the address
+of an asset. It resolves no name, so there is none to check here.
+
+The request that asks for a discovery, the rule that schedules one and the
+task that runs it all go through ``check_network``; the request for a port
+scan, the scan an asset gets when it is created and the task that scans go
+through ``check_address``. A target is so refused where it is typed and,
+for a rule or an asset stored before the check existed (or before the
+operator narrowed the list), where the scan would run.
+
+Recording an asset is not scanning it: an asset at an internal address is
+stored like any other, which is what an inventory is for. It is not port
+scanned.
 """
 
 import ipaddress
 
+from django.conf import settings
+from open_security_shared.target_policy import (
+    MAX_TARGET_ADDRESSES,
+    Reason,
+    TargetPolicy,
+)
+
+from guardian.scan_targets import ALLOWLIST_VARIABLE
+
 #: The most addresses one discovery sweeps: a /22 of IPv4, a /118 of IPv6.
-MAX_SCAN_ADDRESSES = 1024
+#: The bound the tools service puts on a scan target, from the module both
+#: services share.
+MAX_SCAN_ADDRESSES = MAX_TARGET_ADDRESSES
 
 #: The most networks one discovery rule lists.
 MAX_RULE_NETWORKS = 32
@@ -27,9 +62,22 @@ MAX_RULE_NETWORKS = 32
 #: also scan its ports ("comprehensive").
 SCAN_TYPES = ("basic", "comprehensive")
 
+# What follows the subject of a refused target. It names the setting: the
+# caller cannot change it, and has to know what to ask the operator for.
+_INTERNAL = (
+    "an internal address (private, loopback, link-local, multicast, reserved "
+    "or cloud metadata). guardian scans an internal address only if the "
+    f"operator of this deployment lists its range in {ALLOWLIST_VARIABLE}."
+)
+
 
 class NetworkRefused(ValueError):
     """A range no discovery sweeps; the message says why, for the caller."""
+
+
+def scan_policy():
+    """The target policy with the ranges this deployment's operator allows."""
+    return TargetPolicy(settings.SCAN_ALLOWED_INTERNAL_TARGETS)
 
 
 def check_network(value):
@@ -45,27 +93,58 @@ def check_network(value):
             "A network in CIDR notation is required, for example 192.0.2.0/24."
         )
     try:
+        # A zone ("fe80::%eth0/64") names an interface of the worker, which
+        # is not the caller's to choose; ipaddress would take it.
+        if "%" in value:
+            raise ValueError(value)
         network = ipaddress.ip_network(value.strip(), strict=False)
     except ValueError:
         return None, f"{value.strip()[:64]!r} is not a network in CIDR notation."
-    if network.num_addresses > MAX_SCAN_ADDRESSES:
+    refusal = scan_policy().refuse_network(network)
+    if refusal is None:
+        return network, None
+    if refusal.reason is Reason.TOO_LARGE:
         return None, (
             f"{network} has more than {MAX_SCAN_ADDRESSES} addresses, the most one "
             "discovery sweeps (a /22 of IPv4, a /118 of IPv6). Split it into "
             "smaller networks."
         )
-    return network, None
+    if network.num_addresses == 1:
+        return None, f"{network.network_address} is {_INTERNAL}"
+    return None, f"{network} includes {refusal.address}, {_INTERNAL}"
 
 
 def scan_network(value):
     """The network ``value`` names, if a discovery may sweep it.
 
     Raises NetworkRefused for anything that is not a network in CIDR
-    notation (or a single address) of at most MAX_SCAN_ADDRESSES addresses.
-    For the task that runs a discovery; a request is answered from
-    ``check_network``.
+    notation (or a single address) of at most MAX_SCAN_ADDRESSES addresses,
+    none of them internal unless the operator allows it. For the task that
+    runs a discovery; a request is answered from ``check_network``.
     """
     network, refusal = check_network(value)
     if refusal is not None:
         raise NetworkRefused(refusal)
     return network
+
+
+def check_address(value):
+    """``(address, None)`` if a port scan may reach ``value``, else
+    ``(None, why)``.
+
+    ``value`` is an asset's address. As for ``check_network``, the refusal
+    is a message written here and returned, not raised.
+    """
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        return None, "The asset has no IP address to scan."
+    try:
+        # No zone here either ("fe80::1%eth0").
+        if "%" in text:
+            raise ValueError(text)
+        address = ipaddress.ip_address(text)
+    except ValueError:
+        return None, f"{text[:64]!r} is not an IP address."
+    if not scan_policy().allows(address):
+        return None, f"{address} is {_INTERNAL}"
+    return address, None

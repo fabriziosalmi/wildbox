@@ -16,6 +16,7 @@ Two paths, each the one a real client uses:
 Every test asserts a concrete outcome; none of them accepts "any status".
 """
 
+import ipaddress
 import os
 import time
 import uuid
@@ -160,6 +161,33 @@ def _user_schedule_interval() -> int:
     guardian/schedule.py.
     """
     return _beat_interval("GUARDIAN_SCHEDULE_USER_SCHEDULES", "60")
+
+
+def _require_loopback_scans() -> None:
+    """The stack must allow guardian to scan loopback (#748).
+
+    guardian scans no internal address unless the operator lists its range
+    in GUARDIAN_ALLOWED_INTERNAL_TARGETS. The tests that need a host that
+    answers scan the worker's own loopback, so the stack is started with
+    127.0.0.0/8 allowed (integration-tests.yml, production-stack.yml) and
+    the suite is given the same value. Without it: a failure when every
+    service is required, a skip otherwise.
+    """
+    loopback = ipaddress.ip_network("127.0.0.0/8")
+    for entry in os.getenv("GUARDIAN_ALLOWED_INTERNAL_TARGETS", "").split(","):
+        try:
+            listed = ipaddress.ip_network(entry.strip())
+        except ValueError:
+            continue
+        if listed.version == 4 and loopback.subnet_of(listed):
+            return
+    message = (
+        "start the stack with GUARDIAN_ALLOWED_INTERNAL_TARGETS=127.0.0.0/8, "
+        "and set it for the suite too"
+    )
+    if os.getenv("REQUIRE_ALL_SERVICES", "") in ("1", "true", "yes"):
+        pytest.fail(message, pytrace=False)
+    pytest.skip(message)
 
 
 def _timestamp(value: str) -> datetime:
@@ -595,7 +623,10 @@ class TestGuardianMonitoring:
         The action imported a module that does not exist and answered 500 on
         every call (#537). The address is loopback, so the worker scans
         itself: every port is refused at once and nothing leaves the host.
+        Loopback is an internal address, which guardian scans only where the
+        operator allows it (#748): this stack does.
         """
+        _require_loopback_scans()
         payload = {
             "name": f"it-guardian-scan-{uuid.uuid4().hex[:12]}",
             "asset_type": "server",
@@ -723,8 +754,11 @@ class TestGuardianMonitoring:
         manual run found nothing. The rule here runs every minute over one
         loopback address, which the worker's TCP probe finds up (every
         connection is refused at once, and nothing leaves the host); the
-        asset can only appear if the rule ran on its own.
+        asset can only appear if the rule ran on its own. Loopback is an
+        internal address, which guardian scans only where the operator
+        allows it (#748): this stack does.
         """
+        _require_loopback_scans()
         interval = _user_schedule_interval()
         address = f"127.0.{uuid.uuid4().int % 250 + 1}.{uuid.uuid4().int % 250 + 1}"
         created = requests.post(

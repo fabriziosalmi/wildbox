@@ -340,7 +340,13 @@ The tools that scan a host, an address or a range refuse internal targets
 before they run (#614), on `POST /api/v1/tools/<name>`, in the
 asynchronous task and in each step of `security_automation_orchestrator`.
 The check is `enforce_target_policy` in `app/target_policy.py`, which also
-runs the URL guard for tools that fetch a URL.
+runs the URL guard for tools that fetch a URL. What is internal, what the
+allowlist covers and how a host is parsed are decided by
+`open_security_shared.target_policy`, the implementation Guardian's asset
+discovery and port scans use too (#748): `app/target_policy.py` holds which
+fields of which tool are targets, this service's setting and the wording of
+a refusal. Guardian has a list of its own,
+`GUARDIAN_ALLOWED_INTERNAL_TARGETS`, and does not read this service's.
 
 Refused, unless allowed below:
 

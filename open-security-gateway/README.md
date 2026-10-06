@@ -10,13 +10,14 @@ The configuration lives in:
 
 | File | Contents |
 | --- | --- |
-| `nginx/nginx.conf` | Global settings, `limit_req` zones, Lua shared dictionaries, exported environment variables |
+| `nginx/nginx.conf` | Global settings, the include of the `limit_req` zones, Lua shared dictionaries, exported environment variables |
 | `nginx/conf.d/wildbox_gateway.conf` | Upstreams, listeners and every `location` block |
 | `nginx/includes/` | Shared proxy settings, the request-method and CORS rules (`cors.conf`), dashboard header settings, and the auth-cache purge endpoint |
 | `nginx/lua/auth_handler.lua` | Authentication, decision cache, revocation, API-key scopes, per-team rate limit |
 | `nginx/lua/utils.lua` | Token extraction, header cleanup, HTTP client helper |
 | `nginx/lua/cors.lua` | The CORS allowlist (`CORS_ORIGINS`), the preflight answer, and the labels on the API's responses |
-| `scripts/docker-entrypoint.sh` | Generates a self-signed certificate if none is mounted, then starts OpenResty with `nginx/nginx.conf` |
+| `scripts/docker-entrypoint.sh` | Generates a self-signed certificate if none is mounted, writes the `limit_req` zones, then starts OpenResty with `nginx/nginx.conf` |
+| `scripts/render_rate_limits.sh` | Validates the per-address rate limits and writes the `limit_req` zones `nginx.conf` includes (see [Rate limiting](#rate-limiting)) |
 
 ## Running
 
@@ -235,7 +236,9 @@ authenticates it.
 | `/api/v1/identity/*` | `open-security-identity:8001` `/api/v1/*` | identity |
 
 `/auth/jwt/*` is limited to 5 requests per second per client IP (burst 3);
-`/auth/register` and `/auth/forgot-password` use the same zone with burst 2.
+`/auth/register` and `/auth/forgot-password` use the same zone, and so the
+same counter, with burst 2. The rate is `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND`
+(see [Rate limiting](#rate-limiting)).
 Identity routes do not pass through `auth_handler`, so the per-team rate
 limit and API-key scopes do not apply to them; identity enforces the
 password-change requirement on them itself. Since the gateway authenticated
@@ -314,11 +317,13 @@ curl --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
 
 Two independent limits apply:
 
-- **Per client IP** (`limit_req` in `nginx.conf`). The HTTPS server applies the
-  `global` zone, 100 requests per second with burst 10, to every location that
-  does not set its own. The auth endpoints use the `auth` zone (5 requests per
-  second) and static assets the `static_assets` zone (500 requests per second,
-  burst 200). Excess requests get `429`.
+- **Per client IP** (nginx `limit_req`), before authentication. The HTTPS
+  server applies the `global` zone, 100 requests per second with burst 10, to
+  every location that does not set its own. The auth endpoints use the `auth`
+  zone (5 requests per second) and static assets the `static_assets` zone
+  (500 requests per second, burst 200). Excess requests get nginx's own
+  `429`, an HTML page without `Retry-After`. See
+  [Per-address limits](#per-address-limits) below.
 - **Per team** (`apply_rate_limiting` in `auth_handler.lua`), on routes that
   call `authenticate()`. `RATE_LIMIT_PER_HOUR` (default 10000) is enforced as a
   fixed 60-second window of `RATE_LIMIT_PER_HOUR * 60 / 3600` requests, 166 by
@@ -328,6 +333,53 @@ Two independent limits apply:
   `{"error":"rate_limit_exceeded",...}`.
 
 There are no plans or tiers: every team gets the same limit.
+
+### Per-address limits
+
+The per-address limits protect the gateway and identity from a single
+client: a flood is refused before any Lua runs or any service is called, and
+the `auth` zone slows password guessing and mass registration from one
+address. Identity's own lockout of an account after failed logins does not
+depend on them.
+
+Their rates are operator settings, read from the container's environment
+when it starts:
+
+| Setting | Default | Zone | Applies to | Burst |
+| --- | --- | --- | --- | --- |
+| `GATEWAY_RATE_LIMIT_PER_SECOND` | `100` | `global` | every location without a limit of its own | 10 |
+| `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` | `5` | `auth` | `/auth/jwt/*`, `/auth/register`, `/auth/forgot-password`, counted together | 3, 2, 2 |
+| `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` | `500` | `static_assets` | the dashboard's static assets | 200 |
+
+`limit_req_zone` takes its rate as a literal, so `scripts/render_rate_limits.sh`
+writes the three zones to `/run/wildbox-gateway/limit_req_zones.conf` before
+nginx starts, and `nginx.conf` includes that file. The bursts are written in
+`conf.d/wildbox_gateway.conf`, beside the routes.
+
+- A value must be a whole number from 1 to 100000, in digits only. With any
+  other value the gateway logs `<setting> must be a whole number of requests
+  per second between 1 and 100000` and does not start. An unset setting has
+  its default.
+- The gateway logs the rates it runs with at start:
+  `Per-address request limits: global 100 r/s, auth 5 r/s, static assets 500 r/s.`
+- A change takes effect when the container is started again
+  (`docker compose up -d gateway`), not on an nginx reload.
+- Nothing a client sends changes a limit or the counter it is counted in:
+  the zones are keyed by the address of the connection
+  (`$binary_remote_addr`), never by a header such as `X-Forwarded-For`.
+  Behind another proxy or a NAT, every client arrives from one address and
+  shares one counter; that is the case for raising a rate.
+- A request the gateway answers before a location runs is not counted: a
+  refused method (`405`), a CORS preflight (`204`), and what a location
+  answers with its own `return` (`/health`, the `404` of an unknown `/api/`
+  path). A request without a credential is counted, and then answered `401`.
+
+The stacks CI starts for the integration and Playwright suites set the three
+rates to 10000: the suites send every request from one address and faster
+than a deployment's limits allow, and they are not tests of those limits.
+`test/rate_limit_tests.py` is: it runs against the production image with
+none of the settings and checks that a volley is refused past the burst and
+a stream is held to the rate, for the `global` and `auth` zones.
 
 ## Auth-cache purge
 
@@ -342,7 +394,8 @@ to flush the whole cache. The answer is
 ## Configuration
 
 The root `docker-compose.yml` passes these variables to the gateway. Lua reads
-them through the `env` directives in `nginx.conf`.
+the first five through the `env` directives in `nginx.conf`; the entrypoint
+reads the three rates.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
@@ -351,12 +404,16 @@ them through the `env` directives in `nginx.conf`.
 | `AUTH_CACHE_TTL` | `300` | Seconds a decision is cached |
 | `RATE_LIMIT_PER_HOUR` | `10000` | Per-team request budget, see above. Must be a whole number from 1 to 1,000,000,000; any other value stops the gateway at startup |
 | `CORS_ORIGINS` | `http://localhost:3000` in `docker-compose.yml`, empty under the production overlay | The origins whose pages may call the API from a browser, see [CORS](#cors). An entry that is not an origin stops the gateway at startup |
+| `GATEWAY_RATE_LIMIT_PER_SECOND` | `100` | Requests per second from one client address, see [Per-address limits](#per-address-limits). Must be a whole number from 1 to 100000; any other value stops the gateway at startup |
+| `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` | `5` | The same for the login, registration and forgotten-password routes |
+| `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` | `500` | The same for the dashboard's static assets |
 
-The Compose file and `.env.example` also set `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`
-and `GATEWAY_DEBUG`. They have no effect: no nginx or Lua code reads
-`WILDBOX_ENV` or `GATEWAY_LOG_LEVEL`, and `GATEWAY_DEBUG` is stored in the
-configuration but never used. The error log level is fixed at `warn` in
-`nginx.conf`.
+The Compose file also sets `GATEWAY_DEBUG`. It has no effect: it is stored in
+the configuration but never used. The error log level is fixed at `warn` in
+`nginx.conf`. `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`, `NGINX_ENVSUBST_OUTPUT_DIR`,
+`ENVIRONMENT` and, under the production overlay, `LOG_LEVEL` used to be
+passed to the gateway as well; nothing in it read them, and they are no
+longer passed.
 
 ### CORS
 
@@ -444,14 +501,25 @@ CI runs two checks on this directory:
   image as built, with nothing mounted over `/etc/nginx`: only this
   project's configuration is loaded, port 80 answers `/health` and
   redirects the rest whatever the `Host`, and Docker reports the container
-  healthy by the image's own `HEALTHCHECK`.
+  healthy by the image's own `HEALTHCHECK`. `test/rate_limit_tests.py`
+  checks the per-address limits at their default rates against the same
+  container, and `test/startup_config_tests.sh` checks, for both images,
+  that a rate that is not a whole number in range stops the gateway.
 
-The `docker-compose.yml` and `Makefile` in this directory are for standalone
-use. They use a separate `wildbox-net` network and are not what the root stack
-or CI runs. There is no `docker-compose.dev.yml` any more: it mounted a mock
-identity configuration that was never in the repository, so it could not
-start. The mock identity the tests use is `test/mock_identity.py`, run by
-`.github/workflows/gateway-tests.yml`.
+There is no Compose file or `Makefile` in this directory any more. The
+`docker-compose.yml` here started the gateway and a Redis it does not use on
+a network of its own, where nginx stopped at once with
+`host not found in upstream "open-security-identity:8001"`: the gateway
+resolves every service's name when it starts, so it cannot run alone. The
+`Makefile`, `scripts/setup.sh` and `test/integration_test.sh` drove that
+file, and `scripts/test_config.sh` checked a configuration it wrote itself,
+not this one; they are removed with it, as is this directory's
+`.env.example`, which only that file read. `docker-compose.dev.yml` went
+earlier: it mounted a mock identity configuration that was never in the
+repository. To run the gateway, start the root stack; to run it alone
+against stand-ins for every service, start the containers
+`.github/workflows/gateway-tests.yml` starts, with `test/mock_identity.py`
+answering under each service's name.
 
 ## License
 

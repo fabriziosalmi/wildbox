@@ -421,6 +421,12 @@ class DataForwarder:
     def enabled(self) -> bool:
         return self.config.data_lake.forwarding_enabled
 
+    @property
+    def held(self) -> int:
+        """Events the sender holds: its buffer's, and the one in its hand
+        while the buffer has no room for it."""
+        return len(self.buffer) + (self._in_hand is not None)
+
     async def start(self):
         """Start data forwarding"""
         logger.info("Starting data forwarder")
@@ -701,10 +707,20 @@ class DataForwarder:
         while self.running:
             try:
                 event = await self.input_queue.get()
-                held = self._prepare(event)
+                try:
+                    held = self._in_hand = self._prepare(event)
+                finally:
+                    # The sender's from here: in its hand until the buffer
+                    # has room, or dropped and counted. Said in the same
+                    # turn of the event loop as the get, so that whoever
+                    # waits on the queue's join() (the agent's stop) is
+                    # never told that nothing is left while an event is in
+                    # neither place (#754). Not said after the wait for
+                    # room below: that is a wait for the gateway, and
+                    # stop() takes what is in hand.
+                    self.input_queue.task_done()
                 if held is None:
                     continue
-                self._in_hand = held
                 while self._lacks_room(len(held[0])):
                     if self._full_since is None:
                         self._full_since = time.monotonic()

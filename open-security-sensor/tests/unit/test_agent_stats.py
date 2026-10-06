@@ -12,6 +12,7 @@ the gateway is a stand-in at the sender's ``_send``.
 import asyncio
 import json
 import sys
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,8 +38,40 @@ from sensor.pipeline.data_forwarder import (  # noqa: E402
     SENT,
     DataForwarder,
 )
+from sensor.utils import resource_monitor  # noqa: E402
 
 API_KEY = "wsk_t3st.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+
+class Measured:
+    """What the resource monitor measures of the sensor's process."""
+
+    memory_mb = 64.0
+    cpu_percent = 1.0
+
+
+@pytest.fixture(autouse=True)
+def measured(monkeypatch):
+    """The sensor's process, as the resource monitor sees it, is a stand-in.
+
+    The agents here measured the process they ran in, which is pytest's: a
+    test that expected no alert passed for as long as the whole suite, its
+    plugins and the coverage tracer stayed under performance.max_memory_mb
+    (128 MB), on whatever host ran it (#754).
+    """
+    measured = Measured()
+
+    class Process:
+        def memory_info(self):
+            return types.SimpleNamespace(rss=int(measured.memory_mb * 1024 * 1024))
+
+        def cpu_percent(self):
+            return measured.cpu_percent
+
+    monkeypatch.setattr(
+        resource_monitor, "psutil", types.SimpleNamespace(Process=Process)
+    )
+    return measured
 
 
 class Gateway:
@@ -231,7 +264,8 @@ async def test_the_stats_route_answers_the_counters(tmp_path, gateway):
     assert stats["events_processed"] == 2
     assert stats["events_forwarded"] == 2
     assert isinstance(stats["uptime_seconds"], int)
-    assert stats["memory_mb"] > 0 and stats["over_limits"] in (True, False)
+    assert stats["memory_mb"] == 64.0 and stats["cpu_percent"] == 1.0
+    assert stats["over_limits"] is False
     assert "throttled" not in stats
     datetime.fromisoformat(stats["timestamp"])
     assert stats["last_activity"] != stats["timestamp"]
@@ -244,7 +278,7 @@ async def test_the_stats_route_answers_the_counters(tmp_path, gateway):
     assert details["hostname"] == agent.data_processor.hostname != "unknown"
     assert details["os"] == agent.data_processor.platform_info["system"]
     assert details["events_collected"] == details["events_forwarded"] == 2
-    assert details["memory_mb"] > 0
+    assert details["memory_mb"] == 64.0
     for invented in ("disk_usage", "network_connections", "process_count"):
         assert invented not in details
     assert "trends_change" not in summary
@@ -271,12 +305,14 @@ async def test_the_summary_counts_errors_as_something_to_look_at(tmp_path, gatew
 
 
 @pytest.mark.asyncio
-async def test_the_summary_counts_a_sensor_over_its_thresholds(tmp_path, gateway):
+async def test_the_summary_counts_a_sensor_over_its_thresholds(
+    tmp_path, gateway, measured
+):
     log = tmp_path / "app.log"
     log.write_text("")
     agent = _agent(log)
-    # This process uses more than one megabyte.
-    agent.config.performance.max_memory_mb = 1
+    # More than performance.max_memory_mb, which is 128 unless set.
+    measured.memory_mb = 129.0
     api = LocalAPI(agent.config, agent)
 
     await agent.start()

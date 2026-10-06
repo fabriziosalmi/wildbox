@@ -8,6 +8,8 @@ from pydantic import AnyUrl, BaseModel
 import pydantic_core
 import logging
 
+from open_security_shared.target_policy import METADATA_HOSTNAMES, is_blocked_address
+
 from .log_safety import error_site
 from .url_guard import is_local_hostname, parse_target_url
 
@@ -37,11 +39,9 @@ _PYDANTIC_URL_TYPES = _pydantic_url_types()
 class InputSanitizer:
     """Utility class for input sanitization and validation."""
 
-    # Names of cloud metadata services, refused before any lookup.
-    BLOCKED_HOSTNAMES = frozenset({
-        'metadata.google.internal',
-        'metadata.internal', 'instance-data',
-    })
+    # Names of cloud metadata services, refused before any lookup. The list
+    # is the shared target policy's, which guardian's scans use too (#748).
+    BLOCKED_HOSTNAMES = METADATA_HOSTNAMES
     
     # Dangerous patterns that should be blocked
     DANGEROUS_PATTERNS = [
@@ -328,27 +328,17 @@ class InputSanitizer:
 
     @staticmethod
     def _is_blocked_ip(addr) -> bool:
-        """Return True if the IP address is private, loopback, link-local, or cloud metadata."""
-        import ipaddress
-        # Cloud metadata endpoints
-        CLOUD_METADATA_IPS = {
-            ipaddress.ip_address('169.254.169.254'),  # AWS/GCP/Azure metadata
-            ipaddress.ip_address('fd00::c2b6:a9ff:fe52:2ea5'),  # Azure IPv6 metadata
-        }
-        if addr in CLOUD_METADATA_IPS:
-            return True
-        # not is_global also covers ranges the flags below miss, such as
-        # shared address space (100.64.0.0/10), matching the host check in
-        # SecurityValidator._validate_public_host.
-        return (
-            not addr.is_global
-            or addr.is_private
-            or addr.is_loopback
-            or addr.is_link_local
-            or addr.is_reserved
-            or addr.is_multicast
-            or addr.is_unspecified
-        )
+        """Return True if the IP address is private, loopback, link-local, or cloud metadata.
+
+        The classification is ``open_security_shared.target_policy``'s, the
+        one implementation for this service and for guardian's scans (#748):
+        cloud metadata addresses, and everything that is not globally
+        reachable (which also covers shared address space, 100.64.0.0/10,
+        matching the host check in SecurityValidator._validate_public_host).
+        This method stays the name the URL guard, ``app.safe_http`` and
+        ``app.target_policy`` call it by.
+        """
+        return is_blocked_address(addr)
 
     @classmethod
     def validate_filename(cls, filename: str) -> str:

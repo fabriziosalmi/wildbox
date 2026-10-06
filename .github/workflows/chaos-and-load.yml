@@ -60,6 +60,11 @@ jobs:
           python3 scripts/validate_secrets.py
 
       - name: Raise the per-team rate limit
+        # Only this one. The per-address limits (GATEWAY_*_RATE_LIMIT_PER_SECOND)
+        # stay at the rates a deployment has, unlike in the jobs that run the
+        # integration and Playwright suites (#756): the experiments measure
+        # the configuration that ships, and the load experiment takes a 429
+        # from those limits as an acceptable answer.
         run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
 
       - name: Start the stack

@@ -80,6 +80,31 @@ there, in words that hold no value.
 of every service and fails when one is handed a value whose name says it is
 a request, a part of one or a credential.
 
+## Scan targets
+
+`open_security_shared.target_policy` decides which network targets a service
+may connect to for a caller. The tools service (its network tools) and
+guardian (asset discovery and port scans) both run inside the stack's
+networks, and both use this one implementation:
+
+- **Refused**: private, loopback, link-local, multicast, reserved, shared
+  and cloud-metadata addresses, IPv4 and IPv6, an IPv4 address embedded in an
+  IPv6 one included (IPv4-mapped, 6to4, NAT64); a range with any such address
+  in it, even when the rest of it is public; a range of more than 1,024
+  addresses; a name that resolves to such an address or does not resolve; and
+  the deployment's own names.
+- **Allowlist**: `parse_allowlist(raw, setting)` reads an operator's setting.
+  Each service has its own (`TOOLS_ALLOWED_INTERNAL_TARGETS`,
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS`) and neither reads the other's.
+- **Answer**: `TargetPolicy(allowlist)` answers with a `Refusal` (a `Reason`
+  and the address, host or count it is about) or `None`. It raises nothing
+  for a refused target and writes no message: each service words its own
+  refusal, so no response is built from the text of an exception.
+
+`tests/shared/target_policy_vectors.json` holds the cases the two services
+and this package must agree on; each of the three runs them through its own
+entry point.
+
 ## Installing it
 
 The package has no dependency of its own. Each group of modules has an extra
@@ -88,7 +113,7 @@ the extras of the modules it uses:
 
 | Extra | Modules | Requires |
 | --- | --- | --- |
-| none | `api_docs`, `circuit_breaker`, `environment`, `log_safety`, `scopes` | the standard library |
+| none | `api_docs`, `circuit_breaker`, `environment`, `log_safety`, `scopes`, `target_policy` | the standard library |
 | `fastapi` | `errors`, `gateway_auth`, `tenancy`, `security_middleware` | FastAPI, Pydantic 2 |
 | `auth` | `auth_utils` | FastAPI, PyJWT, passlib with bcrypt |
 | `metrics` | `observability` | FastAPI, prometheus-client 0.20 or later |
@@ -100,8 +125,8 @@ the extras of the modules it uses:
 something its extras do not require.
 
 The six FastAPI services use `fastapi` and `metrics`. Guardian (Django)
-imports `scopes` only, and the sensor (aiohttp) nothing: both install the
-package without an extra. No image installs
+imports `scopes` and `target_policy` only, and the sensor (aiohttp) nothing:
+both install the package without an extra. No image installs
 `auth`, `events` or `tracing` today. `tracing` does not work yet: the module
 imports the Jaeger Thrift exporter, whose last release (1.21.0) does not
 import under a current OpenTelemetry SDK, so `install_observability` logs

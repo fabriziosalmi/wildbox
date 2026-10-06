@@ -180,7 +180,8 @@ class AssetDiscoveryRuleSerializer(TeamScopedModelSerializer):
                 )
             for network in networks:
                 # What discover_assets would refuse on each run: not a
-                # network, or more addresses than one discovery sweeps (#724).
+                # network, more addresses than one discovery sweeps (#724),
+                # or an internal range the operator has not allowed (#748).
                 _, refusal = check_network(network)
                 if refusal is not None:
                     raise serializers.ValidationError(refusal)

@@ -157,10 +157,20 @@ jobs:
       - name: Run gateway revocation tests
         run: bash open-security-gateway/test/revocation_tests.sh
 
+      # The per-address limits at the rates a deployment has: gateway-prod
+      # sets none of the three settings. A volley is refused past the burst
+      # with nginx's 429, a stream is held to the rate, in the global zone
+      # and in the auth zone; and a gateway started with the rates the
+      # suites' stacks set lets the same sequences through (#756).
+      - name: Run gateway rate limit tests
+        run: python3 open-security-gateway/test/rate_limit_tests.py wildbox-gateway-prod gwtest gateway-prod
+
       # A RATE_LIMIT_PER_HOUR that is not a positive integer stops the
-      # gateway from starting (#627).
+      # gateway from starting (#627); so does a per-address limit that is
+      # not a whole number in range, in the test image and in the
+      # production one (#756).
       - name: Run gateway start-up configuration tests
-        run: bash open-security-gateway/test/startup_config_tests.sh wildbox-gateway-test gwtest
+        run: bash open-security-gateway/test/startup_config_tests.sh wildbox-gateway-test gwtest wildbox-gateway-prod
 
       - name: Dump container logs on failure
         if: failure()
