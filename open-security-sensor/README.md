@@ -428,10 +428,10 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
   abandoned, 8 for the collectors to stop, the 2 above, 12 for the
   processor and the sender (10 of them for the last batches); then the
   positions and the baseline are written; then 2 for the process to end.
-  That is 26 seconds at the very worst. A worker thread that is still busy when the sensor has stopped (a name
-  lookup the resolver has not answered, a scan in a file system that does
-  not answer) is not waited for beyond those last 2 seconds: the sensor
-  says which threads, and the process ends. The compose files give the
+  That is 26 seconds at worst. A worker thread that is still busy when the
+  sensor has stopped (a name lookup the resolver has not answered, a scan
+  in a file system that does not answer) is not waited for beyond those
+  last 2 seconds: the sensor says which threads, and the process ends. The compose files give the
   sensor 30 seconds (`stop_grace_period`), and the sensor's tests fail if
   that stops being enough; give it at least as much wherever else you run
   it (`docker run --stop-timeout 30`, `terminationGracePeriodSeconds` in

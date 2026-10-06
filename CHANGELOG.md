@@ -1234,8 +1234,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `stop_grace_period` of 30 in both Compose files, so a stop that used
   them was killed before it had written its log positions and said what
   it left behind. The limits are now 8, 2 and 12 seconds, with 2 for an
-  abandoned start and 2 for the process to end: 26 at the very worst,
-  which leaves 4 for the last writes. And the process did not always end
+  abandoned start and 2 for the process to end: 26 at worst, which
+  leaves 4 for the last writes. And the process did not always end
   when the sensor had stopped: the event loop, and the interpreter after
   it, wait without a limit for every worker thread, so a reverse DNS
   lookup the resolver had not answered, or a scan in a file system that
