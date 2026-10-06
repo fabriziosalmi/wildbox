@@ -17,6 +17,7 @@ from sqlalchemy import and_
 from app.config import get_config
 from app.models import Source, CollectionRun
 from app.utils.database import get_db_session, wait_for_schema
+from app.utils.log_safety import code_path, describe_error
 from app.collectors import CollectorRegistry, NoCollector
 # Import collectors to register them
 import app.collectors.sources  # noqa: F401
@@ -239,10 +240,22 @@ class CollectionScheduler:
             await self._handle_collection_error(source, "Collection timeout")
             
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Collection error for source {source.name}: {e}", exc_info=True)
-            task.last_error = str(e)
-            await self._handle_collection_error(source, str(e))
-            
+            # What failed, by its class, and the HTTP status when the error
+            # has one: not its text. The text was stored as the source's
+            # last_error, which `manage.py sources list` prints, and logged
+            # with a traceback that ends with it; the text of an error raised
+            # while a feed is fetched can hold the feed's URL, and with it
+            # its key. The collector's own errors have been stored this way
+            # since #755 (describe_error); the ones that reach the scheduler
+            # were left (#788).
+            described = describe_error(e)
+            logger.error(
+                "Collection error for source %s: %s\n%s",
+                source.name, described, code_path(e),
+            )
+            task.last_error = described
+            await self._handle_collection_error(source, described)
+
         finally:
             task.running = False
     
