@@ -118,7 +118,7 @@ and shows your team's telemetry only.
 
 ### Scenario 3: Attack Pattern Detection
 
-**Objective**: Verify different attack patterns are properly ingested and tagged.
+**Objective**: Verify that lines with different attack patterns are ingested, each tagged with its log source, and can be found in the event data.
 
 **Steps**:
 
@@ -173,7 +173,7 @@ and shows your team's telemetry only.
 
    ```bash
    # If using Docker
-   docker stats sensor
+   docker stats open-security-sensor
 
    # Check sensor logs for performance issues
    docker compose logs sensor | grep -i error
@@ -352,7 +352,7 @@ head -5 /tmp/wildbox-test/access.log
 
 ```bash
 # Check resource limits
-docker stats sensor
+docker stats open-security-sensor
 
 # Review performance config
 grep -A 10 "performance:" sensor-config/config.yaml
@@ -374,8 +374,8 @@ Track these metrics during testing:
 | Metric | Target | Command |
 | -------- | -------- | --------- |
 | Events ingested | 100% of generated | `curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/stats"` |
-| Memory usage | < 128 MB | `docker stats sensor` |
-| CPU usage | < 5% | `docker stats sensor` |
+| Memory usage | < 128 MB | `docker stats open-security-sensor` |
+| CPU usage | < 5% | `docker stats open-security-sensor` |
 | Ingestion latency | < 5 seconds | Compare log timestamp to ingested_at |
 | API response time | < 500ms | `time curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events"` |
 

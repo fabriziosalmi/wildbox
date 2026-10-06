@@ -48,9 +48,10 @@ repository; a `website/` directory in a local checkout is a leftover and is
 ignored by git.
 
 To add a page, write it under `docs/guides/`, `docs/security/` or `docs/api/`
-and add an entry to `docs/_data/docs_nav.yml`. CI runs markdownlint, cspell,
-proselint (through `scripts/check_prose.py`) and a link check on every
-Markdown file.
+and add an entry to `docs/_data/docs_nav.yml`. CI runs markdownlint, cspell and
+proselint (through `scripts/check_prose.py`) on every Markdown file. The link
+check fails the job for `README.md` only; for the pages under `docs/` it
+reports without failing.
 
 Notes that no longer describe the code are moved to
 `docs/archive/` in the repository,

@@ -9,7 +9,9 @@ if this page and that file disagree, the file is right and this page is a bug.
 
 - The **gateway** is the only service published on all interfaces. Clients
   use it over HTTPS on port 443. Ports 80 and 8080 answer `/health` and
-  redirect everything else to HTTPS, so authentication never happens in clear.
+  answer everything else with a 301 to `https://api.wildbox.local` (the first
+  `server_name` of the gateway configuration, whatever host was asked for),
+  so authentication never happens in clear.
 - Every other published port is bound to `127.0.0.1`. Those addresses work on
   the machine running Docker and nowhere else; they are for health checks,
   debugging and the integration tests, not for clients.
@@ -66,9 +68,9 @@ counts as unhealthy, as does any 4xx or 5xx and no answer at all. It also
 checks that PostgreSQL accepts connections and holds the `identity`, `data`
 and `guardian` databases, and that Redis answers `PONG` to a client that
 authenticates with the `REDIS_PASSWORD` of `.env` (or of the file `ENV_FILE`
-names): a Redis that refuses that password is unhealthy. `automations` and
-`prometheus` are skipped when they are not running, unless `COMPOSE_PROFILES`
-names their profile. The URLs live in one table,
+names): a Redis that refuses that password is unhealthy. `automations`,
+`prometheus` and `alertmanager` are skipped when they are not running, unless
+`COMPOSE_PROFILES` names their profile. The URLs live in one table,
 `scripts/lib/health_endpoints.sh`, which `scripts/wait-for-services.sh` uses
 too; a test keeps it equal to the column above and to `docker-compose.yml`.
 

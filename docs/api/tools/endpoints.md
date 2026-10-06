@@ -70,8 +70,10 @@ operator allows them, it refuses:
   or control characters.
 
 How a refusal reaches the caller depends on the path: the synchronous run
-answers **400** with the reason in `error.message`, an asynchronous run
-ends as a task with status `failed` and the reason in `error`, and a
+and the asynchronous submission answer **400** with the reason in
+`error.message`, and the submission creates no task; a task whose target is
+refused only when it runs (the name resolves to another address by then)
+ends with status `failed` and the reason in `error`; and a
 `security_automation_orchestrator` step that names a refused target fails.
 
 Every failed step of a `security_automation_orchestrator` workflow has an
@@ -287,10 +289,11 @@ The service refuses a run with these statuses:
 | 400 | A URL or a network target in the input is refused (see [Network Target Policy](#network-target-policy)) | The policy's reason |
 | 404 | No tool has that name | `Not Found` |
 | 403 | The tool acts on behalf of the caller and the caller is not authorized for it (today `sql_injection_scanner`, which also needs an authenticated caller) | The authorization reason |
+| 403 | The credential the gateway forwarded is an API key without `tools:execute`, or the request does not state its auth type (a gateway older than the service) | `This API key is not authorized for this operation.` with `error.details.code` `INSUFFICIENT_SCOPE`; or `error.details.code` `GATEWAY_AUTH_TYPE_REQUIRED` |
 | 408 | The run exceeded its time limit | `Tool execution timed out` |
 | 422 | The body is not a JSON object | `Request validation failed` |
 | 422 | The body does not match the input schema | `Input validation failed`; `error.details.errors` lists `loc`, `msg` and `type` for each field. Submitted values are not echoed back |
-| 500 | The tool failed | `Tool execution failed` |
+| 500 | The tool failed | `Tool execution failed`, or `An internal error occurred` (`type` `InternalServerError`) for an error the service does not expect from a tool |
 | 503 | The tool acts on behalf of the caller and the caller's hourly allowance cannot be counted, because Redis does not answer (see [Rate Limits](#rate-limits)). The tool was not run | `Rate limiting temporarily unavailable` |
 
 The time limit is the input's `timeout` field when the tool's schema has
@@ -337,8 +340,9 @@ created for any of the three.
 
 The worker checks again when the task runs, because the answer can have
 changed: a host name may resolve to another address by then. A task refused
-at that point reads status `failed` with the reason in `error`; the reason
-names the fields that failed, never their values. Whether the caller may run
+at that point reads status `failed` with the reason in `error`: for a
+target, the policy's reason, which names the target; for an input the tool's
+schema refuses, the fields that failed, never their values. Whether the caller may run
 a tool that acts for them is decided when the task runs: a task the tool
 refuses reads status `refused`.
 
@@ -695,7 +699,7 @@ the `X-Request-ID` the gateway set, for finding the request in the logs.
 | Status | Where |
 | --- | --- |
 | 400 | Run: target refused by the network target policy. Cancel: task already finished or canceled |
-| 403 | Run: tool refused the caller |
+| 403 | Run: tool refused the caller. Run or cancel: the service's own check of `tools:execute` (`error.details.code` `INSUFFICIENT_SCOPE` or `GATEWAY_AUTH_TYPE_REQUIRED`) |
 | 404 | Unknown tool; task not found or not the caller's |
 | 408 | Synchronous run timed out |
 | 422 | Request body missing, not an object, or not matching the input schema |

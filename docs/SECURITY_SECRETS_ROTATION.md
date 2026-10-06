@@ -78,7 +78,7 @@ configuration changed.
 
 ### GATEWAY_INTERNAL_SECRET
 
-The gateway sends it as `X-Gateway-Secret` on every proxied request, and each
+The gateway sends it as `X-Gateway-Secret` on every request it has authenticated, and each
 backend compares it with its own environment value; identity also requires it
 on `/internal/authorize`. A service still holding the old value refuses
 requests from one holding the new value, so a rolling restart produces `403`
@@ -284,7 +284,8 @@ Create the replacement key, move clients to it, then delete the old one.
 ## If `.env` has leaked
 
 Treat every value in it as known. Rotate `GATEWAY_INTERNAL_SECRET`,
-`JWT_SECRET_KEY` (with its API-key consequence above), `REDIS_PASSWORD`,
+`JWT_SECRET_KEY` (every session ends), `API_KEY_HASH_SECRET` (every stored
+API key has to be created again, above), `REDIS_PASSWORD`,
 `POSTGRES_PASSWORD` and `CSPM_CREDENTIAL_KEY`, and change the other
 credentials the file holds, such as `INITIAL_ADMIN_PASSWORD` and third-party
 API keys, with their providers. Then delete the `.env.bak.*` copies and

@@ -172,6 +172,12 @@ permalink: /docs.html
                                 <p class="mb-3">AI-assisted threat analysis.</p>
                                 <a href="/api/agents/endpoints/" class="btn-link">Endpoint reference</a>
                             </div>
+
+                            <div class="api-endpoint">
+                                <h3 id="cspm-service" class="font-semibold mb-2">CSPM Service</h3>
+                                <p class="mb-3">Cloud security posture scans of AWS accounts and their compliance figures.</p>
+                                <a href="/api/cspm/endpoints/" class="btn-link">Endpoint reference</a>
+                            </div>
                         </div>
 
                         <p>The endpoint references are written by hand and are the published API documentation. For a machine-readable schema, run the service in development: identity, tools, data, responder, agents and cspm serve <code>/openapi.json</code> on their local port when <code>ENVIRONMENT</code> is <code>development</code>, and guardian serves <code>/api/schema/</code> when <code>DEBUG</code> is on. See also the <a href="/api/">API documentation index</a>.</p>
@@ -203,7 +209,7 @@ permalink: /docs.html
                                 <tr><td><code>/auth/users/&hellip;</code></td><td>identity <code>/api/v1/users/&hellip;</code> (for example <code>/auth/users/me</code>)</td><td>validated by identity</td></tr>
                                 <tr><td><code>POST /auth/logout</code></td><td>identity <code>/api/v1/auth/logout</code></td><td>bearer token, revoked on success (a <code>GET</code> serves the dashboard's logout page)</td></tr>
                                 <tr><td><code>/api/v1/identity/auth/&hellip;</code></td><td>identity <code>/api/v1/auth/&hellip;</code></td><td>validated by identity</td></tr>
-                                <tr><td><code>/api/v1/identity/&hellip;</code></td><td>identity <code>/api/v1/&hellip;</code></td><td>validated by identity</td></tr>
+                                <tr><td><code>/api/v1/identity/&hellip;</code></td><td>identity <code>/api/v1/&hellip;</code> (<code>/api/v1/identity/health</code>: identity <code>/health</code>)</td><td>validated by identity; <code>/api/v1/identity/health</code> is authenticated by the gateway</td></tr>
                                 <tr><td><code>/api/v1/tools</code>, <code>/api/v1/tools/&hellip;</code></td><td>tools API <code>/api/tools/&hellip;</code></td><td>required</td></tr>
                                 <tr><td><code>/api/v1/tasks</code>, <code>/api/v1/tasks/&hellip;</code></td><td>tools API <code>/api/tasks/&hellip;</code> (asynchronous tool runs)</td><td>required</td></tr>
                                 <tr><td><code>/api/v1/data/&hellip;</code></td><td>data <code>/api/v1/&hellip;</code> (<code>/api/v1/data/health</code>: data <code>/health</code>)</td><td>required</td></tr>

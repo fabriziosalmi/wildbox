@@ -7,7 +7,7 @@ file, as the license requires.
 
 | Family | Weights | Subsets | License |
 |---|---|---|---|
-| Inter | 300, 400, 500, 600, 700, 800 | latin | [SIL Open Font License 1.1](https://openfontlicense.org) |
+| Inter | 300, 400, 500, 600, 700, 800 | latin, latin-ext | [SIL Open Font License 1.1](https://openfontlicense.org) |
 
 Source: Google Fonts. To refresh, re-download the `woff2` files for the same
 weights and keep `fonts.css` in sync.

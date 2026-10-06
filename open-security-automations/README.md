@@ -152,7 +152,7 @@ from the n8n container.
 | ------ | ------------ |
 | `scripts/import_workflows.sh [file]` | imports every workflow (or one file) into the running container with the n8n CLI |
 | `scripts/export_workflows.sh` | exports every workflow from n8n to `backups/workflows/<timestamp>/` |
-| `scripts/backup_n8n.sh` | backs up n8n's data directory and database |
+| `scripts/backup_n8n.sh` | written for the standalone file below: it looks for a container named `wildbox-automations-n8n` (`N8N_CONTAINER_NAME`) and archives a Docker volume named `wildbox-automations_n8n_data`. It does not back up the `automations` service of the root stack, whose container is `open-security-automations` and whose data is the directory `open-security-automations/n8n-data` |
 
 The import and export scripts take the container name from `N8N_CONTAINER`
 (default `open-security-automations`). They used n8n's REST API with HTTP
@@ -161,5 +161,8 @@ basic auth before, which n8n 1.x answers with 401.
 ## Standalone development
 
 `docker-compose.yml` in this directory runs n8n on its own, for working on
-workflows; its settings are in `.env.example`. The supported deployment is
+workflows; its settings are in `.env.example`. It does not start as it is:
+it needs a Docker network named `wildbox-net` to exist
+(`docker network create wildbox-net`) and `REDIS_PASSWORD` set in its
+`.env`, which `.env.example` leaves empty. The supported deployment is
 the `automations` profile of the root `docker-compose.yml`.

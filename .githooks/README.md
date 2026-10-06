@@ -37,7 +37,7 @@ This will make Git use hooks from `.githooks/` directory instead of `.git/hooks/
 6. ✅ Detects database connection strings with passwords
 7. ✅ Detects Stripe API keys
 8. ✅ Ensures .env.example files only contain placeholders
-9. ✅ Warns about hardcoded secrets in docker-compose files
+9. ✅ Aborts the commit on a hardcoded secret in a docker-compose file
 
 **Bypass (Not Recommended):**
 

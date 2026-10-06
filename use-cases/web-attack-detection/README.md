@@ -1,10 +1,10 @@
 # Web Attack Detection Use Case
 
-This use case demonstrates how to use **Wildbox** to ingest, parse, and analyze web server access logs to detect common web application attacks in real-time.
+This use case demonstrates how to use **Wildbox** to ingest and parse web server access logs, and how to look in the stored events for common web application attacks. Wildbox stores the lines; it does not detect the attacks.
 
 ## 🎯 Overview
 
-This example shows the **log ingestion and parsing** capabilities of Wildbox by monitoring nginx access logs for suspicious patterns that indicate potential attacks such as:
+This example shows the **log ingestion and parsing** capabilities of Wildbox by forwarding nginx access logs; the sample log holds requests typical of attacks such as:
 
 - **SQL Injection** - Attempts to manipulate database queries
 - **Cross-Site Scripting (XSS)** - Injection of malicious scripts
@@ -32,8 +32,7 @@ This example shows the **log ingestion and parsing** capabilities of Wildbox by 
         │  (open-security-sensor)  │
         │                          │
         │  • Log Forwarder         │
-        │  • Pattern Parser        │
-        │  • Event Enrichment      │
+        │  • nginx line parser     │
         └──────────────────────────┘
                       │
                       │ HTTPS, X-API-Key (data:ingest)
@@ -187,8 +186,10 @@ log_sources:
 
 By default (`read_from: end`) the sensor forwards only the lines written
 after it starts, so the sample lines already in the file would not be sent.
-`read_from: beginning` sends them, and sends them again at every restart:
-the sensor does not remember across restarts how far it has read. Use it for
+`read_from: beginning` sends them. It sends them again at every restart
+here, because this test configuration sets no `data_dir` to keep read
+positions in; with `data_dir` set the sensor goes on after the last line
+Wildbox accepted. Use it for
 tests like this one, not for a production log. `quick-start.sh` writes this
 configuration to `/tmp/wildbox-test-config.yaml` for you.
 
@@ -429,42 +430,35 @@ request or status when you query the events.
 
 ## 📈 Next Steps
 
-Once you have log ingestion working, you can extend this use case:
+Once you have log ingestion working, these are directions to build in. None
+is built: no Wildbox service reads the stored telemetry events, and the
+dashboard has no view of them.
 
-### 1. Add AI-Powered Analysis
+### 1. Analysis of what the events hold
 
-Use **open-security-agents** to analyze patterns and detect anomalies:
+**open-security-agents** analyzes one indicator at a time (an IP address, a
+domain, a URL, a file hash or an e-mail address). An address taken from
+these events can be submitted to it; it does not read the events itself.
 
-- Behavioral analysis
-- Threat classification
-- Attack pattern recognition
-- False positive reduction
+### 2. Response
 
-### 2. Automated Response
+**open-security-responder** runs YAML playbooks through its `system`,
+`wildbox`, `data` and `api` connectors. It has no action that blocks an
+address at a firewall, changes a rate limit, or sends a Slack message or an
+e-mail: its `notification` action writes to the responder's log. Nothing
+starts a playbook from a telemetry event; whatever reads the events would
+have to call the responder's API.
 
-Use **open-security-responder** to automatically respond to threats:
+### 3. Visualization
 
-- Block malicious IPs at the firewall
-- Add IPs to rate limiting lists
-- Send alerts to Slack/email
-- Trigger incident response playbooks
-
-### 3. Dashboard Visualization
-
-Use **open-security-dashboard** to visualize:
-
-- Real-time attack maps
-- Top attacking IPs
-- Attack type distribution
-- Timeline of events
+**open-security-dashboard** shows no telemetry. Charts of these events are
+yours to build on `GET /api/v1/data/telemetry/events`.
 
 ### 4. Threat Intelligence Correlation
 
-Correlate with **open-security-data** threat feeds:
-
-- Check attacking IPs against known bad actor lists
-- Enrich events with geolocation data
-- Compare attack patterns with CVE databases
+The attacking addresses can be checked against the indicators
+**open-security-data** has collected, with
+`POST /api/v1/data/indicators/lookup`.
 
 ## 🐛 Troubleshooting
 

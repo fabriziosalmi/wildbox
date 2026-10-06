@@ -100,10 +100,11 @@ performance:
   max_memory_mb: 128
   max_cpu_percent: 5
 
-  # Maximum queue size before dropping events
+  # Events each of the sensor's queues holds. When they are full the
+  # collectors wait: nothing is dropped
   max_queue_size: 1000
 
-  # Number of worker threads
+  # Number of concurrent processing tasks
   worker_threads: 2
 
 # Logging Configuration: the sensor's own log, on standard output. Set

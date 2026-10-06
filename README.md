@@ -30,7 +30,7 @@ Wildbox is pre-1.0. Interfaces can change between minor releases; read
 | Gateway | Single HTTPS entry point: authentication, per-IP and per-team rate limiting, routing | `open-security-gateway` |
 | Identity | Users, teams, roles, API keys with scopes, JWT sessions with server-side revocation | `open-security-identity` |
 | Security tools | 52 tools behind one API (DNS, TLS, email security, headers, ports, and more) | `open-security-tools` |
-| Threat intelligence | Indicator collection from 7 public feeds (abuse.ch, PhishTank, AbuseIPDB and others) and lookup | `open-security-data` |
+| Threat intelligence | Scheduled indicator collection and lookup. Collectors for seven public feeds; the default source is abuse.ch's Feodo Tracker, the one that needs no key | `open-security-data` |
 | Cloud posture | 22 checks against live AWS accounts; GCP and Azure are not supported, and scans of them are refused | `open-security-cspm` |
 | Vulnerabilities | Asset inventory, findings, risk-based prioritization, remediation tracking | `open-security-guardian` |
 | Response | YAML playbooks executed as background jobs | `open-security-responder` |
@@ -178,7 +178,6 @@ Ports, service names and bindings are listed in one place:
 ```bash
 make lock             # recompile every service's hash-pinned requirements.txt
 make lock-security    # move only packages with known advisories
-make test             # identity and guardian test suites, inside the running containers
 ```
 
 Unit tests run per service; see `.github/workflows/test.yml` for the exact

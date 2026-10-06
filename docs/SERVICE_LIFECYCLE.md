@@ -77,7 +77,6 @@ Previously active services that have been consolidated or replaced.
 
 **Deprecated**:
 
-- Standalone scripts in `scripts/debug/` (replaced by integrated testing)
 - Legacy authentication endpoints (migrated to identity service)
 
 ## Service Startup Sequence
@@ -90,20 +89,23 @@ docker compose up -d
 docker compose ps   # the STATUS column shows each container's health
 ```
 
-**Critical**: the gateway lists identity, guardian, responder, agents and api
-in `depends_on`, and nginx refuses to start when an upstream host name does not
-resolve. Starting the gateway alone, or with one of those backends stopped,
-leaves it restarting.
+**Critical**: the gateway lists every service it has an `upstream` for in
+`depends_on` (identity, guardian, responder, agents, api, data, cspm,
+dashboard), because nginx refuses to start when an upstream host name does
+not resolve. `docker compose up -d gateway` therefore starts them too;
+restarting the gateway while one of them is stopped leaves it restarting.
 
 ### Health Checks
 
 Every backend defines a Compose `healthcheck` that calls its `/health`
 endpoint inside the container. Check them with `docker compose ps`, or
-through the gateway for the routes that expose one, for example:
+through the gateway for the routes that expose one. The gateway exposes
+`/api/v1/data/health` and `/api/v1/identity/health`, both to authenticated
+callers only; its own `/health` needs no credentials:
 
 ```bash
 CA=open-security-gateway/ssl/wildbox.crt
-curl --cacert "$CA" https://<host>/api/v1/data/health
+curl --cacert "$CA" -H "X-API-Key: <key>" https://<host>/api/v1/data/health
 ```
 
 ## Service Communication Patterns
