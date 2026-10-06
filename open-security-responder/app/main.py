@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, status, Depends
 from fastapi.responses import JSONResponse
 import redis
 
+from . import __version__
 from .models import (
     ExecutionStatus, PlaybookExecutionAccepted, PlaybookExecutionRequest,
     PlaybookExecutionResult, PlaybookListResponse, HealthCheckResponse
@@ -103,8 +104,9 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "")
 
 # Initialize FastAPI app
 # One version, in one place (WILDBO-API-06): the constructor said 0.1.6 and the
-# root endpoint reported 1.0.0.
-SERVICE_VERSION = "0.1.6"
+# root endpoint reported 1.0.0. The place is app/__init__.py: the literal
+# was written here as well (#665).
+SERVICE_VERSION = __version__
 
 app = FastAPI(
     title="Open Security Responder API",

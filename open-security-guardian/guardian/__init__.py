@@ -4,7 +4,9 @@ Open Security Guardian - Main Django Package
 The Guardian: Proactive Vulnerability Management
 """
 
-__version__ = "1.0.0"
+# The version of the service, stated here only: guardian/settings.py gives
+# it to the API schema. This said 1.0.0 and the schema 0.1.6 (#665).
+__version__ = "0.1.6"
 __author__ = "Wildbox Security"
 __description__ = "Proactive Vulnerability Management Platform"
 

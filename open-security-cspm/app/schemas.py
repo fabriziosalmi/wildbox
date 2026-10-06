@@ -7,6 +7,7 @@ from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
+from . import __version__
 from .checks.framework import CloudProvider, CheckSeverity, CheckStatus
 
 
@@ -366,7 +367,7 @@ class HealthCheckResponse(BaseModel):
             "example": {
                 "status": "healthy",
                 "timestamp": "2024-01-15T10:30:00Z",
-                "version": "1.0.0",
+                "version": __version__,
                 "uptime_seconds": 3600.5,
                 "checks": {
                     "redis": "healthy",

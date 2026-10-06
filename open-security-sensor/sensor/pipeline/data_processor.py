@@ -17,6 +17,7 @@ from typing import Dict, List, Any, Optional
 import hashlib
 import platform
 
+from sensor import __version__ as SENSOR_VERSION
 from sensor.core.config import SensorConfig
 from sensor.pipeline.delivery import attach_delivery, settle, take_delivery
 from sensor.utils.platform import get_platform_info
@@ -239,7 +240,7 @@ class DataProcessor:
         # Add common enrichments
         event['metadata'].update({
             'processed_at': datetime.now(timezone.utc).isoformat(),
-            'processor_version': '1.0.0',
+            'processor_version': SENSOR_VERSION,
             'enriched': True
         })
         

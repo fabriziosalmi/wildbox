@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import List, Dict
 
+from . import __version__
+
 
 class Settings(BaseSettings):
     """Application settings with environment variable support.
@@ -24,7 +26,8 @@ class Settings(BaseSettings):
 
     # App configuration
     app_name: str = "Open Security CSPM"
-    app_version: str = "0.1.6"
+    # The package's version (app/__init__.py): it was written here too (#665).
+    app_version: str = __version__
     # Empty when ENVIRONMENT is not declared: the API schema and documentation
     # pages are for "development" only, and the default used to be that
     # value, so a service started without the variable published them (#722).

@@ -295,10 +295,12 @@ REST_FRAMEWORK = {
 # API DOCUMENTATION CONFIGURATION
 # =============================================================================
 
+from guardian import __version__ as GUARDIAN_VERSION  # noqa: E402
+
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Open Security Guardian API',
     'DESCRIPTION': 'Proactive Vulnerability Management Platform',
-    'VERSION': '0.1.6',
+    'VERSION': GUARDIAN_VERSION,
     'SERVE_INCLUDE_SCHEMA': False,
     'CONTACT': {
         'name': 'Wildbox Security',
