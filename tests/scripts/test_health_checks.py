@@ -534,7 +534,15 @@ def test_the_stale_generators_are_gone_and_nothing_points_at_them():
         capture_output=True,
         text=True,
     ).stdout.split()
-    allowed = ("CHANGELOG.md", "docs/archive/", "docs/api/README.md", "tests/scripts/")
+    # CHANGELOG.md and UPGRADING.md record the removal; neither points at
+    # the scripts as something to run.
+    allowed = (
+        "CHANGELOG.md",
+        "UPGRADING.md",
+        "docs/archive/",
+        "docs/api/README.md",
+        "tests/scripts/",
+    )
     assert [path for path in tracked if not path.startswith(allowed)] == []
 
 

@@ -834,7 +834,12 @@
     "pytz",
     "pywin",
     "qualysapi",
-    "ENVSUBST"
+    "ENVSUBST",
+    "externalsystem",
+    "notificationchannel",
+    "vulnerabilityattachment",
+    "webhookendpoint",
+    "teammembershiprevocation"
   ],
   "ignoreWords": [
     "APIKEY",
