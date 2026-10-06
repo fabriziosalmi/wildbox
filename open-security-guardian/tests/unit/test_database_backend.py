@@ -12,6 +12,7 @@ another one. Where the variable is not set, nothing is required.
 """
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -47,5 +48,6 @@ def test_ci_runs_the_suite_on_postgresql_and_says_so():
     assert "pytest tests/unit/" in body
     # The same major version as the stack's database.
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    assert "image: postgres:15\n" in compose
+    # The tag, with or without the digest it is pinned by (#726).
+    assert re.search(r"image: postgres:15(@sha256:[0-9a-f]{64})?\n", compose)
     assert "postgres:15 " in body
