@@ -525,6 +525,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard image: the devtools are rendered in development only,
   nothing calls `fromJSON()`, and the standalone output holds no code
   of solid-js, seroval or source-map-js, before or after.
+- **guardian's discovery and port scans refuse internal targets** (#748).
+  A team's owner or admin could point an asset discovery, a discovery
+  rule or a port scan at any network, and `guardian-worker`, which
+  connects to it, sits inside the stack's networks: with every service
+  in `docker-compose.yml`, and on `data` (PostgreSQL, Redis, identity)
+  and `egress` in the production overlay. A discovery of the worker's
+  own loopback, of the range Docker gave the stack, of `10.0.0.0/24` or
+  of `169.254.169.254/32` was accepted, stored in a rule and dialed. The
+  tools service has refused such targets since 0.11.0 (#614); guardian
+  now applies the same policy. Private, loopback, link-local, multicast,
+  reserved, shared and cloud-metadata addresses are refused, IPv4 and
+  IPv6, an IPv4 address written inside an IPv6 one included
+  (`::ffff:10.0.0.1`, 6to4, NAT64), and a network is refused whole when
+  any address of it is internal. `assets/assets/discover/`, a discovery
+  rule that is created or changed, and `assets/assets/{id}/scan/` answer
+  400 with the reason and queue nothing; the worker checks again when
+  the task runs, for a rule or an asset stored before. An asset at an
+  internal address is still recorded, and is not port scanned.
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists the internal ranges the
+  operator allows; it is empty by default (see Changed).
 
 ### Removed
 
@@ -1660,6 +1680,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **guardian scans an internal network only if
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists it** (#748). This changes a
+  deployment that uses guardian to discover or port scan its own LAN:
+  after the upgrade those requests answer 400, and a stored discovery
+  rule skips each internal network on every run (`guardian-worker` logs
+  the network and the variable). To keep scanning, set the variable in
+  `.env` to the ranges, as comma-separated CIDR ranges and IP addresses
+  (`192.168.50.0/24,10.20.0.0/16`), and recreate `guardian` and
+  `guardian-worker`. It is empty by default because no default can tell
+  a LAN from the stack: Docker takes the stack's networks from the same
+  private ranges. A discovery must lie inside the listed ranges
+  entirely, and the limit of 1,024 addresses still applies. A host name
+  is not an entry, and an entry that is not a range or an address stops
+  both containers at start-up, naming the variable and the entry. It is
+  guardian's own list: `TOOLS_ALLOWED_INTERNAL_TARGETS` is not read, and
+  a deployment where both services scan a lab sets both.
+- **One implementation of what may be scanned** (#748).
+  `open_security_shared.target_policy` now holds what the tools service
+  decided in `app/target_policy.py`: which addresses and names are
+  internal, how a host is parsed, what an allowlist covers and the limit
+  of 1,024 addresses. The tools service and guardian both use it, and
+  one file of cases, `tests/shared/target_policy_vectors.json`, is run
+  by the shared package's tests, the tools service's and guardian's. The
+  module needs the standard library only, so guardian's image installs
+  the shared package with no extra, as before. The tools service answers
+  as it did: its refusals, their wording and its setting are unchanged.
 - **Images install only the OS packages they name** (#726). agents,
   data, identity, sensor and the tools development image ran
   `apt-get install -y` and took every recommended package with it:

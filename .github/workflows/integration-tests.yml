@@ -143,6 +143,12 @@ jobs:
           # scanned (#614). The benchmarking range: refused by default and
           # routed nowhere, so the scan reaches nothing.
           TOOLS_ALLOWED_INTERNAL_TARGETS: "198.18.0.0/15"
+          # The one internal range guardian may scan here: loopback, where
+          # guardian-worker scans itself and nothing leaves its container.
+          # test_guardian_monitoring needs a host that answers for its port
+          # scan and its discovery rule; test_guardian_scan_targets shows
+          # that every other internal range stays refused (#748).
+          GUARDIAN_ALLOWED_INTERNAL_TARGETS: "127.0.0.0/8"
           # The agent's two team-data tools, which the model is not given
           # by default, so that test_agents_tools_identity runs them in the
           # agents container against the data service and guardian (#652).
@@ -205,6 +211,9 @@ jobs:
           GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
           # The allowlist the stack was started with (step above).
           TOOLS_ALLOWED_INTERNAL_TARGETS: "198.18.0.0/15"
+          # guardian's allowlist, as the stack was started with it (step
+          # above).
+          GUARDIAN_ALLOWED_INTERNAL_TARGETS: "127.0.0.0/8"
           # The team-data tools the stack was started with (step above): the
           # tests fail, not skip, if the agents container does not have them.
           AGENT_TEAM_DATA_TOOLS: "threat_intel_query_tool,vulnerability_search_tool"

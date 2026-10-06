@@ -665,6 +665,48 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api tools-
 
 The tools README, "Network targets", lists the fields checked per tool.
 
+### Internal targets of Guardian's scans
+
+Guardian's asset discovery and port scans connect from `guardian-worker`,
+which is on the stack's networks: with every service in `docker-compose.yml`,
+and on `data` (PostgreSQL, Redis, identity) and `egress` in the production
+overlay. They refuse internal targets, by the same policy as the network
+tools: private, loopback, link-local, multicast, reserved, shared and
+cloud-metadata addresses, IPv4 and IPv6, and any network that contains one,
+even in part. A discovery, a discovery rule or a port scan aimed at one
+answers 400 with the reason, and nothing is queued; the worker checks again
+when the task runs. Guardian scans addresses only, so there is no host name
+to check. An asset at an internal address is still recorded in the
+inventory; it is not port scanned.
+
+Nothing internal is scanned by default, your own LAN included. To scan it,
+list its ranges in `.env`, then recreate `guardian` and `guardian-worker`:
+
+```bash
+GUARDIAN_ALLOWED_INTERNAL_TARGETS=192.168.50.0/24,10.20.0.0/16
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d guardian guardian-worker
+```
+
+- **Entries.** CIDR ranges with their host bits zero and IP addresses,
+  comma-separated. No host names. A bad entry stops both containers at
+  start-up; `docker compose logs guardian` names the variable and the entry.
+- **A network must be inside the list.** A discovery of `192.168.50.0/23`
+  is refused when only `192.168.50.0/24` is listed. The limit of 1,024
+  addresses for each discovery applies to listed ranges too.
+- **Guardian's list, not the tools service's.** `TOOLS_ALLOWED_INTERNAL_TARGETS`
+  opens nothing for Guardian, and this variable nothing for the tools. Set
+  both if both scan the lab.
+- **Keep the stack out.** Every owner and admin of every team can scan what
+  is listed. Do not list the stack's Docker networks (by default in
+  `172.16.0.0/12`), loopback or `169.254.169.254`.
+- **Rules and assets stored before the upgrade** keep their networks and
+  addresses. A rule's run skips each internal network that is not listed, and
+  `guardian-worker` logs the network and the variable; the rule cannot be
+  saved again with that network until it is.
+
 ### The sensor's telemetry
 
 The `sensor` service sends host telemetry to the gateway,
