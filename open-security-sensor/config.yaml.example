@@ -3,7 +3,7 @@
 # Data Lake Connection
 # Batches go to the gateway, https://<gateway>/api/v1/data/ingest, which
 # authenticates the key and forwards them to the data service under the key's
-# team. See README.md, "Connecting the sensor to Wildbox".
+# team. See README.md, "Sending telemetry to Wildbox".
 data_lake:
   # The gateway URL (or the full .../api/v1/data/ingest URL). HTTPS only.
   # Overridden by SENSOR_DATA_LAKE_ENDPOINT.
@@ -134,4 +134,4 @@ network:
   bind_address: "0.0.0.0"  # Bind to all interfaces for Docker
   bind_port: 8004
   enable_api: true
-  api_key: null  # Set to require API key authentication
+  api_key: null  # The local API's key (or SENSOR_API_KEY). Unset, every route but /health answers 503
