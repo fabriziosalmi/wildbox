@@ -1,7 +1,6 @@
 # Wildbox Test Suite - Execution Guide
 
-**Last Updated**: 16 November 2025  
-**Test Inventory**: 30 test files (24 Python + 6 TypeScript)
+**Test inventory**: `scripts/check_test_collection.py` lists the test files and where CI collects them.
 
 ---
 
@@ -11,7 +10,6 @@
 
 ```bash
 # From repository root
-cd /Users/fab/GitHub/wildbox
 
 # Python integration tests (recommended first)
 pytest tests/integration/ -v
@@ -28,12 +26,12 @@ npx playwright test
 ### Prerequisites
 
 ```bash
-# Install pytest if not already installed
-pip install pytest pytest-asyncio httpx
+# Install what the suite imports (pytest-html too: the root pytest.ini
+# passes --html to every run from the repository root)
+pip install -r tests/requirements.txt
 
 # Ensure services are running
-docker-compose up -d
-sleep 30  # Wait for services to initialize
+docker compose up -d --wait --wait-timeout 600
 ```
 
 The integration suite sends every request from one address, one after
@@ -55,7 +53,10 @@ that warning is an error. The limits themselves are tested at their default
 rates by the gateway harness
 (`open-security-gateway/test/rate_limit_tests.py`).
 
-### Integration Tests (11 files)
+CI runs the suite as `python -m pytest tests/integration/ -v -rs --tb=short -o addopts=""`
+(`.github/workflows/integration-tests.yml`).
+
+### Integration Tests
 
 Test service-to-service communication and API endpoints.
 
@@ -75,10 +76,10 @@ pytest tests/integration/ -v --asyncio-mode=auto
 pytest tests/integration/ -v -s
 
 # Run specific test method
-pytest tests/integration/test_agents_ai.py::AgentsAITester::test_ioc_analysis -v
+pytest tests/integration/test_agents_ai.py::TestAgentsAI::test_service_health -v
 ```
 
-**Available Integration Tests:**
+**Some of the integration tests** (`ls tests/integration/test_*.py` shows all of them):
 
 - `test_agents_ai.py` - AI-powered security analysis
 - `test_automations_workflow.py` - n8n workflow automation
@@ -90,7 +91,7 @@ pytest tests/integration/test_agents_ai.py::AgentsAITester::test_ioc_analysis -v
 - `test_identity_comprehensive.py` - Auth, teams, subscriptions
 - `test_responder_metrics.py` - Incident response metrics
 - `test_sensor_telemetry.py` - Endpoint telemetry
-- `test_tools_execution.py` - Security tool execution (55+ tools)
+- `test_tools_execution.py` - Security tool execution (52 tools)
 
 ### Unit Tests
 
@@ -343,26 +344,10 @@ npx playwright test --headed --slow-mo=1000
 
 ### Pytest Configuration
 
-Create `pytest.ini` in repository root:
-
-```ini
-[pytest]
-testpaths = tests
-python_files = test_*.py
-python_classes = Test* *Tester
-python_functions = test_*
-asyncio_mode = auto
-addopts = 
-    -v
-    --strict-markers
-    --tb=short
-    --capture=no
-markers =
-    slow: marks tests as slow
-    integration: integration tests
-    unit: unit tests
-    e2e: end-to-end tests
-```
+The configuration is the root `pytest.ini`. It collects `test_*.py`, classes
+named `Test*` and functions named `test_*` (a class named `*Tester` is not
+collected), defines the markers, and passes `--strict-markers`, `--tb=short`,
+a JUnit file and an HTML report to every run.
 
 ### Playwright Configuration
 
@@ -370,8 +355,10 @@ Already configured in `open-security-dashboard/playwright.config.ts`:
 
 - Base URL: `http://localhost:3000`
 - Retries: 2 on CI
-- Timeout: 30 seconds
-- Projects: chromium, firefox, webkit
+- Timeout: 30 seconds (60 on CI)
+- Projects: `chromium`, `firefox`, `webkit` (frontend smoke; they skip the
+  backend specs), `backend-setup` and `backend-chromium` (the backend specs,
+  against the running stack)
 
 ---
 
@@ -398,7 +385,7 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov
       - name: Start services
-        run: docker-compose up -d
+        run: docker compose up -d
       - name: Wait for services
         run: sleep 60
       - name: Run tests
@@ -421,7 +408,7 @@ jobs:
       - name: Install Playwright
         run: npx playwright install --with-deps
       - name: Start services
-        run: docker-compose up -d
+        run: docker compose up -d
       - name: Wait for services
         run: sleep 60
       - name: Run E2E tests
@@ -440,24 +427,11 @@ jobs:
 
 ## Pre-Commit Hooks
 
+The repository ships `.pre-commit-config.yaml`; see
+`docs/PRE_COMMIT_HOOKS.md`. It runs no tests.
+
 ```bash
-# Install pre-commit
 pip install pre-commit
-
-# Create .pre-commit-config.yaml
-cat << EOF > .pre-commit-config.yaml
-repos:
-  - repo: local
-    hooks:
-      - id: pytest-quick
-        name: pytest-quick
-        entry: pytest tests/ -v --tb=short -x
-        language: system
-        pass_filenames: false
-        always_run: true
-EOF
-
-# Install hooks
 pre-commit install
 ```
 
@@ -472,38 +446,36 @@ pre-commit install
 make health
 
 # Restart specific service
-docker-compose restart gateway
-docker-compose restart identity
+docker compose restart gateway
+docker compose restart identity
 
 # View logs
-docker-compose logs -f gateway
-docker-compose logs -f identity
+docker compose logs -f gateway
+docker compose logs -f identity
 ```
 
 ### Port Conflicts
 
 ```bash
 # Check port usage
-lsof -i :8000  # Gateway
+lsof -i :443   # Gateway (also 80 and 8080)
+lsof -i :8000  # Tools (api)
 lsof -i :8001  # Identity
 lsof -i :3000  # Dashboard
-
-# Kill process on port
-kill -9 $(lsof -t -i:8000)
 ```
 
 ### Database Issues
 
 ```bash
 # Reset database
-docker-compose down -v
-docker-compose up -d postgres wildbox-redis
+docker compose down -v
+docker compose up -d postgres wildbox-redis
 sleep 10
-docker-compose up -d
+docker compose up -d
 
 # Run migrations
-docker-compose exec identity alembic upgrade head
-docker-compose exec guardian python manage.py migrate
+docker compose exec identity alembic upgrade head
+docker compose exec guardian python manage.py migrate
 ```
 
 ### Playwright Browser Issues
@@ -529,7 +501,7 @@ npx playwright install
    - E2E: Complete user workflows
 
 2. **Follow naming conventions**:
-   - Python: `test_*.py` or `*_test.py`
+   - Python: `test_*.py`, classes `Test*`, functions `test_*`
    - TypeScript: `*.spec.ts` or `*.test.ts`
 
 3. **Use pytest for new Python tests**:
@@ -563,9 +535,6 @@ test('User can login', async ({ page }) => {
 
 ## Resources
 
-- **Test Inventory**: `test_inventory.json` (machine-readable)
-- **Audit Report**: `TEST_SUITE_AUDIT_REPORT.md` (comprehensive analysis)
-- **Coverage Matrix**: `TEST_COVERAGE_MATRIX.md` (quick reference)
 - **Collection check**: `scripts/check_test_collection.py` (lists every test file CI does not run)
 
 ---
@@ -580,6 +549,4 @@ For questions or issues with tests:
 
 ---
 
-**Last Updated**: 16 November 2025  
-**Test Framework**: Pytest + Playwright  
-**Total Tests**: 30 files + 42 E2E test cases
+**Test Framework**: Pytest + Playwright

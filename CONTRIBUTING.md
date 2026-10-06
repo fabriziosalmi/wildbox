@@ -278,9 +278,7 @@ Conventions:
 The FastAPI services (agents, cspm, data, responder, tools) import the gateway
 dependency from the packaged `open_security_shared.gateway_auth`; identity is
 the authority the gateway asks, and guardian applies the same headers through
-its own Django authentication. A few tools still add a `sys.path` entry in
-their `main.py` or `schemas.py` (for example `directory_bruteforcer` and
-`header_analyzer`), against rule 1 above: remove it when you work on one.
+its own Django authentication.
 
 ---
 

@@ -10,10 +10,16 @@
 >   `.github/workflows/secret-scan.yml` scans the tree on every pull request
 >   and push to `main`. The local hooks are described in `PRE_COMMIT_HOOKS.md`
 >   (detect-secrets) and `.githooks/pre-commit`; git-secrets was not adopted.
-> - Two commands below do not exist: `scripts/generate_secrets.py` has no
->   `--rotate-all` option, and there is no `validate_env.sh`. Rotation is done
->   one secret at a time with `scripts/rotate_secrets.sh --secret <NAME>`; see
+> - One command below does not exist: `scripts/generate_secrets.py` has no
+>   `--rotate-all` option. Rotation is done one secret at a time with
+>   `scripts/rotate_secrets.sh --secret <NAME>`; see
 >   [SECURITY_SECRETS_ROTATION.md](SECURITY_SECRETS_ROTATION.md).
+> - `validate_env.sh` is `scripts/shell-scripts/validate_env.sh`, which
+>   `make setup` runs: it fails on a missing `.env`, on a known insecure
+>   value, and on a required variable that is missing or empty. The check
+>   that runs before every start is `scripts/validate_secrets.py`
+>   (`make validate-secrets`, a prerequisite of `make start` and
+>   `make start-prod`).
 
 **Date:** November 23, 2025  
 **Status:** Closed (see the note above)

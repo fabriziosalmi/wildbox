@@ -124,7 +124,7 @@ only membership is this team. An email that is already registered answers
 The new account carries `must_change_password`. Until its user changes the
 password, its sessions may only call `GET /api/v1/users/me`,
 `POST /api/v1/admin/me/change-password`, `PUT /api/v1/admin/me/password` and
-the logout routes. Identity answers `403` with detail `PASSWORD_CHANGE_REQUIRED`
+the logout routes. Identity answers `403` with the message `PASSWORD_CHANGE_REQUIRED` (`error.message`)
 to every other authenticated route, and the gateway does the same for every
 other service, because `/internal/authorize` reports
 `password_change_required: true`.
@@ -175,6 +175,34 @@ ages out. Deactivating an account sends guardian nothing.
 `503` if the secret is not configured). The gateway does not route `/internal/`
 to identity.
 
+`/internal/authorize` request body:
+
+```json
+{"token": "<JWT or API key>", "token_type": "bearer"}
+```
+
+`token_type` is `bearer` or `api_key`. The gateway also sends `request_path`,
+`request_method`, `client_ip`, `user_agent` and `timestamp`; identity does not
+use them.
+
+Response (`AuthorizationResponse` in `app/schemas.py`):
+
+| Field | Meaning |
+| --- | --- |
+| `is_authenticated` | `true` on success (failures are `401`) |
+| `user_id`, `team_id` | The account and the team the request runs in |
+| `role` | The account's role in that team: `owner`, `admin` or `member` |
+| `permissions` | `tool:basic`, `tool:advanced`, `feed`, `cspm`; owners and admins also get `team:manage`, `keys:manage` |
+| `scopes` | The API key's scopes; `null` for a session token |
+| `password_change_required` | The account must change its initial password |
+| `api_key_id` | The API key's id (API keys only), used by the gateway to revoke it |
+| `credential_expires_at` | Epoch seconds when the token or key expires, or `null` |
+
+For a session token, the team is the one named in the token's `team_id` claim
+if present, otherwise the account's oldest membership. Revoked tokens, tokens
+issued before the last password change, inactive users and expired or inactive
+keys are refused with `401`.
+
 `POST /internal/team-contacts` is called by guardian's worker only, when it
 is about to e-mail somebody about a team's data: guardian mirrors identity's
 users by id and keeps no address. It requires the
@@ -203,34 +231,6 @@ it and a deactivated account are an empty answer:
 
 An address is returned as identity holds it; identity does not verify
 addresses. No address is written to identity's log.
-
-Request body:
-
-```json
-{"token": "<JWT or API key>", "token_type": "bearer"}
-```
-
-`token_type` is `bearer` or `api_key`. The gateway also sends `request_path`,
-`request_method`, `client_ip`, `user_agent` and `timestamp`; identity does not
-use them.
-
-Response (`AuthorizationResponse` in `app/schemas.py`):
-
-| Field | Meaning |
-| --- | --- |
-| `is_authenticated` | `true` on success (failures are `401`) |
-| `user_id`, `team_id` | The account and the team the request runs in |
-| `role` | The account's role in that team: `owner`, `admin` or `member` |
-| `permissions` | `tool:basic`, `tool:advanced`, `feed`, `cspm`; owners and admins also get `team:manage`, `keys:manage` |
-| `scopes` | The API key's scopes; `null` for a session token |
-| `password_change_required` | The account must change its initial password |
-| `api_key_id` | The API key's id (API keys only), used by the gateway to revoke it |
-| `credential_expires_at` | Epoch seconds when the token or key expires, or `null` |
-
-For a session token, the team is the one named in the token's `team_id` claim
-if present, otherwise the account's oldest membership. Revoked tokens, tokens
-issued before the last password change, inactive users and expired or inactive
-keys are refused with `401`.
 
 ### Health and metrics
 
@@ -272,7 +272,7 @@ case-insensitive), plus a few variables read directly.
 | --- | --- | --- |
 | `DATABASE_URL` | none, required | `postgresql+asyncpg://...` |
 | `JWT_SECRET_KEY` | none, required | At least 32 characters; signs tokens and reset/verify tokens |
-| `API_KEY_HASH_SECRET` | none; required in production | Keys the API-key HMAC, separately from `JWT_SECRET_KEY`. At least 32 characters and 10 distinct ones, and not an `.env.example` placeholder |
+| `API_KEY_HASH_SECRET` | none; required unless `ENVIRONMENT` is `development` | Keys the API-key HMAC, separately from `JWT_SECRET_KEY`. At least 32 characters and 10 distinct ones, and not an `.env.example` placeholder |
 | `JWT_ALGORITHM` | `HS256` | |
 | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Token lifetime |
 | `REDIS_URL` | `redis://localhost:6379/0` | Token blacklist and login lockout |
@@ -306,7 +306,7 @@ leaves API keys valid (#648):
   environment it refuses a value that is too short, has too few distinct
   characters or is a placeholder from `.env.example` (`app/config.py`); an
   empty value counts as unset.
-- Outside production an unset value falls back to `JWT_SECRET_KEY`, and
+- In `development` only, an unset value falls back to `JWT_SECRET_KEY`, and
   identity logs a warning at startup.
 - An existing deployment must seed it once from its current
   `JWT_SECRET_KEY`, so the digests stored so far keep matching, with

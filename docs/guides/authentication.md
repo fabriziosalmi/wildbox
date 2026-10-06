@@ -111,9 +111,11 @@ curl -s --cacert "$CA" -X POST -H "Authorization: Bearer $TOKEN" \
   https://localhost/auth/logout
 ```
 
-`POST /auth/jwt/logout` does the same; it is the route the dashboard's logout
-calls. Both answer 200 whether or not the token was already revoked, and 401
-without a bearer token.
+`POST /auth/jwt/logout` revokes the token in the same way; it is the route
+the dashboard's logout calls. `POST /auth/logout` answers 200 whether or not
+the token was already revoked; `POST /auth/jwt/logout` answers 204, and 401
+for a token that is already revoked, because it authenticates the token
+first. Both answer 401 without a bearer token.
 
 What revocation does:
 

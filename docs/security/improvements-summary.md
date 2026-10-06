@@ -1,10 +1,10 @@
 # Wildbox Security Improvements Summary
 
-> **Historical document (November 2024).** It describes the code as it was then;
+> **Historical document (November 2025).** It describes the code as it was then;
 > file paths, line numbers, scores and statuses below no longer match `main`.
 > For what is true today, see the [Security status](status.md).
 
-**Date**: November 7, 2024  
+**Date**: November 7, 2025  
 **Status**:  Complete  
 **Impact**: Critical Security Hardening
 
@@ -186,6 +186,10 @@ app = FastAPI(
 - `open-security-shared/auth_utils.py`
 - `open-security-shared/security_middleware.py`
 
+> **Superseded.** `auth_utils.py` and `security_middleware.py` were imported
+> by no service and have been removed. The services authenticate with
+> `open-security-shared/gateway_auth.py`.
+
 **Features:**
 
 - Centralized authentication utilities
@@ -336,6 +340,12 @@ app = FastAPI(
 
 ## Remaining Vulnerabilities
 
+> **Superseded.** No service depends on python-jose any more, and Dependabot
+> opens no pull requests for the Python services: `.github/dependabot.yml` has
+> no `pip` entry, and Python security upgrades come from
+> `.github/workflows/pip-security-upgrades.yml`. For what is open today, see
+> the [Security status](status.md).
+
 **10 Remaining** (4 critical, 1 high, 4 moderate, 1 low)
 
 These are **transitive dependencies** from upstream packages - all tracked in [GitHub Security Alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot):
@@ -396,6 +406,14 @@ These are **transitive dependencies** from upstream packages - all tracked in [G
 
 ## Getting Started
 
+> **Superseded.** `QUICKSTART.md`, `QUICKSTART_CREDENTIALS.md`,
+> `DEPLOYMENT.md` and `SECURITY_REMEDIATION_CHECKLIST.md` are not in the
+> repository under those names. Today's guides are
+> [quickstart.md](../guides/quickstart.md),
+> [credentials.md](../guides/credentials.md) and
+> [deployment.md](../guides/deployment.md); the checklist of this audit is
+> [remediation-checklist.md](remediation-checklist.md).
+
 ### For Quick Start
 
 1. Read: `QUICKSTART.md`
@@ -411,7 +429,7 @@ These are **transitive dependencies** from upstream packages - all tracked in [G
 ### For Understanding Issues
 
 1. Today: the [Security status](status.md) page
-2. Details of the 2024 audit: [audit-report.md](audit-report.md) (the
+2. Details of the 2025 audit: [audit-report.md](audit-report.md) (the
    summary file and `SECURITY_FINDINGS.json` it was published with are no
    longer in the repository)
 
@@ -448,12 +466,12 @@ These are **transitive dependencies** from upstream packages - all tracked in [G
 
 | Date | Activity |
 | ------ | ---------- |
-| Nov 7, 2024 | Comprehensive security audit |
-| Nov 7, 2024 | Fixed eval() RCE vulnerability |
-| Nov 7, 2024 | Resolved 13 Dependabot alerts |
-| Nov 7, 2024 | Implemented authentication & headers |
-| Nov 7, 2024 | Created comprehensive documentation |
-| Nov 7, 2024 | Production deployment guide |
+| Nov 7, 2025 | Comprehensive security audit |
+| Nov 7, 2025 | Fixed eval() RCE vulnerability |
+| Nov 7, 2025 | Resolved 13 Dependabot alerts |
+| Nov 7, 2025 | Implemented authentication & headers |
+| Nov 7, 2025 | Created comprehensive documentation |
+| Nov 7, 2025 | Production deployment guide |
 
 ---
 

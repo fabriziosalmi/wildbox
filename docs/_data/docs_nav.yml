@@ -40,6 +40,8 @@
       path: api/responder/endpoints.md
     - title: Agents service
       path: api/agents/endpoints.md
+    - title: CSPM service
+      path: api/cspm/endpoints.md
     - title: Gateway routes
       url: /docs.html#gateway-routes
 - title: Contributing

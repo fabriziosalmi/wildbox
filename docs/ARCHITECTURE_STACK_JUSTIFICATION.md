@@ -44,7 +44,7 @@
 | **Express.js Gateway** | Node.js overhead, slower than Nginx, single-threaded |
 | **None (direct access)** | No centralized auth, rate limiting, or request validation |
 
-**Verdict**: ✅ **Keep OpenResty**. Gateway pattern is industry standard for microservices. Lua auth handler is ~100 lines vs. duplicating JWT validation across 10+ services.
+**Verdict**: ✅ **Keep OpenResty**. Gateway pattern is industry standard for microservices. The Lua auth handler (about 1,200 lines) is one implementation instead of JWT and API-key validation duplicated in every backend.
 
 **Simplification Option**: Migrate to **Envoy** if team has experience with WASM filters. Otherwise, OpenResty is optimal.
 

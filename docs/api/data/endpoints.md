@@ -40,8 +40,11 @@ see [Telemetry](#telemetry).
 Every request goes through the gateway. The gateway validates the
 credential with the identity service and forwards the caller to the data
 service as `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role`
-headers, with the `X-Gateway-Secret` proof of origin. The data service
-refuses, with 403, a request without those headers or with a wrong secret
+headers, with how the caller authenticated (`X-Wildbox-Auth-Type`: `session`
+or `api_key`), an API key's scopes (`X-Wildbox-Scopes`) and the
+`X-Gateway-Secret` proof of origin. The data service refuses, with 403, a
+request without the user and team headers, with a wrong secret, or without
+`X-Wildbox-Auth-Type` (`GATEWAY_AUTH_TYPE_REQUIRED` in the error's `details`)
 (`open-security-data/app/auth.py`, which uses
 `open_security_shared/gateway_auth.py`), so its own port is not an entry
 point. It reads no API key of its own: the `API_KEY_REQUIRED` and
@@ -207,6 +210,11 @@ team.
 | `domain` | `tld`, `subdomain`, `apex_domain`, `registrar`, `creation_date`, `expiration_date`, `dns_resolves`, `ip_addresses`, `mx_records`, `ns_records` |
 | `file_hash` | `hash_type`, `file_name`, `file_size`, `file_type`, `mime_type`, `malware_family`, `signature_names`, `detection_ratio` |
 
+The service fills what it can derive from the value alone: `ip_version` for an
+IP address; `tld`, `subdomain` and `apex_domain` for a domain; `hash_type` for a
+file hash. Nothing in the service looks up or writes the other fields, so they
+are empty on every indicator it collects.
+
 ### POST /api/v1/data/indicators/lookup
 
 Look up many indicators in one request. Read-only, although it is a `POST`.
@@ -265,17 +273,19 @@ curl -s --cacert "$CA" https://<host>/api/v1/data/ips/192.0.2.1 \
   "threat_count": 1,
   "indicators": [{"id": "0b8d3b1e-5d0f-4c55-9a43-3f2a7b0c9e11", "...": "..."}],
   "enrichment": {
-    "asn": 64496,
-    "asn_organization": "Example Networks",
-    "country_code": "US",
-    "city": "Example City",
-    "coordinates": {"latitude": 40.0, "longitude": -74.0}
+    "asn": null,
+    "asn_organization": null,
+    "country_code": null,
+    "city": null,
+    "coordinates": null
   },
   "query_time": "2026-10-03T10:00:00Z"
 }
 ```
 
-`enrichment` is `null` when the indicator has none.
+`enrichment` is `null` when the indicator has no IP row. Its fields are `null`
+for an indicator the service collected (nothing looks them up); `coordinates`,
+when both are stored, is `{"latitude": "<string>", "longitude": "<string>"}`.
 
 ### GET /api/v1/data/domains/{domain}
 
@@ -375,7 +385,7 @@ Telemetry belongs to a team: the team of the credential it was sent with.
 Every telemetry route reads or writes the caller's team's events and sensors
 only; unlike indicators there are no global rows. Rows stored before
 telemetry had a team (`team_id` empty) are visible to no team;
-[UPGRADING.md](../../../UPGRADING.md) gives the SQL to count, assign or
+[UPGRADING.md](https://github.com/fabriziosalmi/wildbox/blob/main/UPGRADING.md) gives the SQL to count, assign or
 delete them.
 
 ### POST /api/v1/data/ingest
@@ -389,7 +399,7 @@ two teams can use the same name without touching each other's records.
 The sensor calls this route through the gateway with an identity API key of
 a team member, sent as `X-API-Key`, scoped to `data:ingest`
 (`SENSOR_DATA_LAKE_API_KEY`); the
-[sensor README](../../../open-security-sensor/README.md#sending-telemetry-to-wildbox)
+[sensor README](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-sensor/README.md#sending-telemetry-to-wildbox)
 and the [deployment guide](../../guides/deployment.md) cover the setup. Any
 other credential that passes the gateway works too.
 

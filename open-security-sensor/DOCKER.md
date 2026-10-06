@@ -71,7 +71,9 @@ only when they are set in the shell.
 
 The sensor sends telemetry to the Wildbox gateway over HTTPS, with an identity
 API key scoped to `data:ingest`; the gateway stores it under the key's team.
-It never connects to the data service directly. Update `config.yaml`:
+It never connects to the data service directly. Set the gateway in
+`config.yaml.example`, the file both Compose files mount, or with
+`SENSOR_DATA_LAKE_ENDPOINT` and `SENSOR_DATA_LAKE_CA_BUNDLE`:
 
 ```yaml
 data_lake:
@@ -79,6 +81,10 @@ data_lake:
   tls_verify: true
   ca_bundle: "/etc/ssl/wildbox/wildbox.crt"  # if no public CA signed it
 ```
+
+`ca_bundle` is a path inside the container. The root `docker-compose.yml`
+mounts the gateway's certificate there; the Compose file in this directory
+mounts none, so mount yours before naming it.
 
 and pass the key in the environment:
 
@@ -97,8 +103,8 @@ stack itself the root `docker-compose.yml` already wires all of this.
 | :--- | :--- |
 | `./config.yaml.example:/etc/security-sensor/config.yaml:ro` | Configuration |
 | `sensor_logs:/var/log/security-sensor` | Sensor log file |
-| `sensor_data:/var/lib/security-sensor` | Sensor state: the log forwarder's read positions (`data_dir`), so that a recreated container goes on where the last one stopped |
-| `/proc/stat`, `/proc/meminfo`, the `/proc` load average file, `/sys/class/net` (read-only, under `/host`) | Host metrics |
+| `sensor_data:/var/lib/security-sensor` | Sensor state (`data_dir`): the log forwarder's read positions and the file monitor's baseline, so that a recreated container goes on where the last one stopped |
+| `/proc/stat`, `/proc/meminfo`, the `/proc` load average file, `/sys/class/net` (read-only, under `/host`) | Mounted, and read by nothing in the sensor: it measures its own process only |
 
 The root `docker-compose.yml` also mounts the gateway's certificate,
 `gateway_cert:/etc/ssl/wildbox`, read-only. The compose files do not mount
@@ -178,8 +184,8 @@ docker compose logs sensor | grep "Log source"
   after `docker compose up -d` recreates the container, or a restart, the
   sensor goes on after the last line Wildbox accepted. `docker compose down
   -v` removes the volume, and with it the positions: each source then starts
-  as its `read_from` says. Do not share the volume between sensors;
-  `docker-compose.scale.yml` does, so do not enable log forwarding with it.
+  as its `read_from` says. Do not share the volume between sensors: each
+  would overwrite the other's positions.
 
 The keys of `log_sources`, rotation, restarts, and what is a start-up error
 or a warning are in [README.md](README.md#log-forwarding).

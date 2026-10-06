@@ -69,7 +69,6 @@ fim:
     - "*.cache"
     - "*.pid"
     - "*.lock"
-  recursive: true
   max_depth: 10
   # The most files watched, all paths together. Beyond it files are not
   # watched, and the monitor's status says how many.
@@ -104,4 +103,4 @@ network:
   bind_address: "127.0.0.1"
   bind_port: 8004
   enable_api: true
-  api_key: null  # Set to require API key authentication
+  api_key: null  # The local API's key (or SENSOR_API_KEY). Unset, every route but /health answers 503

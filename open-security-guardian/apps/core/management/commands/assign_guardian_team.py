@@ -1,6 +1,6 @@
 """Assign the rows written before guardian kept a team to a team (#642).
 
-Up to 0.8.x guardian stored no team: every team read and wrote every row.
+Up to 0.10.x guardian stored no team: every team read and wrote every row.
 The migrations that add ``team_id`` leave those rows without one, and no
 team reaches a row without a team through the API. This command gives them
 to the team that should own them::
@@ -39,7 +39,7 @@ def team_owned_models():
 
 
 class Command(BaseCommand):
-    help = "Assign the rows that have no team (written before 0.9) to a team."
+    help = "Assign the rows that have no team (written before 0.11.0) to a team."
 
     def add_arguments(self, parser):
         parser.add_argument(
