@@ -244,3 +244,43 @@ def test_every_variable_of_the_tests_template_is_read_by_a_test():
     assert (
         sorted(name for name in names if not re.search(rf"\b{name}\b", sources)) == []
     )
+
+
+# --- the scripts that ask for a variable by name --------------------------------
+#
+# CI runs scripts/shell-scripts/security_validation_v2.sh (integration-tests.yml)
+# and `make setup` runs validate_env.sh. Each has a list of variables that
+# must be in the template or in .env; both still asked for NEXTAUTH_SECRET,
+# and the first for GRAFANA_ADMIN_PASSWORD, after nothing read them.
+
+SHELL_LISTS = {
+    "scripts/shell-scripts/security_validation_v2.sh": "REQUIRED_VARS",
+    "scripts/shell-scripts/validate_env.sh": "REQUIRED_VARS",
+}
+
+
+def shell_list(text, name):
+    """The quoted items of the bash array ``name=( ... )``."""
+    match = re.search(rf"^{name}=\((.*?)\)", text, re.M | re.S)
+    assert match, f"no {name}=( ... )"
+    return re.findall(r'"([A-Z][A-Z0-9_]*)"', match.group(1))
+
+
+def test_a_bash_array_is_read():
+    text = 'X=1\nREQUIRED_VARS=("A_KEY" "B_KEY")\nOTHER=(\n    "C"\n)\n'
+
+    assert shell_list(text, "REQUIRED_VARS") == ["A_KEY", "B_KEY"]
+    assert shell_list(text, "OTHER") == ["C"]
+
+
+@pytest.mark.parametrize("script", sorted(SHELL_LISTS))
+def test_a_variable_a_script_requires_is_in_the_template(script):
+    required = shell_list((ROOT / script).read_text("utf-8"), SHELL_LISTS[script])
+
+    assert "JWT_SECRET_KEY" in required  # the list was read
+    assert sorted(set(required) - template_variables()) == []
+    # Required means a value: the template sets it, not a commented example.
+    set_lines = set(
+        re.findall(r"^([A-Z][A-Z0-9_]*)=", TEMPLATE.read_text("utf-8"), re.M)
+    )
+    assert sorted(set(required) - set_lines) == []

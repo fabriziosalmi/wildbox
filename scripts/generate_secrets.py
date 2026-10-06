@@ -288,11 +288,11 @@ def main():
     os.chmod(env_path, 0o600)
 
     print("✅ Successfully generated .env with secure random secrets!\n")
-    print("📊 Generated secrets:")
-    # The names, from the map: the list written here had ten of them and
-    # named two that nothing read (#665).
-    for name in secrets_map:
-        print(f"   • {name}")
+    # No list of names here. The one that was printed had ten of the
+    # seventeen and named two that nothing read (#665); the names are the
+    # keys of secrets_map above, and nothing of that map is printed.
+    print("📊 Every secret in secrets_map (scripts/generate_secrets.py) was")
+    print("   generated and written to .env.")
 
     print("\n📋 Next steps:")
     print(
