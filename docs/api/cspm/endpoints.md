@@ -879,6 +879,11 @@ accepts the connection and then sends nothing is given a limited time by the API
   accepts and never answers in all three roles: every route and `/health` in 3
   seconds. With the store answering and the other two not: `POST /scans` in 6
   seconds, `GET` and `DELETE /scans/{scan_id}` in 3.
+- Requests wait side by side, each in a thread, and `/health/live`, `/providers`
+  and `/checks` answer meanwhile. Until 0.12.2 every route waited for Redis in the
+  event loop, so the requests went through one at a time and nothing else was
+  served: with five requests waiting, `/health/live` answered after 15 seconds. It
+  now answers in 16 milliseconds, and the five end together after 3 seconds.
 - `socket_timeout` and `socket_connect_timeout` in the query string of `REDIS_URL`
   (in seconds) replace the store's two limits, and in `CELERY_RESULT_BACKEND` the
   backend's. The broker's are not read from its URL.

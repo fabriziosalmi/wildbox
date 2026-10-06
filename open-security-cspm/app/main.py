@@ -235,7 +235,7 @@ def _submit_scan(
         #
         # Nothing to remove when the first write is what failed, and a
         # store that does not answer is not asked again: the removal would
-        # wait as long as the write did, with the event loop.
+        # wait as long as the write did, and the caller with it.
         if written:
             _forget_scan_never_queued(scan_id, current_user["team_id"])
         raise
@@ -306,11 +306,36 @@ async def get_current_user(
     }
 
 
+# --- Which routes are coroutines ------------------------------------------------
+# The Redis client and the Celery client are synchronous: a call waits on a
+# socket, in whatever thread makes it. Every route was `async def` and made
+# those calls in its body, so in the event loop: while one request waited
+# for Redis the process served nothing else, liveness probe included. The
+# limits of #778 made that three seconds for each request, one after the
+# other, instead of for ever (#788).
+#
+# FastAPI runs a route that is a plain `def` in a thread of its pool. So:
+#
+# - a route that asks Redis or the task queue is a plain `def`. A request
+#   that waits holds one thread of the pool, and nothing else;
+# - a route that asks nothing stays `async def` (/health/live, the provider
+#   and check lists): it answers from the loop, also when every thread of
+#   the pool is waiting for Redis;
+# - /health stays `async def` too: it runs its checks in threads itself, to
+#   give the answer up at its own deadline (_checked_off_the_loop).
+#
+# tests/unit/test_routes_off_the_loop.py holds the list of the second and
+# third kind: a route added as a coroutine fails there until it is listed.
+
+
 @app.get("/health/live")
 async def liveness():
     """Liveness probe: the HTTP process is up. Unlike /health (readiness) it
     does NOT require Redis or an active Celery worker, so orchestration can
-    distinguish "process alive" from "dependencies ready"."""
+    distinguish "process alive" from "dependencies ready".
+
+    A coroutine, deliberately: it must not wait for a thread of the pool,
+    which the requests waiting for Redis may all be holding."""
     return {"status": "alive"}
 
 
@@ -454,7 +479,7 @@ async def health_check(response: Response):
     response_model=schemas.ScanResponse,
     status_code=status.HTTP_202_ACCEPTED
 )
-async def start_scan(
+def start_scan(
     scan_request: schemas.ScanRequest,
     background_tasks: BackgroundTasks,
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -496,7 +521,7 @@ async def start_scan(
 
 
 @app.get("/api/v1/scans/{scan_id}", response_model=schemas.ScanStatusResponse)
-async def get_scan_status(
+def get_scan_status(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -591,7 +616,7 @@ async def get_scan_status(
 
 
 @app.get("/api/v1/scans/{scan_id}/report", response_model=schemas.ScanReportSchema)
-async def get_scan_report(
+def get_scan_report(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -703,7 +728,7 @@ async def list_checks(
 
 
 @app.get("/api/v1/scans/{scan_id}/compliance", response_model=schemas.ComplianceReportResponse)
-async def get_compliance_report(
+def get_compliance_report(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     framework: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -711,7 +736,7 @@ async def get_compliance_report(
     """Get compliance-focused report for a scan."""
     try:
         # Get scan report first
-        scan_report = await get_scan_report(scan_id, current_user)
+        scan_report = get_scan_report(scan_id, current_user)
         
         # Generate compliance report
         frameworks_summary = []
@@ -777,7 +802,7 @@ async def get_compliance_report(
 
 
 @app.delete("/api/v1/scans/{scan_id}", response_model=schemas.ScanCancelResponse)
-async def cancel_scan(
+def cancel_scan(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -851,7 +876,7 @@ async def cancel_scan(
 # Dashboard and metrics endpoints
 
 @app.get("/api/v1/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
-async def get_dashboard_summary(
+def get_dashboard_summary(
     days: int = Query(30, ge=1, le=365),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -899,7 +924,7 @@ async def get_dashboard_summary(
 
 
 @app.post("/api/v1/batch/scans", response_model=schemas.BatchScanResponse)
-async def start_batch_scans(
+def start_batch_scans(
     batch_request: schemas.BatchScanRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -979,7 +1004,7 @@ def _team_compliance_reports(
 
 
 @app.get("/api/v1/compliance/summary", response_model=schemas.ComplianceSummaryResponse)
-async def get_compliance_summary(
+def get_compliance_summary(
     days: int = Query(30, ge=1, le=365),
     provider: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -1006,7 +1031,7 @@ async def get_compliance_summary(
 
 
 @app.get("/api/v1/compliance/findings", response_model=schemas.ComplianceFindingsResponse)
-async def get_compliance_findings(
+def get_compliance_findings(
     framework: Optional[str] = None,
     severity: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),

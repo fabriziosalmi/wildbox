@@ -9,7 +9,6 @@ a worker takes it: it reads "running", and a scan the worker cannot run
 ends "failed", the path the integration suite drives through the gateway.
 """
 
-import asyncio
 import re
 import shlex
 import sys
@@ -260,13 +259,13 @@ def queued(monkeypatch, fake_redis):
     monkeypatch.setattr(main, "run_cspm_scan_task", queue)
     monkeypatch.setattr(worker, "redis_client", fake_redis)
     monkeypatch.setattr(config.settings, "cspm_report_retention_days", 90)
-    scan_id = asyncio.run(main.start_scan(_malformed_aws_request(), None, USER)).scan_id
+    scan_id = main.start_scan(_malformed_aws_request(), None, USER).scan_id
     return scan_id, queue.calls[0][1]
 
 
 def _status(monkeypatch, scan_id, state, info=None):
     monkeypatch.setattr(main, "celery_app", Backend(state, info))
-    return asyncio.run(main.get_scan_status(scan_id, USER))
+    return main.get_scan_status(scan_id, USER)
 
 
 def test_a_scan_no_worker_took_reads_queued(monkeypatch, queued):

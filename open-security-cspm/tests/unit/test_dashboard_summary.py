@@ -13,7 +13,6 @@ The endpoint is called directly with a fake Redis (tests/unit/conftest.py),
 so these tests need no service running.
 """
 
-import asyncio
 import os
 import sys
 from datetime import datetime, timedelta
@@ -95,9 +94,7 @@ def store(monkeypatch, fake_redis):
 
 
 def _summary(team_id, days=30):
-    response = asyncio.run(
-        main.get_dashboard_summary(days=days, current_user={"team_id": team_id})
-    )
+    response = main.get_dashboard_summary(days=days, current_user={"team_id": team_id})
     return schemas.DashboardSummaryResponse.model_validate(response).model_dump()
 
 
@@ -171,10 +168,8 @@ def test_the_figures_match_the_compliance_summary(store):
     )
 
     dashboard = _summary(TEAM_A)
-    compliance = asyncio.run(
-        main.get_compliance_summary(
-            days=30, provider=None, current_user={"team_id": TEAM_A}
-        )
+    compliance = main.get_compliance_summary(
+        days=30, provider=None, current_user={"team_id": TEAM_A}
     )
 
     assert dashboard["compliance_score"] == compliance["overall_score"] == 50.0

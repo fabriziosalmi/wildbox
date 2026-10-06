@@ -483,6 +483,13 @@ in 3 seconds; with the store answering and the queue not, `POST
 query string of `REDIS_URL` or `CELERY_RESULT_BACKEND` replace the two
 limits of that client. The worker keeps Celery's own waits.
 
+The routes that ask Redis or the queue are plain functions, which FastAPI
+runs in threads: requests that wait do so side by side, and `/health/live`,
+`GET /api/v1/providers` and `GET /api/v1/checks`, which ask nothing, answer
+from the event loop meanwhile. Until 0.12.2 every route made its Redis call
+in the event loop, so one waiting request held all the others: with five
+waiting, `/health/live` answered after 15 seconds instead of at once.
+
 ## Configuration
 
 Settings are read from the environment (`app/config.py`); the root

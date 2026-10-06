@@ -8,7 +8,6 @@ endpoints refuse the others with a 400 before storing or queueing
 anything, and GET /api/v1/providers lists the same registry.
 """
 
-import asyncio
 import socket
 import sys
 from pathlib import Path
@@ -289,7 +288,7 @@ def _queue(monkeypatch, fake_redis, scan):
     monkeypatch.setattr(main, "run_cspm_scan_task", queue)
     from app import schemas
 
-    response = asyncio.run(main.start_scan(schemas.ScanRequest(**scan), None, USER))
+    response = main.start_scan(schemas.ScanRequest(**scan), None, USER)
     return response.scan_id, queue.calls[0][1]
 
 
@@ -343,7 +342,7 @@ def test_a_failed_scan_reads_failed_whatever_the_result_backend_holds(
     scan_store.fail_scan(fake_redis, scan_id, "2026-10-03T12:00:00")
     monkeypatch.setattr(main, "celery_app", UnreadableBackend())
 
-    status = asyncio.run(main.get_scan_status(scan_id, USER))
+    status = main.get_scan_status(scan_id, USER)
 
     assert status.status == "failed"
 
