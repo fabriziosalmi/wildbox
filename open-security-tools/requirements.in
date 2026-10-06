@@ -26,12 +26,9 @@ dnspython==2.7.0
 aiodns==4.0.4
 python-whois==0.9.4
 aiohttp==3.14.3
-beautifulsoup4==4.12.3
 requests==2.33.0
 cryptography==50.0.2
-slowapi==0.1.9
 redis==5.2.1
-psutil==6.1.1
 celery==5.4.0
 flower==2.0.1
 # The service calls install_observability() (the shared package's `metrics`

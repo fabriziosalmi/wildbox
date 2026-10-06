@@ -736,6 +736,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is also what the README tells an operator to run. The extras named
   `pywin32`, `wmi` and `pyobjc-framework-Cocoa`, which no module of the
   sensor imports. Start the sensor with `python main.py --config <file>`.
+- **Seventy requirements that no line of code imported** (#665). Seven
+  of the eight `requirements.in` files declared packages their service
+  never imports, and each was built into the image, scanned for
+  advisories and upgraded for them: `multidict` and `yarl` were in the
+  cspm and guardian images only because of an `aiohttp` and a
+  `pytenable` nobody used. Removed, with what only they brought in:
+  - data (124 packages locked, now 67): `spacy`, `scikit-learn`,
+    `pandas`, `numpy`, `plotly`, `openpyxl`, `tabulate`, `geoip2`,
+    `maxminddb`, `pyasn`, `dnspython`, `python-whois`, `redis` and
+    `hiredis` (the service uses no Redis), `passlib[bcrypt]`,
+    `cryptography`, `pydantic-settings`, `structlog`, `gunicorn`, `pytz`,
+    `python-dateutil`, `pyyaml`, `python-dotenv`, and `aiofiles` 23.2.0,
+    a release yanked from PyPI;
+  - guardian (138, now 83): the clients of systems it does not contact
+    (`pytenable`, `qualysapi`, `python-libnmap`, `atlassian-python-api`,
+    `servicenow-api`), `django-oauth-toolkit`, `pandas`, `numpy`,
+    `pydantic`, `httpx`, `cryptography`, `structlog`, `psutil`,
+    `python-magic`, `validators`, `netaddr`, `factory-boy`, `freezegun`,
+    and `ipaddress`, a Python 2 backport of a module of the standard
+    library;
+  - cspm (73, now 49): `google-auth` and `azure-identity`, which the
+    worker stopped importing when the service became AWS-only (#624),
+    `aiohttp`, `jinja2`, `structlog`, `gunicorn`, and the direct pins of
+    `click` and `python-dateutil`, which Celery and botocore still bring;
+  - sensor (50, now 36): `asyncio-mqtt`, `feedparser`, `jsonschema`,
+    `watchdog`, `structlog`, `certifi`, `python-dateutil`, `pysystemd`
+    and the Windows and macOS pins (`pywin32`, `wmi`,
+    `pyobjc-framework-Cocoa`): the sensor reads those systems' logs by
+    running their own commands;
+  - tools (79, now 72): `beautifulsoup4`, `slowapi`, `psutil`;
+  - identity (66, now 63): `passlib[bcrypt]` (passwords are hashed by
+    fastapi-users' helper since #501), `psycopg2-binary` (the only
+    engine is asyncpg) and `urllib3`;
+  - responder (46, now 44): `gunicorn`, `structlog`.
+
+  No version of a package that stays has moved. Every image was rebuilt:
+  the offline install of the shared package and `pip check` pass, and
+  each service's unit tests pass on the new lock. A test now reads the
+  eight files and the code beside them: a requirement must be imported
+  by a Python file of its service or be listed with what uses it (a
+  database driver named by a URL, a Django application, a server
+  started from a command line, a pytest plugin), and the list must stay
+  exact.
 
 ### Fixed
 

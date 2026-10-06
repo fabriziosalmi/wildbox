@@ -22,15 +22,11 @@ celery[redis]==5.3.1
 redis==5.0.1
 boto3==1.34.63
 botocore==1.34.63
-# Cloud credentials only. app/worker.py imports google.auth and
-# azure.identity to build sessions; every GCP and Azure check runs on
-# sample data and names its SDK only in a comment. The 23 other google-*
-# and seven azure-mgmt-* pins that used to sit here were never imported,
-# and the 2023 google-cloud-* releases require protobuf<5, which held it at
-# 4.25.9 (PYSEC-2026-1805, fixed in 5.29.6). Add an SDK back together with
-# the check that imports it (#415).
-google-auth==2.23.4
-azure-identity==1.16.1
+# AWS is the only provider the service scans: it refuses the others (#624),
+# and since then nothing imports google.auth or azure.identity, which were
+# declared here for the worker's sessions. They are gone, with the Google and
+# Azure SDK pins removed before them (#415, #665). Add an SDK back together
+# with the check that imports it.
 # Pydantic was pinned to 2.5.0 (November 2023). That single pin held FastAPI at
 # 0.125 and Starlette at 0.50 in this service's lock, while the other services
 # resolved to Starlette 1.6 -- three Starlette majors across one deployment,
@@ -38,17 +34,11 @@ azure-identity==1.16.1
 # (WILDBO-DEP-01). Ranged so the whole platform converges on one resolution.
 pydantic>=2.10.0,<3.0.0
 pydantic-settings>=2.6.0,<3.0.0
-jinja2==3.1.6
 pyyaml==6.0.1
 httpx==0.25.2
-aiohttp==3.14.3
 cryptography==50.0.2
-structlog==23.2.0
 # The shared package's `metrics` extra (install_observability) requires
 # prometheus-client 0.20 or later; the image build resolves the extra
 # against this lock and fails below that floor (#722).
 prometheus-client>=0.20,<1.0.0
-gunicorn==23.0.0
-python-dateutil==2.8.2
 python-dotenv==1.2.2
-click==8.3.3
