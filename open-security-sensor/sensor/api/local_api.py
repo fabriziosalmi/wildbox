@@ -46,8 +46,16 @@ class LocalAPI:
             self.app = web.Application()
             
             # Setup CORS - restricted to localhost only
+            #
+            # CorsConfig, and not aiohttp_cors.setup(): setup() is this
+            # line and one more, which keeps the configuration in the
+            # application under the name "aiohttp_cors". aiohttp warns
+            # about every such name that is not a web.AppKey
+            # (NotAppKeyWarning), at every start of the sensor (#765), and
+            # the only reader of that entry is aiohttp_cors' mixin for
+            # class-based views, of which this API has none.
             allowed_origin = f"http://{self.config.network.bind_address}:{self.config.network.bind_port}"
-            cors = aiohttp_cors.setup(self.app, defaults={
+            cors = aiohttp_cors.CorsConfig(self.app, defaults={
                 allowed_origin: aiohttp_cors.ResourceOptions(
                     allow_credentials=True,
                     expose_headers="*",

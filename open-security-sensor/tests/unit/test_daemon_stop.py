@@ -227,16 +227,7 @@ async def test_a_configuration_error_still_ends_with_its_own_status(tmp_path, ca
     assert "Security Sensor not started" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize(
-    "compose",
-    [SERVICE_ROOT / "docker-compose.yml", SERVICE_ROOT.parent / "docker-compose.yml"],
-)
-def test_the_compose_files_give_the_sensor_the_time_its_stop_takes(compose):
-    from sensor.pipeline.data_forwarder import STOP_FLUSH_SECONDS
-
-    sensor = yaml.safe_load(compose.read_text())["services"]["sensor"]
-
-    # Docker kills a container that has not stopped after 10 seconds unless
-    # told otherwise, and the sender alone may spend that on its last batches.
-    grace = sensor["stop_grace_period"]
-    assert grace.endswith("s") and int(grace[:-1]) >= STOP_FLUSH_SECONDS + 15
+# What the Compose files give the sensor to stop in is held against what its
+# stop can take in test_stop_time_limits.py (#765). The test that was here
+# asked for the sender's 10 seconds and 15 more, 25, of files that give 30,
+# while the stop's limits added up to 32.

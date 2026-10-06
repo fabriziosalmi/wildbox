@@ -651,6 +651,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   memory that no location used, and a commented-out `limit_req` on the
   tools route that said rate limiting was disabled there. It is not: the
   server-wide limit applies to that route as to the others.
+- **What ran osquery as a daemon, from the sensor's image** (#765). The
+  sensor has started no `osqueryd` since #745, and the image still had
+  the name on its `PATH`, with `osqueryctl`, the init script, its
+  defaults and the systemd unit. They are removed, and the build fails
+  if `osqueryd` can still be found on the `PATH`. The file
+  `/opt/osquery/bin/osqueryd` stays: it is the package's one binary, and
+  `osqueryi` is a link to it, so the image is no smaller.
 - **The sensor's `user_events.logon_events` osquery query, on Windows**
   (#754). It was the one event-table query #745 left, for want of a
   Windows host to try it on. osquery's specification of the table
@@ -1155,6 +1162,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `docker stop` in the sensor's first moments is received** (#765).
+  In its container the sensor is process 1, and the kernel does not
+  deliver to process 1 a signal it has no handler for. The sensor
+  installed its handlers after every import, the configuration and the
+  agent, so a stop asked for before that was not received at all, and
+  the container was killed when its grace period ran out: in the image,
+  `docker stop -t 12` right after `docker run` took 12.3 seconds and
+  ended with exit status 137. Outside a container the same signal ended
+  the process where it was. The handlers are now the first thing
+  `main.py` does, before any other import; until the event loop runs
+  they only note the signal. A stop asked for before anything is started
+  starts nothing, says so, and ends with status 0: 0.3 to 0.8 seconds in
+  the same image. That leaves the interpreter's own start, before the
+  first line of `main.py`, some 5 to 35 ms in the image, which no line
+  of Python can cover: the image now starts the sensor with SIGTERM and
+  SIGINT blocked (`env --block-signal` in its `CMD`), and `main.py`
+  unblocks them once their handlers are installed, so a signal sent in
+  that time is kept instead of dropped. Of signals sent as soon as
+  Docker allows after the start, the image from `main` received 0 of 30;
+  with the handlers first and no blocking, 93 of 100; with both, 100 of
+  100, each ending with status 0.
+- **A stop asked for while the sensor starts abandons the start**
+  (#765). Once its handlers were installed the sensor took the signal
+  and went on starting, whatever that took, before it began to stop: 30
+  seconds with an `osqueryi` that does not answer its first query, and
+  without end during a first scan of the watched files in a file system
+  that does not answer. The start is now abandoned, what it had started
+  is stopped the usual way, and the exit status is 0.
+- **The sensor's stop fits in the time it is given, and the process ends
+  when it has stopped** (#765). The stop waited up to 15 seconds for the
+  collectors, 2 for the queues and 15 for the pipeline: 32, against the
+  `stop_grace_period` of 30 in both Compose files, so a stop that used
+  them was killed before it had written its log positions and said what
+  it left behind. The limits are now 8, 2 and 12 seconds, with 2 for an
+  abandoned start and 2 for the process to end: 26 at the very worst,
+  which leaves 4 for the last writes. And the process did not always end
+  when the sensor had stopped: the event loop, and the interpreter after
+  it, wait without a limit for every worker thread, so a reverse DNS
+  lookup the resolver had not answered, or a scan in a file system that
+  does not answer, held the exit until Docker killed the container.
+  After 2 seconds the sensor now says which threads are still busy and
+  ends without them; they have nothing left to write. The test that held
+  the Compose files to the stop asked for 25 seconds; the new one runs
+  the worst case on a clock that leaps to the next timer, and fails for
+  every Compose file that gives the sensor less than it measures.
+- **An event a collector was waiting to queue when the sensor stops is
+  counted** (#765). A collector waits in `put()` while the queue is
+  full, which is how a gateway that takes nothing slows it down. Stopped
+  there, it held an event that was in no queue, no counter and no log
+  line: with everything full, the sensor said `Stopped with 3 events
+  still on their way to the sender` of four. With a saved position or
+  baseline the event was read again after the restart; without
+  `data_dir`, and for the macOS `log stream` source, it was lost
+  without a word. The collectors' queue now answers for an event from
+  the moment `put()` is called with it, and the stop's last lines count
+  it, as dropped or as read again after the restart.
+- **The file monitor no longer forgets the changes behind one it could
+  not report, or behind the stop** (#765). A scan brings the monitor's
+  view of the files up to date and then queues one event per change.
+  When the queueing ended early, by an error on one change or by a stop
+  while a change waited for room, the changes behind it were gone: no
+  later scan saw a difference, and they were in no count. A sensor with
+  `data_dir` reported them after its restart; one without never did.
+  The changes now stay in line until the event of each is queued. A
+  change no event can be made of is logged with its path, counted under
+  `changes_failed` in the monitor's status, and left out of the saved
+  baseline; the others follow. A monitor stopped with changes in line
+  says how many, and what becomes of them.
+- **An event the sender cannot serialize is counted, whatever the
+  error** (#765). The sender expected three kinds of error from an event
+  JSON cannot carry. Any other (a `RecursionError` for a value nested
+  too deep, for one) left the event counted as received and as nothing
+  else, its log file's position held before it for as long as the sensor
+  ran, and the sender asleep for a second before it took the next event.
+  It is now dropped and counted under `events_dropped_unserializable`
+  like the others, with the error's name in the log, and its collector
+  is told. No collector produces such an event today.
+- **The sensor's local API starts without a `NotAppKeyWarning`** (#765).
+  `aiohttp_cors.setup()` stores the CORS configuration in the
+  application under a plain name, which aiohttp warns about at every
+  start. Nothing reads that entry; the API builds the same configuration
+  without storing it, and answers CORS requests as before.
 - **The sensor no longer loses the event it had just taken when it
   stops** (#754). Before it stops its pipeline the sensor waits for the
   events already collected to reach the sender. It decided that nothing

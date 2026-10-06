@@ -403,10 +403,37 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
   full, or a reverse DNS lookup is still running) is not sent: the
   processor's workers are stopped with what they hold, and the last log
   lines say how many events that was, and how many of them will be read
-  again from their log source. The compose files give it 30 seconds
-  (`stop_grace_period`); under Docker's default of 10 it can be killed
-  before it has finished, which costs a second sending of the last lines,
-  never a line.
+  again from their log source. That count includes the event a collector
+  was waiting to put on a full queue when it was stopped.
+- The stop may be asked for at any moment, the sensor's start included.
+  Before anything is started, nothing is, and the sensor says `not
+  started: a stop was asked for while it was starting`; while it is
+  starting (a first scan of the watched files, an `osqueryi` that takes
+  its time), the start is abandoned and what it had started is stopped.
+  The exit status is 0 in every case.
+- In its container the sensor is process 1, to which the kernel delivers
+  no signal it has no handler for. The handlers are the first thing
+  `main.py` installs, before it imports anything else, and the image
+  starts it with SIGTERM and SIGINT blocked (`env --block-signal` in its
+  `CMD`), so that a stop sent earlier still, while Python itself is
+  starting, is kept until then and obeyed. A `command:` or an image of
+  your own that runs `python main.py` directly leaves those first
+  milliseconds uncovered: a `docker stop` that falls in them is not
+  received, and the container is killed when its grace period ends. Keep
+  `env --block-signal=TERM --block-signal=INT` in front of it.
+- Each part of the stop has a limit: 2 seconds for a start that was
+  abandoned, 8 for the collectors to stop, the 2 above, 12 for the
+  processor and the sender (10 of them for the last batches); then the
+  positions and the baseline are written; then 2 for the process to end.
+  That is 26 seconds at the very worst. A worker thread that is still busy when the sensor has stopped (a name
+  lookup the resolver has not answered, a scan in a file system that does
+  not answer) is not waited for beyond those last 2 seconds: the sensor
+  says which threads, and the process ends. The compose files give the
+  sensor 30 seconds (`stop_grace_period`), and the sensor's tests fail if
+  that stops being enough; give it at least as much wherever else you run
+  it (`docker run --stop-timeout 30`, `terminationGracePeriodSeconds` in
+  Kubernetes). Under Docker's default of 10 it can be killed before it has
+  finished, which costs a second sending of the last lines, never a line.
 - The file holds, for each log file, its device and inode, the offset, and
   SHA-256 digests of its first 256 bytes and of the 64 bytes before the
   offset; no log content. It is written to a temporary file, flushed, and
@@ -606,7 +633,10 @@ a process that starts and ends between two cycles, or a connection opened
 and closed between two, is not seen. osquery's event tables
 (`process_events`, `socket_events`, `user_events`) are not queried: through
 `osqueryi`, in the sensor's image, they answer no row and say `is
-event-based but events are disabled`. The sensor starts no `osqueryd`. On
+event-based but events are disabled`. The sensor starts no `osqueryd`, and
+its image has none to start: no `osqueryd` on the `PATH`, no `osqueryctl`,
+no init script. The file `/opt/osquery/bin/osqueryd` is still there because
+it is the one binary of the package, and `osqueryi` is a link to it. On
 Windows the pack no longer has `logon_events`: it read `windows_events`,
 which is an event table too, and filtered on a `channel` column that table
 does not have. Read logons with a log source of type `windows_event` on the
@@ -697,6 +727,13 @@ accepted by the gateway, or dropped for good and counted (see
 - if the queue is full when the sensor starts (the gateway has been away
   for a while), the changes of that first scan are handed over as it
   empties: the sensor does not wait for room to finish starting;
+- the changes a scan found stay in line until the event of each is queued.
+  A sensor stopped while they wait says how many there were (`stopped with
+  N changes found and not queued yet`): they are found again at the next
+  start, and without `data_dir` they are not reported at all, which the
+  line says too. A change no event can be made of is logged with its path
+  and counted under `changes_failed` in the monitor's status; the changes
+  behind it are queued, and it stays out of the saved baseline;
 - a change delivered in the sensor's last seconds whose baseline was not
   written (a crash, a full disk) is reported again: the same change can
   arrive twice, and is never lost for that reason.
@@ -912,9 +949,9 @@ An event leaves the sensor unsent, and is counted, in these cases only:
 | :--- | :--- |
 | `events_dropped_refused` | The data service refused the event itself, as above |
 | `events_dropped_oversize` | Serialized, it is larger than a batch may be (8 MiB, or `buffer_max_bytes` if that is less) |
-| `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN) |
+| `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN), or making it into what is sent failed with any other error, which the log line names |
 | `events_dropped_unconfigured` | No API key is set: everything collected is discarded |
-| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues, or in the processor's hands) are in no counter: the sensor's last log lines say how many there were |
+| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues, in the processor's hands, or in a collector that was waiting for room on the first queue) are in no counter: the sensor's last log lines say how many there were |
 
 `events_dropped` is their sum, and `events_received` equals
 `events_forwarded` plus `events_dropped` plus the events in the buffer. The

@@ -43,8 +43,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # directories) and move the libraries it links statically: OpenSSL 3.1 to
 # 3.6.1, expat to 2.7.4 (CVE-2026-25210), sqlite, libarchive, zlib (#726).
 # Every query the sensor ships for Linux was run on both versions, on amd64
-# and arm64: each returns the same columns, the tables they read have the
-# same schema, and osqueryd starts with the configuration the sensor writes.
+# and arm64: each returns the same columns, and the tables they read have
+# the same schema.
+#
+# The sensor runs osqueryi, one query at a time, and starts no daemon (#745).
+# The package is one binary, /opt/osquery/bin/osqueryd, which is the shell
+# when it is called osqueryi: /usr/bin/osqueryi is a link to it. So the
+# binary stays, and its SHA-256 check with it. What is removed is what ran
+# it as a daemon, which nothing in the image uses (#765): the name osqueryd
+# on PATH, osqueryctl, the init script and its defaults, the systemd unit.
+# The build fails if the name is still on PATH, or the binary gone.
 #
 # Plain `dpkg -i`, no `|| apt-get install -f -y` behind it: the package
 # depends on libc6 and zlib1g, which the base image has, and the fallback
@@ -62,8 +70,12 @@ RUN ARCH=$(dpkg --print-architecture) && \
     echo "${OSQUERY_SHA256}  osquery.deb" | sha256sum -c - && \
     dpkg -i osquery.deb && \
     rm osquery.deb && \
-    # osqueryi on PATH: the one osquery binary the sensor runs (it starts
-    # no osqueryd).
+    rm -f /usr/bin/osqueryd /usr/bin/osqueryctl /opt/osquery/bin/osqueryctl \
+        /etc/init.d/osqueryd /etc/default/osqueryd \
+        /usr/lib/systemd/system/osqueryd.service && \
+    test -x /opt/osquery/bin/osqueryd && \
+    ! command -v osqueryd && \
+    # osqueryi on PATH: the one name the sensor runs osquery by.
     if [ -f /opt/osquery/bin/osqueryi ]; then \
         ln -sf /opt/osquery/bin/osqueryi /usr/local/bin/osqueryi; \
     elif [ -f /usr/bin/osqueryi ]; then \
@@ -141,5 +153,24 @@ ENV PYTHONPATH=/app
 ENV SENSOR_LOGGING_LEVEL=INFO
 ENV PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 
-# Run the sensor
-CMD ["python", "main.py", "--config", "/etc/security-sensor/config.yaml"]
+# Run the sensor, with SIGTERM and SIGINT blocked until it has installed its
+# handlers for them, which is the first thing main.py does (#765).
+#
+# The sensor is process 1 here, and the kernel does not deliver to process 1
+# a signal it has no handler for: a `docker stop` in the interpreter's own
+# start, before any line of the sensor has run, was not received at all, and
+# the container was killed when its grace period ran out. A blocked signal is
+# kept instead, and delivered when main.py unblocks it. Measured in this
+# image, 100 signals each, sent as soon as Docker allows after the start:
+# with the handlers installed first and no blocking, 93 received; with both,
+# 100.
+#
+# Not an init process (`docker run --init`, tini): it would have to be asked
+# for in every Compose file and on every `docker run`, or be one more
+# package in the image, and behind it a signal in the same moments ends
+# Python where it is, with no line and exit status 143.
+#
+# The check fails the build with a base image whose env cannot block signals
+# (coreutils before 8.31), where the container would not start at all.
+RUN env --block-signal=TERM --block-signal=INT true
+CMD ["env", "--block-signal=TERM", "--block-signal=INT", "python", "main.py", "--config", "/etc/security-sensor/config.yaml"]
