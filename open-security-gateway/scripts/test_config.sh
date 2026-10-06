@@ -35,8 +35,14 @@ http {
     default_type application/octet-stream;
 
     # Logging Configuration
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
+    # The path, not the query string: as nginx/nginx.conf (#755).
+    map $request_uri $request_path {
+        default            $request_uri;
+        "~^(?<p>[^?]*)[?]" $p;
+    }
+    log_format main '$remote_addr - $remote_user [$time_local] '
+                    '"$request_method $request_path $server_protocol" '
+                    '$status $body_bytes_sent '
                     '"$http_user_agent" "$http_x_forwarded_for"';
 
     access_log /var/log/nginx/access.log main;
@@ -148,12 +154,10 @@ EOF
 echo "📋 Testing configuration syntax..."
 
 # Test the configuration
-docker run --rm \
+if docker run --rm \
     -v "$TEMP_DIR/nginx:/etc/nginx:ro" \
     openresty/openresty:alpine \
-    /usr/local/openresty/bin/openresty -t
-
-if [ $? -eq 0 ]; then
+    /usr/local/openresty/bin/openresty -t; then
     echo "✅ Nginx configuration syntax is valid!"
 else
     echo "❌ Nginx configuration syntax errors found"

@@ -393,8 +393,13 @@ cases against the test configuration.
 ## Logs
 
 Access logs use the `gateway` format in `nginx.conf`, which includes the
-request id (`rid=`), the upstream address and status, timings, and the team
-id from the `X-Wildbox-Team-ID` response header. Its `user_id` field reads a
+method and path of the request, the request id (`rid=`), the upstream
+address and status, timings, and the team id from the `X-Wildbox-Team-ID`
+response header. The path is the one the client asked for, cut at the first
+`?`: the query string of a request is not logged, and neither is its
+`Referer`. nginx's own error log is another matter: a line it writes while
+it handles a request ends with that request's first line, query string
+included, and that cannot be configured. Its `user_id` field reads a
 response header the gateway never sets, so it is always empty. Logs are
 written to
 `open-security-gateway/logs/` on the host.

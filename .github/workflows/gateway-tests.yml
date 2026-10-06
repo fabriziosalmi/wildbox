@@ -132,6 +132,12 @@ jobs:
       - name: Run gateway upstream header tests
         run: bash open-security-gateway/test/upstream_header_tests.sh
 
+      # What the gateway writes about a request: its method, path and
+      # status, and neither its query string nor its Referer (#755). Both
+      # configurations, read from what the containers wrote.
+      - name: Run gateway access log tests
+        run: bash open-security-gateway/test/access_log_tests.sh
+
       # CORS against the configuration that ships, and the same checks
       # against the test configuration: preflights for the origins in
       # CORS_ORIGINS and only those, and no OPTIONS answered 405 that a
