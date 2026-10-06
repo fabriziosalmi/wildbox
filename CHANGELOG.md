@@ -27,6 +27,19 @@ From 0.12.0 nothing is required beyond rebuilding the images:
 operator or a client may notice. A login lockout in progress at the
 upgrade ends with it.
 
+The patch was run before the release on the Linux host that holds the
+stack upgraded to 0.12.0, with data created under 0.10.0. Applied as an
+operator applies it (check out, rebuild, `up -d`): all eighteen services
+healthy, the API checks of the 0.12.0 test and `make health` passed, and
+the integration suite against that stack passed with nothing failing (242
+passed, 16 skipped: the three tests of guardian's e-mail are now skipped
+with their reason, #779). Then the way back that failed under 0.12.0: the
+backup taken before the 0.12.0 upgrade was restored with
+`restore_postgres.sh --overwrite-live-databases` alone, which removed and
+named the one table made after it and left each database with the tables
+of its backup and no other; 0.11.2 ran on them, and was upgraded straight
+to this release with every check passing.
+
 
 ### Security
 
