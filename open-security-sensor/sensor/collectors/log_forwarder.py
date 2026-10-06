@@ -1794,6 +1794,15 @@ class LogForwarder:
         # Similar to nginx but might have slight differences
         return self._parse_nginx_log(line)  # Simplified for now
 
+    @staticmethod
+    def _behind(tail: _Tail) -> Optional[int]:
+        """Bytes of the file beyond what was read; None if it cannot be
+        looked at."""
+        try:
+            return max(0, os.fstat(tail.fd).st_size - tail.position)
+        except OSError:
+            return None
+
     def get_status(self) -> Dict[str, Any]:
         """Get log forwarder status"""
         sources = []
@@ -1814,7 +1823,14 @@ class LogForwarder:
                 # service has accepted its lines (what a restart goes on
                 # from): the difference is in the sensor, or on its way.
                 entry['positions'] = {
-                    path: {'read': tail.position, 'accepted': tail.record.offset}
+                    path: {
+                        'read': tail.position,
+                        'accepted': tail.record.offset,
+                        # What the file holds that has not been read yet:
+                        # it grows when the log is written faster than the
+                        # sensor can deliver.
+                        'behind': self._behind(tail),
+                    }
                     for path, tail in sorted(state.tails.items())
                 } if state else {}
                 monitored += len(entry['files'])

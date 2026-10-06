@@ -18,8 +18,9 @@ old file or the new one, never half of one.
 
 It is read once, when the sensor starts, and it is not trusted: the file
 must be a regular file of the sensor's own user, not a link, within the size
-limit, and every value in it must have the type and range this module
-writes. Anything else and the whole file is ignored, with a warning, as if
+limit (``sensor.utils.state_file`` writes and reads it, as it does the file
+monitor's baseline), and every value in it must have the type and range this
+module writes. Anything else and the whole file is ignored, with a warning, as if
 there were none; so is a position that does not match the file it names (see
 the log forwarder). A state file can therefore make the sensor read a log
 again, never read a file it would not have read.
@@ -28,16 +29,16 @@ One sensor per data directory: two sensors sharing one would each overwrite
 the other's positions.
 """
 
-import glob
 import json
 import logging
 import os
 import re
-import stat
-import tempfile
 import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from sensor.utils.state_file import Invalid as _Invalid
+from sensor.utils.state_file import StateFile
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,6 @@ MAX_FILES = 128
 MAX_PATH = 4096
 HEAD_BYTES = 256
 
-_TMP_PREFIX = ".log-positions."
-_TMP_SUFFIX = ".tmp"
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 # A journal cursor: "s=...;i=...;b=...;m=...;t=...;x=...". It becomes an
@@ -62,15 +61,6 @@ _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 CURSOR_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9=;:_.+/-]{0,511}$")
 _WINDOWS_LOG_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 _-]{0,63}$")
 _MAX_INT = 2**63 - 1
-
-_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
-_O_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
-_O_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
-_O_BINARY = getattr(os, "O_BINARY", 0)
-
-
-class _Invalid(Exception):
-    """Why the state file is not used."""
 
 
 def _whole(value: Any, what: str, most: int = _MAX_INT) -> int:
@@ -211,7 +201,12 @@ class PositionStore:
 
     def __init__(self, directory: Optional[str]):
         self.directory = directory or None
-        self.path = os.path.join(directory, STATE_FILE) if directory else None
+        self._file = (
+            StateFile(directory, STATE_FILE, MAX_STATE_BYTES, "a position file")
+            if directory
+            else None
+        )
+        self.path = self._file.path if self._file else None
         # Why the last read or write did not work, for the status and so
         # that the same failure is logged once.
         self.problem: Optional[str] = None
@@ -233,7 +228,7 @@ class PositionStore:
         ignored."""
         if not self.persistent:
             return {}
-        self._remove_leftovers()
+        self._file.remove_leftovers()
         try:
             document = self._read()
         except FileNotFoundError:
@@ -256,32 +251,7 @@ class PositionStore:
         return document
 
     def _read(self) -> Dict[str, Dict[str, Any]]:
-        flags = os.O_RDONLY | _O_NOFOLLOW | _O_NONBLOCK | _O_CLOEXEC | _O_BINARY
-        fd = os.open(self.path, flags)
-        try:
-            found = os.fstat(fd)
-            if not stat.S_ISREG(found.st_mode):
-                raise _Invalid("it is not a regular file")
-            if hasattr(os, "geteuid") and found.st_uid != os.geteuid():
-                raise _Invalid(
-                    f"it belongs to uid {found.st_uid}, not to the sensor's "
-                    f"user (uid {os.geteuid()})"
-                )
-            if found.st_size > MAX_STATE_BYTES:
-                raise _Invalid(
-                    f"its {found.st_size} bytes are more than a position "
-                    f"file holds ({MAX_STATE_BYTES})"
-                )
-            raw = b""
-            while len(raw) <= MAX_STATE_BYTES:
-                chunk = os.read(fd, 1024 * 1024)
-                if not chunk:
-                    break
-                raw += chunk
-        finally:
-            os.close(fd)
-        if len(raw) > MAX_STATE_BYTES:
-            raise _Invalid("it is larger than a position file")
+        raw = self._file.read()
         try:
             document = json.loads(raw.decode("utf-8"))
         except ValueError:
@@ -323,32 +293,14 @@ class PositionStore:
             "sources": sources,
         }
         payload = json.dumps(document, sort_keys=True, allow_nan=False).encode()
-        temporary = None
         try:
             if len(payload) > MAX_STATE_BYTES:
                 raise OSError(
                     f"the positions take {len(payload)} bytes, more than "
                     f"the file may hold ({MAX_STATE_BYTES})"
                 )
-            fd, temporary = tempfile.mkstemp(
-                dir=self.directory, prefix=_TMP_PREFIX, suffix=_TMP_SUFFIX
-            )
-            try:
-                view = memoryview(payload)
-                while view:
-                    view = view[os.write(fd, view) :]
-                os.fsync(fd)
-            finally:
-                os.close(fd)
-            os.replace(temporary, self.path)
-            temporary = None
-            self._sync_directory()
+            self._file.write(payload)
         except OSError as e:
-            if temporary is not None:
-                try:
-                    os.unlink(temporary)
-                except OSError:
-                    pass
             problem = f"the log positions cannot be saved in {self.directory}: " + (
                 e.strerror or str(e)
             )
@@ -365,33 +317,6 @@ class PositionStore:
         self.problem = None
         self.last_saved = saved_at
         return True
-
-    def _sync_directory(self):
-        """Make the rename itself durable, where the platform can."""
-        if not hasattr(os, "O_DIRECTORY"):
-            return
-        try:
-            fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
-        except OSError:
-            return
-        try:
-            os.fsync(fd)
-        except OSError:
-            pass
-        finally:
-            os.close(fd)
-
-    def _remove_leftovers(self):
-        """Temporary files of a save that a crash interrupted."""
-        pattern = os.path.join(
-            glob.escape(self.directory), _TMP_PREFIX + "*" + _TMP_SUFFIX
-        )
-        for path in glob.glob(pattern)[:1000]:
-            try:
-                if stat.S_ISREG(os.lstat(path).st_mode):
-                    os.unlink(path)
-            except OSError:
-                pass
 
     def get_status(self) -> Dict[str, Any]:
         return {

@@ -39,17 +39,21 @@ services:
   wildbox-redis:
     image: redis:7-alpine
     # As docker-compose.yml starts it: the password is an argument of the
-    # server and of the health check, and the data is in a named volume.
+    # server, the health check authenticates with the same value from the
+    # container's environment and requires PONG, and the data is in a named
+    # volume.
     command: >-
       redis-server --appendonly yes --maxmemory-policy noeviction
       --databases 16 --requirepass ${REDIS_PASSWORD:?required}
+    environment:
+      - REDISCLI_AUTH=${REDIS_PASSWORD:?required}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?required}", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
       interval: 1s
       timeout: 5s
-      retries: 60
+      retries: 5
   client:
     image: redis:7-alpine
     environment:
@@ -225,6 +229,23 @@ class Stack:
         assert listed.returncode == 0, listed.stderr
         return listed.stdout.strip()
 
+    def health(self, wanted):
+        """Wait for the Redis container's health status to become `wanted`."""
+        deadline = time.time() + 90
+        while True:
+            status = subprocess.run(
+                ["docker", "inspect", "--format", "{{.State.Health.Status}}"]
+                + [self.container_id("wildbox-redis")],
+                env=self.env(),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            ).stdout.strip()
+            if status == wanted:
+                return status
+            assert time.time() < deadline, f"{status}, not {wanted}"
+            time.sleep(0.5)
+
     def settle(self):
         """Every container as .env describes it, and the server accepting it."""
         self.compose("up", "-d", "--wait")
@@ -348,12 +369,19 @@ def test_real_rotation_old_password_refused_new_accepted_and_the_state_survives(
     assert command == "docker compose up -d --no-deps wildbox-redis client worker"
     assert re.search(r"not active here.*\n.*\n.*\n\n    backup\n", result.stdout)
 
+    # The Redis container says so itself: its health check authenticates
+    # with the password the container was created with, and requires PONG
+    # (#740). It used to stay healthy with a password the server refused.
+    assert stack.health("unhealthy")
+
     # State written after the rotation and before the recreation counts too.
     assert stack.redis("SET written:after:rotation yes") == ["OK"]
 
-    # The command the script printed, as printed.
+    # The command the script printed, as printed. It works on a Redis that
+    # is unhealthy: that container is the first thing it replaces.
     stack.compose(*command.split()[2:])
     assert stack.container_id("wildbox-redis") != redis_before
+    assert stack.health("healthy")
     assert stack.container_id("bystander") == bystander_before
     assert stack.container_id("backup") == ""
     assert stack.own_url_logs_in("client") and stack.own_url_logs_in("worker")

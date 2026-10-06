@@ -21,6 +21,10 @@ data_lake:
   # until a batch is accepted; it drops nothing to make room.
   buffer_max_events: 5000
   buffer_max_bytes: 16777216  # 16 MiB
+  # The share of the team's request budget at the gateway (RATE_LIMIT_PER_HOUR
+  # there, counted per minute) that this sensor uses when it has a backlog;
+  # the rest is left to the team's dashboard sessions and other keys.
+  rate_limit_share: 0.5
 
 # Telemetry Collection
 collection:
@@ -42,9 +46,11 @@ collection:
 #     format: nginx
 
 # Where the sensor keeps what must outlive a restart: the log forwarder's
-# read positions. Not set here: positions are kept in memory only, and after
-# a restart each log source starts as its read_from says. To keep them,
-# create a directory the sensor's user can write and name it:
+# read positions and the file monitor's baseline. Not set here: both are
+# kept in memory only; after a restart each log source starts as its
+# read_from says, and a file changed while the sensor was stopped is not
+# reported. To keep them, create a directory the sensor's user can write and
+# name it:
 #
 # data_dir: /var/lib/security-sensor
 
@@ -65,12 +71,17 @@ fim:
     - "*.lock"
   recursive: true
   max_depth: 10
+  # The most files watched, all paths together. Beyond it files are not
+  # watched, and the monitor's status says how many.
+  max_files: 50000
 
 # Performance Tuning (Docker-optimized)
 performance:
   query_interval: 10
-  max_memory_mb: 256  # Higher for Docker
-  max_cpu_percent: 10  # Slightly higher for containerized environment
+  # Thresholds, not limits: above either the sensor logs a warning and
+  # reports over_limits in its statistics. Nothing is slowed down.
+  max_memory_mb: 256
+  max_cpu_percent: 10
   max_queue_size: 2000
   worker_threads: 4
 

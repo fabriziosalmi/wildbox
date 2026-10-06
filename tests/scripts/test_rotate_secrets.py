@@ -305,10 +305,11 @@ COMPOSE_TEMPLATE = {
         "api": {"environment": {"API_KEY": "${API_KEY}"}},
         "gateway": {"environment": {}},
         # As the stack starts it: the password is an argument of the server,
-        # and of the health check.
+        # and in the environment for the health check.
         "wildbox-redis": {
             "command": ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"],
-            "healthcheck": {"test": ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]},
+            "environment": {"REDISCLI_AUTH": "${REDIS_PASSWORD}"},
+            "healthcheck": {"test": ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]},
         },
         # Holds both passwords, and runs only for an operator who asked for it.
         "backup": {

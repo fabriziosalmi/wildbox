@@ -60,7 +60,8 @@ services:
     networks:
       - wildbox-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # redis-cli exits 0 on an error reply: the reply has to be PONG (#740).
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
       interval: 30s
       timeout: 10s
       retries: 3

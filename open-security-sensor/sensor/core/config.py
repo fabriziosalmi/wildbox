@@ -62,6 +62,10 @@ class DataLakeConfig:
     retry_max_delay: int = 300
     buffer_max_events: int = 5000
     buffer_max_bytes: int = 16 * 1024 * 1024
+    # The share of the team's request budget at the gateway that this
+    # sensor may use in a minute; the rest is left to the team's other
+    # clients (its dashboard sessions, its other keys).
+    rate_limit_share: float = 0.5
     # data_lake keys the file sets that no longer mean anything.
     obsolete_keys: List[str] = field(default_factory=list, repr=False)
 
@@ -177,6 +181,16 @@ class DataLakeConfig:
         if self.buffer_max_bytes < MIN_BUFFER_BYTES:
             errors.append(
                 f"data_lake.buffer_max_bytes must be at least {MIN_BUFFER_BYTES}"
+            )
+        share = self.rate_limit_share
+        if (
+            isinstance(share, bool)
+            or not isinstance(share, (int, float))
+            or not 0 < share <= 1
+        ):
+            errors.append(
+                f"data_lake.rate_limit_share must be a number above 0 and at "
+                f"most 1, got {share!r}"
             )
         return errors
 
@@ -419,6 +433,11 @@ def _log_path_problems(path: Any) -> List[str]:
     return []
 
 
+# The most fim.max_files may be: a watched file takes about 700 bytes of
+# memory and 250 of the saved baseline.
+FIM_MAX_FILES_LIMIT = 1000000
+
+
 @dataclass
 class FIMConfig:
     """File Integrity Monitoring configuration"""
@@ -431,6 +450,10 @@ class FIMConfig:
     ])
     recursive: bool = True
     max_depth: int = 10
+    # The most files the monitor watches, all paths together: what it keeps
+    # in memory and in its saved baseline. Beyond it files are not watched,
+    # and the monitor says how many.
+    max_files: int = 50000
 
 @dataclass
 class PerformanceConfig:
@@ -580,6 +603,29 @@ class SensorConfig:
             )
         elif self.fim.enabled and not self.fim.paths:
             errors.append("fim.paths cannot be empty when FIM is enabled")
+        # A string here would be read one character at a time, and its "*"
+        # would exclude every file.
+        patterns = self.fim.exclude_patterns
+        if not isinstance(patterns, list) or not all(
+            isinstance(pattern, str) for pattern in patterns
+        ):
+            errors.append(
+                f"fim.exclude_patterns must be a list of patterns, got {patterns!r}"
+            )
+        for name, least, most in (
+            ("max_depth", 0, 1000),
+            ("max_files", 1, FIM_MAX_FILES_LIMIT),
+        ):
+            value = getattr(self.fim, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not least <= value <= most
+            ):
+                errors.append(
+                    f"fim.{name} must be a whole number between {least} and "
+                    f"{most}, got {value!r}"
+                )
         
         return errors
 
@@ -714,6 +760,7 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
         retry_max_delay=data_lake_data.get('retry_max_delay', 300),
         buffer_max_events=data_lake_data.get('buffer_max_events', 5000),
         buffer_max_bytes=data_lake_data.get('buffer_max_bytes', 16 * 1024 * 1024),
+        rate_limit_share=data_lake_data.get('rate_limit_share', 0.5),
         # Read by nothing since #725: a batch is no longer given up after a
         # number of attempts. Said at start-up rather than silently ignored.
         obsolete_keys=[key for key in ('retry_attempts',) if key in data_lake_data],
@@ -737,7 +784,8 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
         paths=fim_data.get('paths', ["/etc", "/bin", "/usr/bin", "/opt"]),
         exclude_patterns=fim_data.get('exclude_patterns', ["*.tmp", "*.log", "*.cache", "*.pid"]),
         recursive=fim_data.get('recursive', True),
-        max_depth=fim_data.get('max_depth', 10)
+        max_depth=fim_data.get('max_depth', 10),
+        max_files=fim_data.get('max_files', 50000)
     )
     
     # Performance configuration

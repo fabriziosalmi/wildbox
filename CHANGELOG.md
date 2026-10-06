@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The Redis health check no longer carries the password on its command
+  line, and fails when the password is wrong** (#740). Every compose file
+  checked Redis with `redis-cli -a <password> ping`, or with
+  `redis-cli ping` and no password. The password was an argument of a
+  process that runs every 30 seconds, visible in the container's process
+  list. `redis-cli` also exits 0 when the server answers with an error,
+  so the check passed on `NOAUTH` and `WRONGPASS`: a Redis whose password
+  no longer matched stayed `healthy`, and in `open-security-data` the
+  check sent a literal `${REDIS_PASSWORD...}` as the password and was
+  healthy all the same. The check is now
+  `redis-cli ping | grep -qx PONG` in `docker-compose.yml` and in the
+  nine per-service compose files that have one, and each Redis that
+  requires a password receives it as `REDISCLI_AUTH` in its environment.
+  A Redis that is still loading its data is not healthy yet. After a
+  `REDIS_PASSWORD` rotation the container reports `unhealthy` until it is
+  recreated, which the rotation asks for.
+- **The Redis password is no longer an argument of a `docker` command**
+  (#740). `scripts/check_redis_config.py runtime` ran
+  `docker compose exec -e REDISCLI_AUTH=<password>`, and the deployment
+  guide, the authentication guide and `TROUBLESHOOTING.md` told operators
+  to do the same: the password reaches `redis-cli` through its
+  environment, but on the way it is an argument of the `docker` process
+  on the host, which every local user can read in the process list. The
+  script and the three pages now name the variable only
+  (`-e REDISCLI_AUTH`), and `docker` takes the value from the
+  environment of the command. `runtime --env-file FILE` also passes the
+  file to `docker compose`, which it used to leave out.
 - **Prometheus 3.13.4 and osquery 5.23.1 replace releases that no longer
   get fixes** (#726). The monitoring profile ran Prometheus v2.55.1, the
   last release of the 2.x line (November 2024): CVE-2026-44903, a stored
@@ -769,6 +796,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a credential, for a route it serves (the tool list, the data
   health probe, the agents statistics) and expects 200, and expects the
   tools service's own 404 for the mistaken path.
+- **`restore_postgres.sh --latest` restores one backup run** (#740). It
+  took the newest archive of each database on its own, so after a run
+  limited with `--databases` the three databases were restored from
+  different runs, hours or days apart, without a word. `--latest` now
+  means the newest run, the archives that carry the newest timestamp,
+  read from the file names and no longer from modification times, which
+  a copy from another disk changes. If that run does not hold every
+  database asked for, the script refuses, shows what the run holds and
+  names the newest run that is complete. `restore_redis.sh --latest`
+  refuses in the same way when the newest run holds no Redis snapshot
+  (`SKIP_REDIS=true`). A run that is not the newest is named with
+  `--timestamp`; runs are mixed on purpose with `--databases` and
+  `--timestamp`, one database at a time.
+- **A restore that fails leaves the data that was there** (#740).
+  `scripts/restore_redis.sh` deleted the contents of the Redis volume and
+  then loaded the snapshot, so a snapshot that did not load left an empty
+  Redis. It now loads the snapshot in a scratch directory of the volume,
+  requires the temporary server to answer and to hold as many keys as the
+  snapshot, reads back the append-only file it wrote, and only then swaps
+  it with the data in place; the volume needs room for both meanwhile.
+  `scripts/restore_postgres.sh` ran `pg_restore --clean` statement by
+  statement and carried on after an error: measured on a table that a
+  later view depended on, the failed restore left it without its primary
+  key and with its rows loaded twice. Each database is now restored in
+  one transaction (`--single-transaction`) and is rolled back whole when
+  anything fails, and every archive is read before the first database is
+  touched. The three databases remain three transactions: if one fails,
+  the script says which were restored, which failed and which were not
+  reached, and the same command run again restores all of them.
+- **`make health` no longer reports a Redis it cannot log in to as
+  healthy** (#740). The check ran `redis-cli ping` without a password and
+  counted `NOAUTH` as success, so a Redis whose password no longer
+  matched `.env`, which no service can use, passed. It now authenticates
+  with `REDIS_PASSWORD` from the environment or from the env file Compose
+  reads (`ENV_FILE`, default `.env`), passes the password by name through
+  the environment, and requires the reply to be `PONG`. A refused
+  password, a Redis that is still loading and a missing password each
+  fail the check with a message of their own.
 - **tools: an arm64 image ships a Trivy it can run** (#726). The
   Dockerfile downloaded `trivy_*_Linux-64bit.tar.gz` whatever the
   platform, so an image built on or for arm64 (an Apple Silicon laptop,
@@ -1373,6 +1438,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the service are gone too (`@validator`, `Field(env=...)` in the
   settings, `.dict()`, `Path(regex=...)`); they worked, with deprecation
   warnings, so nothing else changes for a client or an operator.
+- **A sensor whose key is refused keeps what it reads** (#745). Every
+  4xx answer but 429 dropped the batch and settled its events, so the log
+  positions moved past them: with a revoked or expired key (401), a key
+  without the scope or a member removed from the team (403), everything
+  the sensor read was discarded and could never be read again. The sender
+  now reads an answer for what it says. A credential or permission
+  answer, a rate limit, a redirect or a 404 keeps the batch as an outage
+  does, with the same backoff and `Retry-After`; the sensor logs `Not
+  delivering since ...` once, with the reason and what to do, and reports
+  `delivery.state` (`unauthorized`, `forbidden`, `rate_limited`,
+  `unavailable`, `misconfigured`) under `data_forwarder` in
+  `GET /api/v1/components`, `delivery_state` in `GET /api/v1/stats` and
+  an alert in the dashboard summary. Only an answer about the payload
+  costs events (413, 422, the data service's own 400, a 200 that stored
+  nothing), and then the event at fault, not its batch: the batch is
+  split in halves until that event is alone, at most 64 requests for one
+  batch, and a batch refused for its size is delivered in parts. A 200
+  whose `events_ingested` is below what was sent no longer counts the
+  difference as forwarded. An integration test revokes a sensor's key,
+  writes lines, starts the sensor again with a valid key and requires
+  each line once in the data service.
+- **The sensor sends the next batch when the previous one is answered**
+  (#745). It waited one second between two requests whatever the gateway
+  allowed, so it delivered at most 100 events a second with the default
+  `batch_size`; since it waits instead of dropping, a log written faster
+  than that fell behind for good. The pace is now the gateway's: 20 ms
+  between requests, under nginx's limit per address, and the team's
+  request budget as each answer states it. The sensor uses
+  `data_lake.rate_limit_share` of that budget (half, by default) and
+  then waits for the gateway's next minute, so that a sensor with a
+  backlog does not earn the team's dashboard a 429. With the defaults
+  that is about 140 events a second; the README says how to raise it and
+  what happens above it. `log_forwarder` reports how many bytes of each
+  file are waiting to be read (`behind`), and `data_forwarder.pacing`
+  the budget and whether the sender is waiting.
+- **An osquery query no longer stops the sensor while it runs** (#745).
+  Each query was a `subprocess.run` in the event loop: for as long as
+  `osqueryi` took, up to 30 seconds, no batch was sent, no log was read
+  and the local API did not answer, a dozen times in every collection
+  cycle. `osqueryi` is now a child process the loop waits for, one at a
+  time, killed after 30 seconds or 16 MiB of output (what it printed was
+  read whole into memory, and what it said on its standard error was
+  logged whole; the log now has the last 2 KiB). `_validate_query`,
+  which held the second blocking call, was called by nothing and is
+  removed.
+- **The sensor no longer runs three osquery queries that cannot answer,
+  nor an `osqueryd` nothing read** (#745). `process_events.process_events`,
+  `network.socket_events` and `user_events.user_events` read osquery's
+  event tables through `osqueryi`, which in the sensor's image answers no
+  row and `is event-based but events are disabled`: they ran at every
+  cycle for nothing and are removed. The `osqueryd` the sensor started
+  ran the same packs a second time and wrote its results to a temporary
+  directory nothing read; its pipes were never read, it enabled no event
+  publisher as the sensor's user, and in the container it reported
+  `Cannot create extension socket`. It is no longer started, and
+  `process_alive` leaves `osquery_manager` in `GET /api/v1/components`,
+  which now reports the `osqueryi` found, its version, and `queries_run`,
+  `queries_failed` and `last_error`. The manager checks at start that
+  `osqueryi` answers a query, and stopping the sensor ends the collection
+  cycle and the query it is in, which nothing did. The README says what
+  osquery collects: pictures of the processes, sockets and users at each
+  cycle, not a stream of events.
+- **A file-integrity scan no longer stops the sensor, and what changed
+  while the sensor was stopped is reported** (#745). The file monitor
+  walked its paths and hashed every file under 10 MiB in the event loop,
+  at every scan: meanwhile no batch was sent, no log was read and the
+  local API did not answer. The scan now runs in a worker thread and is
+  bounded: regular files only (a FIFO under a watched path was opened and
+  waited on forever, a link to a device was read forever), never more
+  than 10 MiB of one, and at most `fim.max_files` files (50,000), with
+  `files_over_limit` in the status beyond. The baseline was in memory
+  only, so a sensor that started took whatever it found as normal. It is
+  now kept in `<data_dir>/fim-baseline.json`, written and validated like
+  the position file, and it follows what the data service accepted: a
+  change made while the sensor was stopped, or found and not delivered
+  before it stopped, is reported by the first scan after the start. Also
+  fixed on the way: with two watched paths of which one begins like the
+  other (`/host/etc`, `/host/etc-backup`), the second one's files were
+  reported deleted and created at every scan; the files of a directory
+  that could not be listed were reported deleted; stopping the sensor
+  did not end a monitor that was waiting for room in the queue; and
+  `fim.exclude_patterns` given as a string excluded every file.
+- **`main.py --status` asks the sensor** (#745). It printed `Security
+  Sensor Status: Running` and exited 0 without looking, with no sensor
+  running as with one. It now asks the local API of the configured
+  sensor (`/health`, and `/api/v1/stats` when `network.api_key` is set)
+  and prints what it answers: running or not, its counters, whether it is
+  delivering. It exits 0 when a sensor is running, 1 when none answers or
+  it is starting or stopping, 2 when it cannot be told. The key is sent
+  to the local API only, past any proxy of the environment and without
+  following a redirect.
+- **The sensor no longer says it throttles** (#745). Over
+  `performance.max_memory_mb` or `performance.max_cpu_percent` it logged
+  `throttling enabled` and reported `throttled: true` in
+  `GET /api/v1/stats`, and slowed nothing: no collector read the flag.
+  The flag is `over_limits`, the log line says that nothing is slowed
+  down, and the README and the shipped configurations call the two
+  settings what they are, the thresholds of a warning. The sensor still
+  measures every 5 seconds (it measured every 10 while the flag was set).
+- **The sensor's `DOCKER.md` says where its monitoring profile listens**
+  (#745). It said Prometheus and Grafana were published on all host
+  interfaces; `open-security-sensor/docker-compose.yml` binds both to
+  `127.0.0.1`, as it does the sensor's local API.
 - **guardian: a vulnerability can be recorded without a CVE, its
   creation answers with its `id`, and its record is served when its
   asset has an environment** (#724). `POST vulnerabilities/` answered

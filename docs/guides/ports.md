@@ -39,7 +39,7 @@ if this page and that file disagree, the file is right and this page is a bug.
 | `prometheus` | (Compose default) | `127.0.0.1:9090` | Prometheus; only with `--profile monitoring` | `http://localhost:9090/-/healthy` |
 | `alertmanager` | (Compose default) | `127.0.0.1:9093` | Alertmanager: receives the alerts Prometheus fires; only with `--profile monitoring` | `http://localhost:9093/-/healthy` |
 | `postgres` | `wildbox-postgres` | none | PostgreSQL 15 | `pg_isready` inside the container |
-| `wildbox-redis` | `wildbox-redis` | none | Redis 7 | `redis-cli ping` inside the container |
+| `wildbox-redis` | `wildbox-redis` | none | Redis 7 | `redis-cli ping` inside the container, authenticated, answers `PONG` |
 | `tools-worker`, `guardian-worker`, `cspm-worker` | (Compose default) | none | Celery workers for tools, guardian and cspm | `celery ... inspect ping` inside the container |
 | `data-scheduler` | `open-security-data-scheduler` | none | Collects the threat intelligence feeds on a schedule | scheduler process running |
 | `backup` | (Compose default) | none | Scheduled PostgreSQL and Redis backups; only with `--profile backup` | - |
@@ -64,7 +64,9 @@ make health
 A service is healthy when its URL answers 2xx. A redirect is not followed and
 counts as unhealthy, as does any 4xx or 5xx and no answer at all. It also
 checks that PostgreSQL accepts connections and holds the `identity`, `data`
-and `guardian` databases, and that Redis answers. `automations` and
+and `guardian` databases, and that Redis answers `PONG` to a client that
+authenticates with the `REDIS_PASSWORD` of `.env` (or of the file `ENV_FILE`
+names): a Redis that refuses that password is unhealthy. `automations` and
 `prometheus` are skipped when they are not running, unless `COMPOSE_PROFILES`
 names their profile. The URLs live in one table,
 `scripts/lib/health_endpoints.sh`, which `scripts/wait-for-services.sh` uses
