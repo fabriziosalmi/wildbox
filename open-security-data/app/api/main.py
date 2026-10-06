@@ -4,6 +4,7 @@ FastAPI application for serving security data
 
 import logging
 import re
+import traceback
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Union
 import os
@@ -17,7 +18,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DataError, SQLAlchemyError
 import uvicorn
 import json
 
@@ -739,6 +740,10 @@ def percent_change(previous: int, current: int) -> Optional[float]:
         return None
     return round((current - previous) / previous * 100, 1)
 
+# The code of the 422 for a batch the database refuses a value of: the
+# sensor, and any client, tells it from a refusal of the schema by it.
+BATCH_NOT_STORABLE = "BATCH_NOT_STORABLE"
+
 # Telemetry ingestion endpoints
 # #182 policy: machine-to-machine telemetry ingest from sensors (not a user
 # admin action) — gated by gateway auth + team scope, not by role.
@@ -777,9 +782,12 @@ async def ingest_telemetry_batch(
 
     batch_id = batch.batch_id or str(uuid.uuid4())
     ingested_at = datetime.now(timezone.utc)
-    events_ingested = 0
-    errors = []
-    
+    # What the log lines below say of the batch: how many events, and whose.
+    # Not batch_id, which they used to name: it is the client's own text.
+    # The request id, which the error handlers log with each answer, is
+    # what ties a line to a request.
+    what = f"a batch of {len(batch.events)} events of team {team_id}"
+
     # The batch's sensor records, by sensor ID. The session does not
     # autoflush, so a record added for the first event of a new sensor is
     # invisible to the query for the second: without this, every batch of
@@ -787,9 +795,16 @@ async def ingest_telemetry_batch(
     # failed on the uniqueness of the sensor ID (#628).
     sensors = {}
 
-    # Process each event in the batch
-    for i, event_data in enumerate(batch.events):
-        try:
+    # One transaction for the batch: every event is stored, or none is, and
+    # the answer says which (#755). The loop used to catch what an event
+    # raised, count the event out and go on, and the commit used to catch
+    # everything that was not SQLAlchemy's and answer 200 with
+    # events_ingested 0: a sensor that reads the status took a batch that
+    # was not stored for one that was. Measured on PostgreSQL, a NUL
+    # character in source_host or raw_data did exactly that, and took the
+    # other events of its batch with it.
+    try:
+        for event_data in batch.events:
             # Update or create the sensor's record -- this team's. Another
             # team may name a sensor the same way.
             sensor = sensors.get(event_data.sensor_id)
@@ -813,13 +828,12 @@ async def ingest_telemetry_batch(
                 db.add(sensor)
             else:
                 sensor.last_seen = ingested_at
-                sensor.total_events += 1
+                sensor.total_events = (sensor.total_events or 0) + 1
                 sensor.last_event_at = event_data.timestamp
                 sensor.active = True
             sensors[event_data.sensor_id] = sensor
 
-            # Create telemetry event
-            telemetry_event = TelemetryEventRow(
+            db.add(TelemetryEventRow(
                 team_id=team_id,
                 sensor_id=event_data.sensor_id,
                 event_type=event_data.event_type.value,
@@ -830,41 +844,62 @@ async def ingest_telemetry_batch(
                 ingested_at=ingested_at,
                 severity=event_data.severity,
                 tags=event_data.tags
-            )
-            
-            db.add(telemetry_event)
-            events_ingested += 1
-            
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            errors.append(f"Event {i}: processing failed")
-            logger.error(f"Failed to ingest event {i} in batch {batch_id}: {e}")
+            ))
 
-    try:
         db.commit()
-        logger.info(f"Ingested batch {batch_id}: {events_ingested}/{len(batch.events)} events")
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except DataError as e:
+        # The database refuses a value of the batch: something the schema
+        # let through that a column cannot hold. That is about the payload,
+        # and sending it again would get the same answer, so it is a 422 as
+        # for an event the schema refuses: the sensor then splits the batch
+        # to find the event (data_forwarder.py, classify_answer). It was a
+        # 503 "send it again", which a sensor obeys for ever.
         db.rollback()
-        errors.append(f"Batch commit failed")
-        logger.error(f"Failed to commit batch {batch_id}: {e}")
-        events_ingested = 0
+        logger.error(f"The database refuses a value of {what}: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "reason": "The batch holds a value that cannot be stored; none of its events was stored.",
+                "code": BATCH_NOT_STORABLE,
+            },
+        )
     except SQLAlchemyError as e:
         # Nothing was stored. A 200 here would tell the sensor the batch is
         # in, and it would drop it; a 503 has it send the batch again, which
         # is the right answer to, for instance, two batches racing to create
         # the same new sensor's record.
         db.rollback()
-        logger.error(f"Failed to commit batch {batch_id}: {type(e).__name__}")
+        logger.error(f"Failed to commit {what}: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The batch was not stored; send it again.",
             headers={"Retry-After": "5"},
         )
+    except Exception as e:  # noqa: BLE001 -- whatever it is, nothing was stored
+        # A fault of the service, not of the batch: answer one, with the
+        # canonical body, so that the sensor keeps the batch (5xx) instead
+        # of taking a 200 for delivery. The class of the error and where it
+        # was raised are logged; its text is not, because it can quote an
+        # event.
+        db.rollback()
+        logger.error(
+            "Failed to store %s: %s, raised at\n%s",
+            what,
+            type(e).__name__,
+            "".join(traceback.format_tb(e.__traceback__)),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The batch was not stored.",
+        )
 
+    logger.info(f"Ingested {what}")
+    # All of them: the transaction either stored the whole batch or raised.
     return TelemetryBatchResponse(
         batch_id=batch_id,
         events_received=len(batch.events),
-        events_ingested=events_ingested,
-        errors=errors,
+        events_ingested=len(batch.events),
+        errors=[],
         ingested_at=ingested_at
     )
 

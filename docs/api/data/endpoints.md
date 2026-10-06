@@ -412,11 +412,11 @@ curl -s --cacert "$CA" -X POST https://<host>/api/v1/data/ingest \
 
 | Event field | Required | Description |
 | --- | --- | --- |
-| `sensor_id` | Yes | Sensor identifier |
+| `sensor_id` | Yes | Sensor identifier, at most 255 characters |
 | `event_type` | Yes | `process_event`, `network_connection`, `file_change`, `user_event`, `system_inventory`, `authentication` or `security_event` |
 | `timestamp` | Yes | When the event happened |
 | `event_data` | Yes | Event-specific object |
-| `source_host` | No | Host the event came from |
+| `source_host` | No | Host the event came from, at most 255 characters |
 | `raw_data` | No | Raw event as a string |
 | `severity` | No | 1 to 10 (default 1) |
 | `tags` | No | List of strings |
@@ -435,13 +435,33 @@ curl -s --cacert "$CA" -X POST https://<host>/api/v1/data/ingest \
 }
 ```
 
-An event that cannot be processed is reported in `errors` as
-`Event <index>: processing failed` and the rest are kept. If the database
-refuses the batch, nothing is stored and the service answers **503** with
-`Retry-After: 5`; send the batch again. At most 1000 events: more answers
-422, and 400 when `MAX_BATCH_SIZE` is set lower. Through the gateway, an
-invalid, expired or revoked key answers 401 and a key without an ingest
-scope 403 `insufficient_scope`.
+A batch is stored in one transaction: every event of it, or none
+([#755](https://github.com/fabriziosalmi/wildbox/issues/755)). A 200 means
+all of them, so `events_ingested` equals `events_received` and `errors` is
+empty; the field is kept for clients that read it. Every other answer means
+nothing was stored, and has the error body of the services:
+
+| Status | Meaning | What to do with the batch |
+| --- | --- | --- |
+| 422, `type: ValidationError` | An event is not valid. `details` lists each error with its place, `["body", "events", <index>, <field>]` | Remove or correct that event; the others can be sent |
+| 422, `details.code: BATCH_NOT_STORABLE` | The database refuses a value the validation let through | The same, without knowing which event: send the batch in halves |
+| 400 | More events than `MAX_BATCH_SIZE` (more than 1000 answers 422) | Send fewer |
+| 503, with `Retry-After: 5` | The database did not take the batch, for a reason that may pass | Send it again |
+| 500 | A fault of the service | Send it again |
+
+`sensor_id`, `source_host` and `raw_data` may not contain a NUL character,
+which PostgreSQL cannot store in a text column; `event_data` and `tags` may.
+Before #755 a batch with such an event was answered 200 with
+`events_ingested: 0`, a `sensor_id` longer than a column was a 503 for as
+long as it was sent, and an event the service failed on was left out of a
+batch that was otherwise stored.
+
+The sensor acts on these answers as the table says: it keeps a batch
+answered 5xx and sends it again, and splits a batch answered 422 or 400 in
+halves until the event the service refuses is alone, which it drops.
+`tests/shared/ingest_answer_vectors.json` holds the answers for the tests
+of both sides. Through the gateway, an invalid, expired or revoked key
+answers 401 and a key without an ingest scope 403 `insufficient_scope`.
 
 ### GET /api/v1/data/telemetry/events
 

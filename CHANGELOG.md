@@ -1657,6 +1657,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays 50. It was ignored: the dashboard home asked for one asset to
   read a count, and for the three newest vulnerabilities, and was sent
   fifty rows each time. `next` and `previous` keep the parameter.
+- **The data service no longer answers 200 for a telemetry batch it did not
+  store** (#755). `POST /api/v1/data/ingest` answered 200 with
+  `events_ingested: 0` when the commit failed with an error that was not
+  SQLAlchemy's. On PostgreSQL a NUL character in `source_host` or
+  `raw_data` did that, and the other events of the batch were lost with
+  it. An event the service could not process was left out of a batch that
+  was otherwise stored, after its sensor's record had counted it. A value
+  the validation let through and a column could not hold (a `sensor_id` of
+  300 characters) was a 503 "send it again" for as long as it was sent,
+  which a sensor obeys: one such event stopped a sensor's delivery for
+  good. A batch is now stored in one transaction, all of it or none.
+  A 200 means all, and `events_ingested` is what was stored. What the
+  database would refuse about an event the validation refuses first, with
+  a 422 that names the event by its place in the batch (`sensor_id` and
+  `source_host` of more than 255 characters; a NUL in `sensor_id`,
+  `source_host` or `raw_data`); a value the database still refuses is a
+  422 with code `BATCH_NOT_STORABLE`; a database that did not take the
+  batch stays a 503 with `Retry-After`; a fault of the service is a 500.
+  The sensor splits a batch on a 422 and keeps it on a 5xx, and
+  `tests/shared/ingest_answer_vectors.json` holds the answers for the
+  tests of both services.
 
 ### Changed
 
