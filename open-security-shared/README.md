@@ -51,6 +51,35 @@ request body; `field_errors()` drops it, with `ctx` and `url`, so a secret in
 a rejected request is not sent back. A validator's own message is returned
 as written: do not put the value in it when the value can be a secret.
 
+## What stays out of the log
+
+A log is read by more people and kept for longer than the request it
+describes, so no service writes what a request held into one.
+`install_error_handlers(app)` also calls
+`log_safety.keep_requests_out_of_the_logs()`, which does two things every
+FastAPI service needs and none should have to remember:
+
+- uvicorn's access log loses the query string of each request. The line
+  keeps the method, the path and the status:
+  `"GET /api/v1/indicators/search HTTP/1.1" 200`.
+- the libraries that log the requests they send are held to warnings and
+  errors, whatever the service's log level: `httpx` and `httpcore` (the URL
+  of every request, at INFO), `urllib3` (at DEBUG), `aiohttp.client`, and
+  `botocore` and `boto3` (at DEBUG, the request botocore signs, session
+  token included).
+
+A worker process makes no application, so it calls
+`log_safety.quiet_http_client_loggers()` itself where it starts.
+
+The record of an HTTP error has the status, the path and the request id,
+not the `detail`: a detail is the answer to the caller and often names what
+they sent. A service that wants the reason of a refusal in its log writes it
+there, in words that hold no value.
+
+`tests/scripts/test_no_request_values_in_logs.py` reads every logging call
+of every service and fails when one is handed a value whose name says it is
+a request, a part of one or a credential.
+
 ## Installing it
 
 The package has no dependency of its own. Each group of modules has an extra
@@ -59,7 +88,7 @@ the extras of the modules it uses:
 
 | Extra | Modules | Requires |
 | --- | --- | --- |
-| none | `api_docs`, `circuit_breaker`, `environment`, `scopes` | the standard library |
+| none | `api_docs`, `circuit_breaker`, `environment`, `log_safety`, `scopes` | the standard library |
 | `fastapi` | `errors`, `gateway_auth`, `tenancy`, `security_middleware` | FastAPI, Pydantic 2 |
 | `auth` | `auth_utils` | FastAPI, PyJWT, passlib with bcrypt |
 | `metrics` | `observability` | FastAPI, prometheus-client 0.20 or later |

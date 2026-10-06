@@ -74,6 +74,8 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .log_safety import keep_requests_out_of_the_logs
+
 logger = logging.getLogger(__name__)
 
 # Header carrying the correlation id across services. The gateway generates it;
@@ -187,13 +189,18 @@ def message_and_details(detail: Any, status_code: int) -> Tuple[str, Optional[An
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     request_id = get_request_id(request)
+    # The status, the path and the request id; not the detail, which this
+    # logged. A detail is the answer to the caller and often names what they
+    # sent (the target a tool refuses, the value a route does not know): in
+    # the log it is the request, kept for whoever reads the log (#755). A
+    # service that needs the reason of a refusal in its log writes it there
+    # itself, in words that hold no value.
     logger.warning(
         "HTTP exception: %s",
         exc.status_code,
         extra={
             "request_id": request_id,
             "status_code": exc.status_code,
-            "detail": exc.detail,
             "path": str(request.url.path),
         },
     )
@@ -312,7 +319,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 def install_error_handlers(app: FastAPI) -> None:
-    """Register the canonical error handlers on a FastAPI application."""
+    """Register the canonical error handlers on a FastAPI application.
+
+    Every FastAPI service calls this when it makes its application, so it is
+    also where the service's access log loses the query string of each
+    request, and where the HTTP client libraries stop logging the addresses
+    they call (log_safety.py, #755): one call, and no service to forget it.
+    """
+    keep_requests_out_of_the_logs()
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
