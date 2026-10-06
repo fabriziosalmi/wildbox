@@ -713,7 +713,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose last release (1.21.0) does not import under a current
   OpenTelemetry SDK, and no image installed OpenTelemetry at all. Every
   FastAPI service still tried it at start-up, through
-  `install_observability()`, and logged "Tracing not initialised". The
+  `install_observability()`, and logged that tracing was not set up. The
   module, the `tracing` extra of the package and the `enable_tracing`
   argument of `install_observability()` are removed; that log line no
   longer appears. Nothing traced before, so nothing stops tracing. The
@@ -725,8 +725,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrote `running`, `completed` or `failed` under it for every analysis,
   and nothing read it: the API takes a task's status from Celery and
   the reason of a failure from `task:<id>:error`. The three writes are
-  removed. A key already in Redis expires with its task, an hour after
-  it at the default.
+  removed. A key already in Redis expires when its task does.
 - **sensor: the `security-sensor` and `ossensor` console scripts, and
   the `dev`, `windows` and `macos` extras of `setup.py`** (#665). Both
   scripts pointed at `main:main`, and `main.py` is not part of what
@@ -788,8 +787,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     "open-security-identity:8001"`. Its `Makefile`, `scripts/setup.sh`
     and `test/integration_test.sh` all ran that file, and
     `scripts/generate_certs.sh` was called by those two only (the image's
-    entrypoint writes the development certificate). `scripts/test_config.sh`,
-    the `make config` check, wrote an nginx configuration of its own,
+    entrypoint writes the development certificate).
+    `scripts/test_config.sh`, the `make config` check, wrote an nginx
+    configuration of its own,
     with an upstream for the automations route removed in #714, and
     tested that one, not the files in `nginx/`. The gateway runs from the
     root `docker-compose.yml`, and is tested without the stack as
@@ -823,8 +823,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the [quickstart](docs/guides/quickstart.md) says.
   - In `tests/`: `test_all_pages.sh`, `test_integration.sh`,
     `verify_all_endpoints.sh`, `verify_endpoints.sh`, `verify_auth.sh`,
-    `test_dashboard_auth_fix.sh`, `test_gateway_auth_complete.sh` and five
-    `.js` files. They called the services on their own ports without the
+    `test_dashboard_auth_fix.sh`, `test_gateway_auth_complete.sh` and
+    five `.js` files. They called the services on their own ports without the
     gateway's identity headers, or the gateway over plain HTTP on paths
     it does not serve. The `integration-tester` service of
     `docker-compose.dev.yml` goes with `test_integration.sh`: it mounted
@@ -907,7 +907,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carry no CORS header, as a same-origin application needs none. The
   security headers (the Content Security Policy, `X-Frame-Options`,
   HSTS) are unchanged. `src/proxy.ts` no longer lists `/endpoints`
-  among the routes that need a session: there is no such page.
+  among the routes that need a session: there is no such page. The
+  `CloudAccount` type, with its `azure` and `gcp` providers, was used
+  by nothing.
 
 ### Fixed
 
