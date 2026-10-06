@@ -5,7 +5,7 @@ This page replaces an earlier report that marked every audit finding "Fixed"
 and every check "PASS"; several of those claims did not hold when they were
 checked against the code.
 
-**Current release**: v0.12.1. Its changes, and those of every earlier
+**Current release**: v0.12.2. Its changes, and those of every earlier
 release, are listed in [CHANGELOG.md](https://github.com/fabriziosalmi/wildbox/blob/main/CHANGELOG.md).  
 **Checked against**: `main` on 4 October 2026. Each check below names how it
 was made, so it can be repeated.
