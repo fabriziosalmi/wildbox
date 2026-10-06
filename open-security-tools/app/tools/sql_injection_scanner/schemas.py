@@ -10,10 +10,22 @@ HttpMethod = CaseInsensitiveChoice("GET", "POST")
 
 
 class SQLInjectionScannerInput(BaseToolInput):
-    target_url: str = Field(..., description="Target URL to test for SQL injection", example="https://example.com/login.php")
+    target_url: str = Field(
+        ...,
+        description="Target URL to test for SQL injection",
+        json_schema_extra={"example": "https://example.com/login.php"},
+    )
     # main.py sends GET or, for any other value, POST (#611).
-    method: HttpMethod = Field(default="GET", description="HTTP method to use (GET or POST)", example="GET")
-    parameters: Optional[Dict[str, str]] = Field(None, description="Parameters to test", example={"id": "1", "name": "test"})
+    method: HttpMethod = Field(
+        default="GET",
+        description="HTTP method to use (GET or POST)",
+        json_schema_extra={"example": "GET"},
+    )
+    parameters: Optional[Dict[str, str]] = Field(
+        None,
+        description="Parameters to test",
+        json_schema_extra={"example": {"id": "1", "name": "test"}},
+    )
     headers: Optional[Dict[str, str]] = Field(None, description="Custom HTTP headers")
     timeout: int = Field(default=10, description="Request timeout in seconds", ge=1, le=60)
 

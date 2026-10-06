@@ -35,9 +35,11 @@ DEVELOPMENT = "docker-compose.dev.yml"
 
 REQUIRED = re.compile(r"^\$\{ENVIRONMENT:\?[^}]+\}$")
 # The services whose code reads ENVIRONMENT. The base file gave it to
-# eighteen: the dashboard, PostgreSQL and n8n read none and no longer get it
-# (#665). A service that is given a variable it does not read is refused by
-# test_compose_variables_are_read.py, so this is a floor, not a census.
+# eighteen: the dashboard, PostgreSQL, n8n and guardian's three containers
+# read none and no longer get it (#665). guardian's development mode is
+# DEBUG, which is false unless set. A service that is given a variable it
+# does not read is refused by test_compose_variables_are_read.py, so this is
+# a floor, not a census.
 READS_ENVIRONMENT = {
     "identity",
     "api",
@@ -45,16 +47,20 @@ READS_ENVIRONMENT = {
     "tools-flower",
     "data",
     "data-scheduler",
-    "guardian",
-    "guardian-worker",
-    "guardian-beat",
     "responder",
     "cspm",
     "cspm-worker",
     "agents",
     "sensor",
 }
-READS_NONE = {"dashboard", "postgres", "automations"}
+READS_NONE = {
+    "dashboard",
+    "postgres",
+    "automations",
+    "guardian",
+    "guardian-worker",
+    "guardian-beat",
+}
 DEFAULTED = re.compile(r"\$\{ENVIRONMENT:?-")
 
 

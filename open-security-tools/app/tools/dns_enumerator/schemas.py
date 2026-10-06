@@ -33,7 +33,7 @@ class DNSEnumeratorInput(BaseToolInput):
     target_domain: str = Field(
         ...,
         description="Target domain to enumerate",
-        example="example.com"
+        json_schema_extra={"example": "example.com"}
     )
     enumeration_mode: EnumerationMode = Field(
         default=EnumerationMode.BASIC,

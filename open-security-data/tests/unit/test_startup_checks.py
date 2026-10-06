@@ -41,9 +41,6 @@ def start(environment, tmp_path, **settings):
     env.update(settings)
     if environment is not None:
         env["ENVIRONMENT"] = environment
-    # The configuration creates its storage and log directories.
-    env["FILE_STORAGE_PATH"] = str(tmp_path / "files")
-    env["LOG_FILE_PATH"] = str(tmp_path / "logs" / "data.log")
     return subprocess.run(
         [sys.executable, "-c", "import app.config"],
         cwd=SERVICE_ROOT,

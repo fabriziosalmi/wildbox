@@ -202,7 +202,6 @@ services:
       - backend
       - data
     environment:
-      - ENVIRONMENT=production
       # No DJANGO_SETTINGS_MODULE: this used to name
       # config.settings.production, a module that does not exist, so gunicorn
       # failed to import the app. guardian.settings reads every production
@@ -274,7 +273,6 @@ services:
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
-      - DEBUG=false
       - CORS_ORIGINS=${CORS_ORIGINS}
       # No WORKER_CONCURRENCY or CELERY_WORKER_PREFETCH_MULTIPLIER: nothing
       # read them. The worker's concurrency is set in scripts/entrypoint.sh
@@ -428,7 +426,6 @@ services:
       - data
       - egress
     environment:
-      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -445,7 +442,6 @@ services:
     networks: !override
       - data
     environment:
-      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:

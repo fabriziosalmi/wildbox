@@ -29,7 +29,7 @@ class WebVulnScannerInput(BaseToolInput):
     target_url: str = Field(
         ...,
         description="Target website URL to scan",
-        example="https://example.com"
+        json_schema_extra={"example": "https://example.com"}
     )
     scan_depth: ScanDepth = Field(
         default=ScanDepth.STANDARD,

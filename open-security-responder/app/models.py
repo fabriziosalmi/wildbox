@@ -7,7 +7,7 @@ Type-safe representations of playbooks, triggers, and execution state.
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TriggerType(str, Enum):
@@ -26,8 +26,9 @@ class PlaybookTrigger(BaseModel):
         description="Trigger-specific configuration"
     )
     
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(
+        use_enum_values=True,
+    )
 
 
 class StepFailurePolicy(str, Enum):
@@ -81,7 +82,8 @@ class PlaybookStep(BaseModel):
         description="Timeout in seconds for step execution"
     )
     
-    @validator('action')
+    @field_validator('action')
+    @classmethod
     def validate_action_format(cls, v):
         """Ensure action follows 'connector.method' format"""
         if '.' not in v:
@@ -117,21 +119,24 @@ class Playbook(BaseModel):
     trigger: PlaybookTrigger = Field(..., description="Trigger configuration")
     steps: List[PlaybookStep] = Field(..., description="List of execution steps")
     
-    @validator('playbook_id')
+    @field_validator('playbook_id')
+    @classmethod
     def validate_playbook_id(cls, v):
         """Ensure playbook_id is valid identifier"""
         if not v.replace('_', '').replace('-', '').isalnum():
             raise ValueError("playbook_id must contain only alphanumeric, underscore, and hyphen characters")
         return v
     
-    @validator('steps')
+    @field_validator('steps')
+    @classmethod
     def validate_steps_not_empty(cls, v):
         """Ensure at least one step is defined"""
         if not v:
             raise ValueError("Playbook must have at least one step")
         return v
     
-    @validator('steps')
+    @field_validator('steps')
+    @classmethod
     def validate_step_names_unique(cls, v):
         """Ensure step names are unique within the playbook"""
         names = [step.name for step in v]
@@ -179,8 +184,9 @@ class StepExecutionResult(BaseModel):
     error: Optional[str] = None
     duration_seconds: Optional[float] = None
     
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(
+        use_enum_values=True,
+    )
 
 
 class PlaybookExecutionResult(BaseModel):
@@ -199,8 +205,9 @@ class PlaybookExecutionResult(BaseModel):
     error: Optional[str] = None
     duration_seconds: Optional[float] = None
     
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(
+        use_enum_values=True,
+    )
 
 
 class PlaybookExecutionRequest(BaseModel):
@@ -248,7 +255,8 @@ class HealthCheckResponse(BaseModel):
     status: str
     timestamp: datetime
     
-    class Config:
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             datetime: lambda v: v.isoformat()
-        }
+        },
+    )

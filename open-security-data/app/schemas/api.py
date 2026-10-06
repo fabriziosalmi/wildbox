@@ -4,7 +4,7 @@ API Schema definitions using Pydantic
 
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
 from uuid import UUID
 
@@ -27,8 +27,9 @@ class IndicatorBase(BaseModel):
     description: Optional[str] = Field(None, description="Human-readable description")
     tags: List[str] = Field(default=[], description="Associated tags")
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 class IndicatorResponse(IndicatorBase):
     """Indicator response schema"""
@@ -209,8 +210,9 @@ class TelemetryEvent(TelemetryEventBase):
     processed: bool = Field(..., description="Processing status")
     processed_at: Optional[datetime] = Field(None, description="Processing timestamp")
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 class TelemetryBatch(BaseModel):
     """Schema for batch telemetry ingestion"""
@@ -247,8 +249,9 @@ class SensorMetadata(SensorMetadataBase):
     total_events: int = Field(..., description="Total events received")
     last_event_at: Optional[datetime] = Field(None, description="Last event timestamp")
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 # Update exports - only include actually defined classes
 __all__ = [

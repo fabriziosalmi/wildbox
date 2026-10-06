@@ -5,7 +5,7 @@
 set -e
 
 echo "Starting Open Security Agents..."
-echo "Environment: ${DEBUG:-production}"
+echo "Environment: ${ENVIRONMENT:-not set}"
 echo "Anthropic model: ${ANTHROPIC_MODEL:-claude-opus-4-8}"
 
 # Start Celery worker in background

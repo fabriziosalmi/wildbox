@@ -6,10 +6,14 @@ from typing import List, Literal, Optional
 from datetime import datetime
 
 class SubdomainScannerInput(BaseToolInput):
-    domain: str = Field(..., description="Target domain to scan for subdomains", example="example.com")
+    domain: str = Field(
+        ...,
+        description="Target domain to scan for subdomains",
+        json_schema_extra={"example": "example.com"},
+    )
     # The wordlists main.py has; another value used "medium" silently (#611).
     wordlist_size: Literal["small", "medium", "large"] = Field(
-        default="medium", description="Wordlist size: small, medium, large", example="medium"
+        default="medium", description="Wordlist size: small, medium, large", json_schema_extra={"example": "medium"}
     )
     timeout: int = Field(default=5, description="Timeout in seconds for DNS queries", ge=1, le=30)
 

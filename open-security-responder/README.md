@@ -376,7 +376,6 @@ Environment variables:
 | `WILDBOX_DATA_URL` | Data service URL | `http://open-security-data:8002` |
 | `WILDBOX_GUARDIAN_URL` | Guardian URL | `http://open-security-guardian:8013` |
 | `WILDBOX_AGENTS_URL` | Agents service URL | `http://open-security-agents:8006` |
-| `WILDBOX_SENSOR_URL` | Accepted and unused: no connector calls the sensor | `http://open-security-sensor:8004` |
 | `DEBUG` | Enable debug mode | `false` |
 
 The URL defaults are the services' addresses in the main

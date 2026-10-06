@@ -58,7 +58,7 @@ def responder_default(compose, variable):
 
 @pytest.fixture
 def no_url_overrides(monkeypatch):
-    for variable in URL_VARIABLES + ("WILDBOX_SENSOR_URL",):
+    for variable in URL_VARIABLES:
         monkeypatch.delenv(variable, raising=False)
 
 

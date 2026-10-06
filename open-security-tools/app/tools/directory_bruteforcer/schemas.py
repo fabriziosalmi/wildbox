@@ -8,10 +8,15 @@ from datetime import datetime
 class DirectoryBruteforcerInput(BaseToolInput):
     # An http(s) URL: without a scheme every request failed and the run
     # reported nothing found (#611).
-    target_url: str = Field(..., pattern=r"^https?://", description="Target URL to brute force", example="https://example.com")
+    target_url: str = Field(
+        ...,
+        pattern=r"^https?://",
+        description="Target URL to brute force",
+        json_schema_extra={"example": "https://example.com"},
+    )
     # The wordlists main.py has; another value used "medium" silently (#611).
     wordlist_size: Literal["small", "medium", "large"] = Field(
-        default="medium", description="Wordlist size: small, medium, large", example="medium"
+        default="medium", description="Wordlist size: small, medium, large", json_schema_extra={"example": "medium"}
     )
     # Bare extensions: main.py appends ".<ext>" to each path (#611).
     extensions: Optional[List[Annotated[str, Field(pattern=r"^[A-Za-z0-9]{1,10}$")]]] = Field(

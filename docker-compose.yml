@@ -636,7 +636,10 @@ services:
     ports:
       - "127.0.0.1:8013:8013"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
+      # No ENVIRONMENT: guardian reads none. What it does differently in
+      # development (the API schema pages, Django's debug pages, no HTTPS
+      # redirect) follows DEBUG below, which is false unless .env says
+      # otherwise (#665).
       # :? so an unset value fails compose loudly instead of starting the
       # service with SECRET_KEY="", which Django rejects at boot anyway.
       - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
@@ -721,7 +724,6 @@ services:
     volumes:
       - guardian_media:/app/media
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
@@ -806,7 +808,6 @@ services:
     # heartbeat file for the health check (guardian/beat.py).
     command: celery -A guardian beat --loglevel=info --scheduler guardian.beat:HeartbeatDatabaseScheduler
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
@@ -1121,7 +1122,6 @@ services:
       - REDIS_URL=${AGENTS_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
       - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
       - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
-      - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       wildbox-redis:

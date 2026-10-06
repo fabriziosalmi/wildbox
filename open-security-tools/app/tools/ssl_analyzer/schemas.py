@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class SSLAnalyzerInput(BaseToolInput):
-    target: str = Field(..., description="Target domain or IP address", example="example.com")
+    target: str = Field(..., description="Target domain or IP address", json_schema_extra={"example": "example.com"})
     port: int = Field(default=443, description="Port to connect to", ge=1, le=65535)
     timeout: int = Field(default=10, description="Timeout in seconds", ge=1, le=60)
 

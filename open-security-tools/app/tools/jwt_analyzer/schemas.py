@@ -6,7 +6,11 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class JWTAnalyzerInput(BaseToolInput):
-    jwt_token: str = Field(..., description="JWT token to analyze", example="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+    jwt_token: str = Field(
+        ...,
+        description="JWT token to analyze",
+        json_schema_extra={"example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."},
+    )
     secret_wordlist: Optional[List[str]] = Field(None, description="Custom wordlist for secret cracking")
     verify_signature: bool = Field(default=True, description="Whether to attempt signature verification")
 
