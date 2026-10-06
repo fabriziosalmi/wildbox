@@ -92,13 +92,13 @@ Scopes and roles:
 | Method | Gateway path | Service path | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/cspm/providers` | `/api/v1/providers` | Providers a scan can name |
-| `GET` | `/api/v1/cspm/checks` | `/api/v1/checks` | Check catalog (see the defect under [List checks](#list-checks)) |
+| `GET` | `/api/v1/cspm/checks` | `/api/v1/checks` | Check catalog |
 | `POST` | `/api/v1/cspm/scans` | `/api/v1/scans` | Start a scan |
 | `POST` | `/api/v1/cspm/batch/scans` | `/api/v1/batch/scans` | Start several scans |
 | `GET` | `/api/v1/cspm/scans/{scan_id}` | `/api/v1/scans/{scan_id}` | Status of a scan |
 | `GET` | `/api/v1/cspm/scans/{scan_id}/report` | `/api/v1/scans/{scan_id}/report` | Report of a completed scan |
-| `GET` | `/api/v1/cspm/scans/{scan_id}/compliance` | `/api/v1/scans/{scan_id}/compliance` | Per-framework figures of one scan (see the defect under [Read a scan's compliance report](#read-a-scans-compliance-report)) |
-| `DELETE` | `/api/v1/cspm/scans/{scan_id}` | `/api/v1/scans/{scan_id}` | Cancel a scan |
+| `GET` | `/api/v1/cspm/scans/{scan_id}/compliance` | `/api/v1/scans/{scan_id}/compliance` | Per-framework figures of one scan |
+| `DELETE` | `/api/v1/cspm/scans/{scan_id}` | `/api/v1/scans/{scan_id}` | Cancel a queued or running scan |
 | `GET` | `/api/v1/cspm/dashboard/summary` | `/api/v1/dashboard/summary` | Scan count and findings of the team |
 | `GET` | `/api/v1/cspm/compliance/summary` | `/api/v1/compliance/summary` | Compliance of the team's accounts |
 | `GET` | `/api/v1/cspm/compliance/findings` | `/api/v1/compliance/findings` | Check verdicts of the team's accounts |
@@ -137,38 +137,61 @@ The scan routes refuse every provider that is not in this list.
 
 `GET /api/v1/cspm/checks`
 
-Query parameters, all optional: `provider` (`aws`, `gcp` or `azure`), `category`
-and `severity` (both compared without regard to case).
+Query parameters, all optional: `provider`, `category` and `severity`, each
+compared without regard to case.
 
-**Defect: this route answers `500` whenever at least one check matches.** The
-catalog entries the check runner returns have no `remediation` field
-(`get_available_checks` in `app/checks/runner.py`), and the response model requires
-one (`CheckMetadataSchema` in `app/schemas.py`), so building the response fails and
-the handler answers:
+```bash
+curl -s --cacert "$CA" "$BASE/checks?category=data%20protection" \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 ```json
 {
-  "error": {
-    "code": 500,
-    "message": "Failed to list checks",
-    "type": "HTTPException",
-    "request_id": "<request id>"
-  }
+  "total_checks": 1,
+  "checks": [
+    {
+      "check_id": "AWS_S3_003",
+      "title": "S3 Bucket Versioning Enabled",
+      "description": "Ensure S3 buckets have versioning enabled to protect against accidental deletion or modification of objects.",
+      "provider": "aws",
+      "service": "S3",
+      "category": "Data Protection",
+      "severity": "medium",
+      "compliance_frameworks": [
+        "CIS AWS Foundations Benchmark v1.4.0 - 2.1.3",
+        "AWS Security Best Practices",
+        "SOC 2",
+        "NIST CSF"
+      ],
+      "references": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html",
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/versioning-workflows.html"
+      ],
+      "remediation": "Enable S3 bucket versioning: 1. Go to S3 console. 2. Select the bucket. 3. Go to Properties tab. 4. Click on 'Bucket Versioning'. 5. Enable versioning. 6. Consider enabling MFA delete for additional protection.",
+      "enabled": true
+    }
+  ],
+  "providers": ["aws"],
+  "categories": ["Data Protection"]
 }
 ```
 
-What it does answer today:
-
-| Request | Answer |
+| Field | Description |
 | --- | --- |
-| No filter, or filters that match a check | `500`, as above |
-| Filters that match no check, such as `provider=gcp` | `200` with `{"total_checks": 0, "checks": [], "providers": [], "categories": []}` |
-| A `provider` that is not `aws`, `gcp` or `azure` | `500`, as above |
+| `total_checks` | Number of checks listed, after the filters |
+| `checks[]` | What each check declares in its own metadata (`CheckMetadata` in `app/checks/framework.py`). `remediation` is the text a result of the check carries in a report; `severity` is `critical`, `high`, `medium`, `low` or `info` |
+| `providers`, `categories` | The providers and categories of the checks listed, sorted |
 
-The checks themselves are listed in the
-[CSPM README](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-cspm/README.md#checks):
-22 AWS checks, in `open-security-cspm/app/checks/aws/`. The number of checks a scan
-runs is also in [List providers](#list-providers).
+A filter value that matches no check, such as `provider=gcp` or a provider the
+service has never had, gives `200` with
+`{"total_checks": 0, "checks": [], "providers": [], "categories": []}`, not an
+error.
+
+Without a filter the route lists the 22 AWS checks in
+`open-security-cspm/app/checks/aws/`, which the
+[CSPM README](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-cspm/README.md#checks)
+also lists by service. The number of checks a scan runs is also in
+[List providers](#list-providers).
 
 ---
 
@@ -441,28 +464,55 @@ The figures above are illustrative. The fields come from `ScanReportSchema` in
 
 Optional query parameter: `framework`, the exact name of one framework.
 
-**Defect: this route answers `500` for every completed scan.** The handler gives
-`generated_at` a date and time (`get_compliance_report` in `app/main.py`) where the
-response model declares a string (`ComplianceReportResponse` in `app/schemas.py`),
-so building the response fails:
+```bash
+curl -s --cacert "$CA" "$BASE/scans/<scan-id>/compliance" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+For the scan of the [report above](#read-a-scans-report):
 
 ```json
 {
-  "error": {
-    "code": 500,
-    "message": "Failed to generate compliance report",
-    "type": "HTTPException",
-    "request_id": "<request id>"
-  }
+  "scan_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "account_id": "123456789012",
+  "generated_at": "2026-10-03T10:45:02.118204",
+  "frameworks": [
+    {
+      "framework": "CIS AWS Foundations",
+      "total_checks": 4,
+      "passed_checks": 1,
+      "failed_checks": 2,
+      "compliance_percentage": 25.0
+    },
+    {
+      "framework": "PCI DSS",
+      "total_checks": 4,
+      "passed_checks": 1,
+      "failed_checks": 2,
+      "compliance_percentage": 25.0
+    }
+  ],
+  "overall_score": 25.0,
+  "recommendations": ["<how to fix it>"]
 }
 ```
 
+| Field | Description |
+| --- | --- |
+| `generated_at` | When this answer was made, not when the scan ran |
+| `frameworks` | One entry per framework name the scan's results carry; with `framework`, that one only, and an empty list when no result carries it |
+| `frameworks[].total_checks` | Every result tagged with the framework, whatever its status, as `summary.compliance_frameworks` in the report counts them. A result that errored or was skipped is in the total and in neither of the other two counts |
+| `frameworks[].compliance_percentage` | `passed_checks / total_checks * 100` |
+| `overall_score` | The passed share over the frameworks listed: the sum of their `passed_checks` over the sum of their `total_checks`, times 100. A result tagged with two frameworks counts twice. `0` when no framework is listed |
+| `recommendations` | `summary.recommendations` of the report |
+
+These figures count results that have no verdict in their totals, unlike
+`compliance_score` in the report and the
+[team compliance summary](#team-compliance-summary), which count `passed` and
+`failed` results only: the same scan can read 25% here and 33.3% there.
+
 For a scan that has not completed it answers as
 [the report route](#read-a-scans-report) does: `400`, `403` or `404`.
-
-The same per-framework figures are in the report itself, under
-`summary.compliance_frameworks`, and for the team's accounts together in
-[Team compliance summary](#team-compliance-summary).
 
 ---
 
@@ -481,10 +531,36 @@ curl -s --cacert "$CA" -X DELETE "$BASE/scans/<scan-id>" \
 {"message": "Scan cancelled successfully"}
 ```
 
-The route revokes the scan's task, terminating it if a worker is running it, and
-records the scan as `cancelled`. **It does not look at the scan's state first:** a
-scan that already completed or failed is recorded as `cancelled` too. Its stored
-report stays readable and keeps counting in the team summaries.
+For a scan that is `queued` or `running`, the route revokes the scan's task,
+terminating it if a worker is running it, records the scan as `cancelled` and
+deletes the scan's encrypted credentials from Redis if no worker took them yet.
+
+| Scan is | Answer |
+| --- | --- |
+| Queued or running | `200`, as above; its status then reads `cancelled` |
+| Completed, failed or already cancelled | `409`, `Scan is already completed and cannot be cancelled` (with the scan's own status) |
+| Finished by the worker while the cancellation was on its way | `409`, `Scan finished before it could be cancelled` |
+| Another team's | `403`, whatever its state |
+
+```json
+{
+  "error": {
+    "code": 409,
+    "message": "Scan is already completed and cannot be cancelled",
+    "type": "HTTPException",
+    "request_id": "<request id>"
+  }
+}
+```
+
+- **A `409` changes nothing.** The scan keeps its status, its times and its report,
+  and the report keeps counting in the team summaries.
+- **A cancelled scan is not run.** Celery keeps a revocation in the memory of the
+  workers that were up when it was sent, so a scan cancelled while no worker ran, or
+  before a worker restarted, is still delivered. The worker reads the scan's stored
+  status before it opens a session, and returns without running a scan that reads
+  `cancelled`.
+- A scan cancelled while it ran has no report: `GET .../report` answers `400`.
 
 ---
 
@@ -675,9 +751,29 @@ does not exist).
 }
 ```
 
-`status` is `degraded`, still with `200`, when Redis answers and no worker does.
-When Redis cannot be reached the route answers `500` in the
-[error format](#errors), not a health body.
+The status code says what the body says, so a probe that reads only the code
+(`curl -f` in the Compose health check, `make health`) is told the same thing:
+
+| `status` | Code | When | `checks` |
+| --- | --- | --- | --- |
+| `healthy` | `200` | Redis answers and a worker does | all `healthy` |
+| `degraded` | `200` | Redis answers and no worker does, or the broker cannot be reached | `celery` is `unhealthy` |
+| `unhealthy` | `503` | Redis cannot be reached | `redis` is `unhealthy`; the workers are not asked, and `celery` is `unknown` |
+| `unhealthy` | `503` | The check itself failed | `{"api": "unhealthy", "error": "Health check failed"}` |
+
+- The `503` carries this same body, not the [error format](#errors). The cause is in
+  the service's log, not in the body.
+- `degraded` stays `200` so that the `cspm` container does not read unhealthy while
+  its worker starts or restarts: the API reads and queues, and scans wait. The
+  worker has its own health check in `docker-compose.yml`.
+- Compose marks an unhealthy container and does not restart it, and no service
+  waits for `cspm` to be healthy.
+- The route waits one second for the workers' replies, so it takes about that long
+  whenever Redis answers.
+- A Redis that accepts the connection and never answers holds the route, and every
+  other one, for as long as the client waits: the service sets no timeout of its
+  own. `socket_timeout` and `socket_connect_timeout` in the query string of
+  `REDIS_URL` (in seconds) bound that wait; the route then answers `503`.
 
 ---
 
@@ -717,14 +813,16 @@ with the reason in `error.details.code`: `GATEWAY_AUTH_REQUIRED`,
 | `401` | No valid credential (answered by the gateway) |
 | `403` | The scan belongs to another team; the API key's scopes do not allow the request (answered by the gateway); or the request did not come through the gateway |
 | `404` | A scan that does not exist or is past its retention, or a path the service does not serve |
+| `409` | A cancellation of a scan that already completed, failed or was cancelled |
 | `422` | The body, a query parameter or the `scan_id` is not valid |
 | `429` | Gateway rate limit exceeded |
-| `500` | The service failed to handle the request. Also the answer of the two routes marked as defects above, and of every route when Redis cannot be reached |
-| `503` | `GATEWAY_INTERNAL_SECRET` is not set in the service |
+| `500` | The service failed to handle the request |
+| `503` | Redis or the task queue cannot be reached (`Scan store or task queue temporarily unavailable`); or `GATEWAY_INTERNAL_SECRET` is not set in the service |
 
-`POST /scans` has a `503` (`Task queue temporarily unavailable`) for a connection
-error, but the errors the Redis client and the Celery broker raise are not of the
-types it catches, so a request made while Redis is unreachable answers `500`.
+When Redis cannot be reached, every route that reads or writes it answers `503` in
+this format, and so does a scan the broker cannot take; the cause is in the
+service's log. `GET /providers` and `GET /checks` read nothing from Redis and
+answer as usual. [`GET /health`](#health-check) answers `503` with its own body.
 
 ---
 

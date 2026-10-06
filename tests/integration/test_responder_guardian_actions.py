@@ -165,7 +165,12 @@ def test_another_teams_run_gets_guardians_refusal_not_the_asset(owners, team_a_a
     run = run_playbook(b, asset_id)
 
     assert run["status"] == "failed", run
-    assert "404" in run["error"], run["error"]
-    assert "301" not in run["error"]
+    # The status where the connector writes it ("GET <path> answered 404:
+    # ..."), not anywhere in the text: the message names the asset twice by
+    # its id, a random UUID, in which "301" or "404" can appear. Once in a
+    # few hundred runs one did, and `"301" not in run["error"]` failed on a
+    # correct answer (#766).
+    assert "answered 404" in run["error"], run["error"]
+    assert "answered 301" not in run["error"], run["error"]
     assert marker not in str(run) and title not in str(run)
     assert [step["step_name"] for step in run["step_results"]] == ["read_asset"]

@@ -71,6 +71,15 @@ def report_key(scan_id: str) -> str:
     return f"scan:{scan_id}:report"
 
 
+def credentials_key(scan_id: str) -> str:
+    """Where a queued scan's encrypted credentials wait for a worker.
+
+    Written by the API with a five-minute expiry and deleted by the worker
+    that takes the scan, or by the API when the scan is cancelled first.
+    """
+    return f"scan:{scan_id}:creds"
+
+
 def team_index_key(team_id: str) -> str:
     return f"cspm:team:{team_id}:scan_index"
 
@@ -151,13 +160,20 @@ def decode_report(blob: str) -> Optional[Dict[str, Any]]:
 
 
 def load_report(redis, scan_id: str) -> Optional[Dict[str, Any]]:
-    """The stored report of a completed scan, or None."""
+    """The stored report of a completed scan, or None.
+
+    Its ``scan_id`` is the scan's. The reports stored before #766 carry an
+    id the runner made up for each of them; the key a report is stored
+    under is what says whose it is.
+    """
     blob = redis.get(report_key(scan_id))
     if not blob:
         return None
     report = decode_report(blob)
     if report is None:
         logger.warning("Stored report of scan %s could not be decoded", scan_id)
+        return None
+    report["scan_id"] = scan_id
     return report
 
 
@@ -189,3 +205,25 @@ def fail_scan(redis, scan_id: str, failed_at: str) -> None:
     metadata["status"] = "failed"
     metadata["failed_at"] = failed_at
     save_metadata(redis, metadata)
+
+
+def cancel_scan(redis, scan_id: str, cancelled_at: str) -> bool:
+    """Mark a scan that is still in progress as cancelled.
+
+    Returns True when it did. A scan that is gone, or that already has a
+    final status, is left exactly as it is and the answer is False: a
+    completed scan stays completed, with its completion time and its
+    report. DELETE /api/v1/scans/{id} used to write "cancelled" over
+    whatever the scan's status was (#766).
+
+    The metadata is read again here, not taken from the caller, so a scan
+    the worker finished while the caller was revoking its task is not
+    overwritten with what the caller read before.
+    """
+    metadata = load_metadata(redis, scan_id)
+    if metadata is None or metadata.get("status") in FINAL_STATUSES:
+        return False
+    metadata["status"] = "cancelled"
+    metadata["cancelled_at"] = cancelled_at
+    save_metadata(redis, metadata)
+    return True

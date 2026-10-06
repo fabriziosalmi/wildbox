@@ -581,7 +581,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec cspm-worker
 ```
 
 The second command lists one queue, `celery`. `GET /health` on cspm also
-reports `"celery": "healthy"` once a worker answers.
+reports `"celery": "healthy"` once a worker answers. Until then it answers
+200 with `"status": "degraded"`, so the `cspm` container does not read
+unhealthy for want of a worker; it answers 503, `unhealthy`, when Redis
+cannot be reached.
 
 - **Capacity.** One worker runs two scans at once (`--concurrency=2`, one
   CPU, 1 GB). For more, run more workers,

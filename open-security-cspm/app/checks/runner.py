@@ -127,7 +127,8 @@ class CheckRunner:
         account_id: str,
         account_name: Optional[str] = None,
         regions: Optional[List[str]] = None,
-        check_ids: Optional[List[str]] = None
+        check_ids: Optional[List[str]] = None,
+        scan_id: Optional[str] = None
     ) -> ScanReport:
         """
         Run a complete security scan for a cloud account.
@@ -139,6 +140,10 @@ class CheckRunner:
             account_name: Optional friendly name for the account
             regions: List of regions to scan (uses defaults if None)
             check_ids: Optional list of specific check IDs to run
+            scan_id: The id the scan was started under, which the report
+                carries. Without it the report makes one up, which is what
+                every report did: the report of a scan named another scan,
+                and so did each finding read from it (#766).
             
         Returns:
             Complete scan report
@@ -151,7 +156,8 @@ class CheckRunner:
             provider=provider,
             account_id=account_id,
             account_name=account_name,
-            regions=scan_regions
+            regions=scan_regions,
+            **({"scan_id": scan_id} if scan_id else {})
         )
         
         try:
@@ -280,14 +286,22 @@ class CheckRunner:
         self, 
         provider: Optional[CloudProvider] = None
     ) -> List[Dict[str, Any]]:
-        """Get metadata for all available checks, optionally filtered by provider."""
+        """Get metadata for all available checks, optionally filtered by provider.
+
+        Every entry carries what the check declares in its CheckMetadata,
+        ``references`` and ``remediation`` included. Those two were left
+        out here while GET /api/v1/checks requires ``remediation`` of each
+        entry, so the route answered 500 as soon as one check matched
+        (#766). The text is the check's own: the one a result of the check
+        carries when the check gives no more specific one (create_result).
+        """
         if provider:
             checks = self.loaded_checks.get(provider, [])
         else:
             checks = []
             for provider_checks in self.loaded_checks.values():
                 checks.extend(provider_checks)
-        
+
         return [
             {
                 "check_id": check.metadata.check_id,
@@ -298,6 +312,8 @@ class CheckRunner:
                 "category": check.metadata.category,
                 "severity": check.metadata.severity.value,
                 "compliance_frameworks": check.metadata.compliance_frameworks,
+                "references": check.metadata.references,
+                "remediation": check.metadata.remediation,
                 "enabled": check.metadata.enabled
             }
             for check in checks

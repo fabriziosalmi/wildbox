@@ -46,6 +46,9 @@ class FakeRedis:
         self.zsets = {}
         self.expiry = {}
 
+    def ping(self):
+        return True
+
     # -- expiry ---------------------------------------------------------
     def _alive(self, key):
         deadline = self.expiry.get(key)
@@ -153,3 +156,16 @@ def fake_redis(clock, monkeypatch):
 
     monkeypatch.setattr(scan_store, "_now", clock)
     return FakeRedis(clock)
+
+
+@pytest.fixture
+def world(monkeypatch, fake_redis):
+    """The API and the worker on the fake Redis, with a scan in each state.
+
+    See route_probes.py: the scans are started through the API and ended by
+    the worker's own task, so what the routes read is what the service
+    stores.
+    """
+    import route_probes
+
+    return route_probes.build_world(monkeypatch, fake_redis)

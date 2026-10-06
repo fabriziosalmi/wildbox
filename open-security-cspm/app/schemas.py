@@ -347,7 +347,11 @@ class ComplianceReportResponse(BaseModel):
     """Compliance report response."""
     scan_id: str = Field(..., description="Scan identifier")
     account_id: str = Field(..., description="Account identifier")
-    generated_at: str = Field(..., description="Report generation timestamp")
+    # A datetime, like every other time this service's own answers carry
+    # (started_at, completed_at, timestamp): UTC, written without an offset.
+    # It was declared a string and given a datetime, which pydantic does not
+    # convert, so the route answered 500 for every completed scan (#766).
+    generated_at: datetime = Field(..., description="Report generation timestamp")
     frameworks: List[ComplianceReportFrameworkSummary] = Field(..., description="Framework summaries")
     overall_score: float = Field(..., description="Overall compliance score")
     recommendations: List[str] = Field(..., description="Recommendations")
@@ -372,11 +376,17 @@ class HealthCheckResponse(BaseModel):
                 "checks": {
                     "redis": "healthy",
                     "celery": "healthy",
-                    "aws_connectivity": "healthy"
+                    "api": "healthy"
                 }
             }
         },
     )
+
+
+class ScanCancelResponse(BaseModel):
+    """Answer of DELETE /api/v1/scans/{scan_id} for a scan it cancelled."""
+
+    message: str = Field(..., description="Confirmation that the scan was cancelled")
 
 
 # Enhanced response schemas for new endpoints
