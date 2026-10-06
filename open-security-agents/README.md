@@ -79,9 +79,10 @@ Paths are given as the gateway exposes them (prefix
 | DELETE | `/api/v1/agents/analyze/{task_id}` | `/v1/analyze/{task_id}` | Revoke a pending or running task |
 | GET | `/api/v1/agents/stats` | `/stats` | Task counters |
 | GET | none | `/health` | Redis, Celery and Anthropic key status |
+| GET | none | `/metrics` | Prometheus metrics; `monitoring/prometheus.yml` scrapes it |
 
-`task_id` must be a UUID. `/health` is not routed by the gateway; it is
-reachable on `127.0.0.1:8006` on the host. The
+`task_id` must be a UUID. `/health` and `/metrics` are not routed by the
+gateway; they are reachable on `127.0.0.1:8006` on the host. The
 interactive API documentation (`/docs`, `/redoc`) and the schema
 (`/openapi.json`) are served on port 8006 only when `ENVIRONMENT` is
 `development`.
@@ -100,6 +101,10 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
   "task_id": "0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6",
   "status": "pending",
   "created_at": "2026-10-03T10:00:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "progress": null,
+  "error": null,
   "result_url": "/api/v1/agents/analyze/0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6"
 }
 ```
@@ -206,7 +211,8 @@ target service's source, and fails for a tool that is not in the table.
 
 ## Configuration
 
-Settings are read from the environment (`app/config.py`):
+Settings are read from the environment by `app/config.py`; `ENVIRONMENT`
+and `CORS_ORIGINS` are read from the process environment by `app/main.py`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -244,12 +250,13 @@ UTC date (`app/stats.py`): one Redis counter per date, expiring after two
 days. Its `model_configured` says whether a model API key is set; the
 dashboard's AI analysis page (`/ai-analysis`) reads it.
 
-The root `docker-compose.yml` sets `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
+The root `docker-compose.yml` sets `ENVIRONMENT` (required: Compose refuses
+to start without it in `.env`), `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
 (default `claude-opus-4-8`), `GATEWAY_INTERNAL_SECRET`, `WILDBOX_API_URL`
 (`http://api:8000`), `WILDBOX_DATA_URL` and `WILDBOX_GUARDIAN_URL` (from
 `AGENTS_WILDBOX_DATA_URL` and `AGENTS_WILDBOX_GUARDIAN_URL` in `.env`),
 `ANALYZE_RATE_LIMIT`, `ANALYZE_TEAM_RATE_LIMIT`, `AGENT_TEAM_DATA_TOOLS`
-(empty) and the Redis URLs.
+(empty), `LOG_LEVEL` and the Redis URLs.
 
 ## Development
 

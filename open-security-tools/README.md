@@ -188,9 +188,10 @@ the `api` service in the root `docker-compose.yml`).
 
 ## Tools
 
-`app/tools/` contains 52 tool packages. The `/health` response lists the ones
-that loaded in the running process; a tool that fails to import is logged and
-skipped.
+`app/tools/` contains 52 tool packages. The `/health` response gives the
+number that loaded in the running process (`tools_count`), and
+`GET /api/v1/tools`, through the gateway, lists them; a tool that fails to
+import is logged and skipped.
 
 `api_security_analyzer`, `api_security_tester`, `base64_tool`,
 `blockchain_security_analyzer`, `ca_analyzer`, `cloud_security_analyzer`,
@@ -373,11 +374,15 @@ registry's redirects and token endpoints by itself.
 Settings are read from the environment (and a `.env` file in the working
 directory) by `app/config.py`. `.env.example` lists the common ones. In the
 root stack, `docker-compose.yml` sets them for each container.
+`GATEWAY_INTERNAL_SECRET`, `USER_PERMISSIONS_FILE` and
+`AUTHORIZED_TARGETS_FILE` are not fields of `app/config.py`: they are read
+from the process environment only (`open_security_shared.gateway_auth`,
+`app/security/authorization.py`), not from that `.env` file.
 
 | Variable                  | Default                 | Notes                                                        |
 | ------------------------- | ----------------------- | ------------------------------------------------------------ |
 | `API_KEY`                 | none (required)         | See below                                                    |
-| `GATEWAY_INTERNAL_SECRET` | none                    | Must match the gateway's; without it every route returns `503` |
+| `GATEWAY_INTERNAL_SECRET` | none                    | Must match the gateway's; without it every tool and task request the gateway forwards answers `503` |
 | `REDIS_URL`               | none                    | Celery broker and backend, task ownership records            |
 | `ENVIRONMENT`             | none                    | `development`, `staging` or `production`; `/openapi.json` is served only in `development`, and not when the variable is unset |
 | `DEBUG`                   | `false`                 |                                                              |
@@ -459,6 +464,11 @@ pip install -r requirements.txt
 pip install pytest pytest-cov pytest-asyncio
 pytest tests/unit/ -v
 ```
+
+CI also starts a Redis server for this suite and sets
+`TOOLS_TEST_REDIS_URL` (`.github/workflows/test.yml`). Without that variable
+the tests that need Redis (the hourly limit, the asynchronous run counters)
+start a `redis-server` found on `PATH`, and are skipped when there is none.
 
 `requirements.txt` is generated from `requirements.in`; change the latter and
 regenerate the lock instead of editing `requirements.txt` by hand.

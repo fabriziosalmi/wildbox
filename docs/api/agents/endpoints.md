@@ -97,7 +97,9 @@ client-supplied `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`,
 role from identity's answer. The shared proxy settings
 (`open-security-gateway/nginx/includes/proxy_params.conf`) send them to the
 service as `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role`, with
-`X-Gateway-Secret`, the `GATEWAY_INTERNAL_SECRET` proof of origin.
+`X-Wildbox-Auth-Type` (`session` or `api_key`), an API key's scopes in
+`X-Wildbox-Scopes`, and `X-Gateway-Secret`, the `GATEWAY_INTERNAL_SECRET`
+proof of origin.
 
 The service authenticates every route below with the shared dependency
 `open_security_shared.gateway_auth.get_user_from_gateway_headers`. It refuses
@@ -112,8 +114,11 @@ gateway is the only entry point.
 The analysis runs on behalf of the caller. `POST /v1/analyze` passes the
 caller's user ID, team ID and role to the Celery task, and every tool call the
 agent makes sends them to the tools service as `X-Wildbox-User-ID`,
-`X-Wildbox-Team-ID` and `X-Wildbox-Role`, with `X-Gateway-Secret`. The tools
-service then applies the caller's own team scope and role.
+`X-Wildbox-Team-ID` and `X-Wildbox-Role`, with `X-Gateway-Secret` and
+`X-Wildbox-Auth-Type: service`: the tools service refuses a run that does
+not state its auth type, and the scopes of the key that started the analysis
+do not travel with the call. The tools service then applies the caller's own
+team scope and role.
 
 There is no service-wide key. The `INTERNAL_API_KEY` that the client used to
 send as `X-API-Key` is no longer read: the tools service stopped accepting it
@@ -133,6 +138,7 @@ Set in `docker-compose.yml` for the `agents` service:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `ENVIRONMENT` | none: required in `.env`, Compose refuses to start without it | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development`. |
 | `ANTHROPIC_API_KEY` | empty | Claude API key. The service starts without it; analysis tasks fail until it is set. |
 | `ANTHROPIC_MODEL` | `claude-opus-4-8` | Claude model the agent uses. |
 | `GATEWAY_INTERNAL_SECRET` | from `.env` | Verifies the gateway's proof of origin and authenticates tool calls. Required. |
@@ -483,8 +489,8 @@ tool returns, make that acceptable.
 - **Every call is made as the user who submitted the analysis.** The agents
   service calls the services directly on the internal network, and each request
   carries that user's `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and
-  `X-Wildbox-Role` with `X-Gateway-Secret`, the headers the gateway puts on a
-  request it forwards. The service has no key of its own and sees nothing the
+  `X-Wildbox-Role` with `X-Gateway-Secret`, as a request the gateway forwards
+  does, and `X-Wildbox-Auth-Type: service`. The service has no key of its own and sees nothing the
   user would not see through the gateway.
 - **A tool that fails returns an error to the model, never data:**
   `{"success": false, "error": "..."}` with the status the service answered. An
@@ -504,10 +510,11 @@ service routes are not under `/v1/`, so the gateway does not reach them:
 | --- | --- | --- |
 | `GET /health` | none | Redis, Celery and Anthropic key status. Used by the container health check. |
 | `GET /` | none | Service name, version and links. |
+| `GET /metrics` | none | Prometheus exposition format; `monitoring/prometheus.yml` scrapes it. |
 | `/docs`, `/redoc`, `/openapi.json` | none | Served only when `ENVIRONMENT` is `development`. |
 
-The service port is bound to `127.0.0.1` on the host. `/health` answers on
-it, from the host or inside the container; `/stats` and the `/v1` routes need
+The service port is bound to `127.0.0.1` on the host. `/health` and
+`/metrics` answer on it, from the host or inside the container; `/stats` and the `/v1` routes need
 the gateway headers and the proof of origin, so they answer `403` there.
 
 ---
@@ -526,7 +533,10 @@ the gateway headers and the proof of origin, so they answer `403` there.
 | 500 | The task state could not be read |
 | 503 | Redis or the Celery broker unavailable, or the rate limit counters cannot be reached; or, from the gateway, identity unreachable (with `Retry-After`) |
 
-Errors raised by the service use the canonical Wildbox error body:
+Errors raised by the service use the canonical Wildbox error body, with one
+exception: the `429` of the analysis limit, whose body is
+`{"error": "Rate limit exceeded: 5/minute per user"}` (or `... per team`,
+with the configured limit):
 
 ```json
 {
