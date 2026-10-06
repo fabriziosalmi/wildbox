@@ -11,19 +11,40 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from app.config import get_config
 from app.models import Source, CollectionRun
 from app.utils.database import get_db_session, wait_for_schema
-from app.utils.log_safety import code_path, describe_error
+from app.utils.log_safety import code_path, describe_database_error, describe_error
 from app.collectors import CollectorRegistry, NoCollector
 # Import collectors to register them
 import app.collectors.sources  # noqa: F401
 
 logger = logging.getLogger(__name__)
 config = get_config()
+
+# Seconds between two looks at what is due, and the seconds the loop waits
+# after a pass that failed before it makes the next.
+TICK_SECONDS = 60.0
+RETRY_SECONDS = 60.0
+
+
+def _described(error: BaseException) -> str:
+    """What failed, by its class: never the text of the error.
+
+    The text of a database error holds what the database wrote, values of
+    the refused row included, and the text of an HTTP error ends with the
+    URL, which for a feed can hold its key (#755, #778). A database error is
+    said with its driver's class and SQLSTATE, any other with its class and
+    the HTTP status when it has one.
+    """
+    if isinstance(error, SQLAlchemyError):
+        return describe_database_error(error)
+    return describe_error(error)
+
 
 @dataclass
 class ScheduledTask:
@@ -141,51 +162,84 @@ class CollectionScheduler:
         finally:
             db.close()
     
+    @staticmethod
+    def _reload_due(current_time: datetime) -> bool:
+        """Reload sources periodically (every 10 minutes)"""
+        return current_time.minute % 10 == 0
+
     async def _scheduler_loop(self):
-        """Main scheduler loop"""
+        """Main scheduler loop.
+
+        No error of a pass ends it (#788). It caught five builtin classes,
+        and a database error is none of them: the periodic reload of the
+        sources, asked of a PostgreSQL that was restarting, raised
+        OperationalError through this loop and out of the process, which
+        ended with status 1 and a traceback. A collection that raised the
+        same error did not even do that: asyncio.gather kept the exception
+        as a result nobody read, and the collection failed without a line
+        in the log.
+        """
         while self.running:
             try:
                 current_time = datetime.now(timezone.utc)
-                
+
                 # Find tasks ready to run
                 ready_tasks = [
                     task for task in self.tasks.values()
                     if task.next_run <= current_time and not task.running
                 ]
-                
+
                 if ready_tasks:
                     logger.info(f"Found {len(ready_tasks)} sources ready for collection")
-                    
+
                     # Limit concurrent collections
                     max_concurrent = config.collection.max_concurrent
                     if len(ready_tasks) > max_concurrent:
                         logger.warning(f"Too many ready tasks ({len(ready_tasks)}), limiting to {max_concurrent}")
                         ready_tasks = ready_tasks[:max_concurrent]
-                    
-                    # Start collection tasks
-                    collection_tasks = []
-                    for task in ready_tasks:
-                        collection_tasks.append(self._run_collection(task))
-                    
-                    # Run collections concurrently
-                    if collection_tasks:
-                        await asyncio.gather(*collection_tasks, return_exceptions=True)
-                
+
+                    # Run collections concurrently. Each says its own
+                    # failure (_run_collection); what one raises all the
+                    # same is said here, once, and is not the others'.
+                    outcomes = await asyncio.gather(
+                        *(self._run_collection(task) for task in ready_tasks),
+                        return_exceptions=True,
+                    )
+                    for task, outcome in zip(ready_tasks, outcomes):
+                        if isinstance(outcome, Exception):
+                            self._say_failure(task.source.name, outcome)
+
                 # Check for shutdown
                 try:
-                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=60.0)
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=TICK_SECONDS)
                     break  # Shutdown requested
                 except asyncio.TimeoutError:
                     pass  # Continue normal operation
-                
-                # Reload sources periodically (every 10 minutes)
-                if current_time.minute % 10 == 0:
+
+                if self._reload_due(current_time):
                     await self._reload_sources()
-                
-            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                logger.error(f"Error in scheduler loop: {e}", exc_info=True)
-                await asyncio.sleep(60)  # Wait before retrying
-    
+
+            except Exception as e:
+                logger.error(
+                    "Error in scheduler loop: %s\n%s", _described(e), code_path(e)
+                )
+                # Wait before the next pass; a stop asked for meanwhile is
+                # obeyed, where the sleep that was here ran to its end.
+                try:
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=RETRY_SECONDS)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+
+    @staticmethod
+    def _say_failure(name: str, error: BaseException) -> None:
+        """One line for a collection that raised: the class of the error
+        and the frames it went through, not its text (see _described)."""
+        logger.error(
+            "Collection error for source %s: %s\n%s",
+            name, _described(error), code_path(error),
+        )
+
     async def _run_collection(self, task: ScheduledTask):
         """Run collection for a single source"""
         source = task.source
@@ -237,9 +291,13 @@ class CollectionScheduler:
         except asyncio.TimeoutError:
             logger.error(f"Collection timeout for source: {source.name}")
             task.last_error = "Collection timeout"
-            await self._handle_collection_error(source, "Collection timeout")
-            
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+            await self._record_error(source, "Collection timeout")
+
+        except Exception as e:
+            # Whatever it is, and said once. Five builtin classes were
+            # caught here: any other error, a database error among them,
+            # left through asyncio.gather without a line in the log (#788).
+            #
             # What failed, by its class, and the HTTP status when the error
             # has one: not its text. The text was stored as the source's
             # last_error, which `manage.py sources list` prints, and logged
@@ -248,17 +306,26 @@ class CollectionScheduler:
             # its key. The collector's own errors have been stored this way
             # since #755 (describe_error); the ones that reach the scheduler
             # were left (#788).
-            described = describe_error(e)
-            logger.error(
-                "Collection error for source %s: %s\n%s",
-                source.name, described, code_path(e),
-            )
+            described = _described(e)
+            self._say_failure(source.name, e)
             task.last_error = described
-            await self._handle_collection_error(source, described)
+            await self._record_error(source, described)
 
         finally:
             task.running = False
-    
+
+    async def _record_error(self, source: Source, error_message: str):
+        """Count a failed collection with its source, if the database takes
+        it. When it does not, that is said, and the scheduler goes on: the
+        error that failed the collection is, as a rule, the same database's."""
+        try:
+            await self._handle_collection_error(source, error_message)
+        except SQLAlchemyError as e:
+            logger.error(
+                "The failed collection of source %s could not be recorded: %s",
+                source.name, describe_database_error(e),
+            )
+
     async def _handle_collection_error(self, source: Source, error_message: str):
         """Handle collection errors"""
         db = get_db_session()
@@ -315,8 +382,11 @@ class CollectionScheduler:
             finally:
                 db.close()
                 
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error reloading sources: {e}", exc_info=True)
+        except Exception as e:
+            # The tasks stay as they are, and the next reload asks again. A
+            # database error was not among the five classes caught here: it
+            # went through the loop and ended the process (#788).
+            logger.error("Error reloading sources: %s\n%s", _described(e), code_path(e))
     
     def get_status(self) -> Dict[str, any]:
         """Get scheduler status"""

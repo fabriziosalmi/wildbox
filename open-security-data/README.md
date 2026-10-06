@@ -101,6 +101,17 @@ all the same, up to ten minutes later than the others. A source that fails
 is tried again at its own `collection_interval`, and is disabled when a
 collection raises or times out with ten errors counted.
 
+The scheduler outlives a database that is away. Until 0.12.2 its loop
+caught five builtin error classes, none of them a database error: run
+under a PostgreSQL that was stopped and started again, a collection that
+asked the database meanwhile failed without a line in the log, and the
+first reload of the sources ended the process with status 1 (Compose
+started it again). Now a collection that raises is logged once, by the
+class of its error and the code path, never its text (`Collection error
+for source <name>: OperationalError (OperationalError)`); a reload or a
+pass of the loop that fails is logged the same way and made again a minute
+later; and the collections go on when the database is back.
+
 `manage.py` has no other commands besides `init` and `reset`. Both use
 SQLAlchemy `create_all()` rather than Alembic, and `reset` drops every table;
 with the full stack, let the API apply the migrations instead.

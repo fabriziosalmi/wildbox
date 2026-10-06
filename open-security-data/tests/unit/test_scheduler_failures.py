@@ -13,19 +13,27 @@ test says: what is under test is what the scheduler does with each ending.
 
 import asyncio
 import logging
+import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import throwaway_postgres  # noqa: E402
+from app import collectors  # noqa: E402
 from app.collectors import (  # noqa: E402
+    BaseCollector,
     CollectionResult,
     CollectionStatus,
     CollectorRegistry,
 )
-from app.models import Source  # noqa: E402
+from app.models import Base, Source  # noqa: E402
 from app.scheduler import main as scheduler_main  # noqa: E402
 from app.scheduler.main import CollectionScheduler  # noqa: E402
 from test_scheduler_one_rule import a_source, db  # noqa: E402,F401
@@ -151,3 +159,340 @@ def test_a_collection_the_scheduler_times_out_is_stored_as_before(one, monkeypat
     _collect(scheduler, task)
 
     assert row().last_error == task.last_error == "Collection timeout"
+
+
+# --- Errors that are none of the five builtins --------------------------------------
+# The loop, a collection and the reload each caught ValueError, KeyError,
+# TypeError, ConnectionError and TimeoutError. Run under a PostgreSQL that
+# was stopped and started again, the scheduler of main did this: a collection
+# that asked the database meanwhile failed without a line in the log, eight
+# times in eight seconds, and the first reload of the sources ended the
+# process, with status 1.
+
+# What PostgreSQL says to a client while it restarts, and what a driver puts
+# in front of it: with the address of the server.
+SERVER_TEXT = (
+    'connection to server at "postgres" (172.18.0.5), port 5432 failed: FATAL:  '
+    "the database system is shutting down"
+)
+
+
+def _database_error():
+    return OperationalError("SELECT 1", {}, Exception(SERVER_TEXT))
+
+
+@pytest.mark.parametrize(
+    "error, said",
+    [
+        (_database_error(), "OperationalError (Exception)"),
+        (RuntimeError(ERROR_TEXT), "RuntimeError"),
+        (OSError(ERROR_TEXT), "OSError"),
+    ],
+    ids=["a database error", "RuntimeError", "OSError"],
+)
+def test_a_collection_that_raises_any_error_is_said_once_by_its_class(
+    one, monkeypatch, caplog, error, said
+):
+    scheduler, task, row = one
+    Ends(monkeypatch, error)
+
+    with caplog.at_level(logging.ERROR, logger=scheduler_main.__name__):
+        _collect(scheduler, task)
+
+    # main: nothing. The error left _run_collection, and asyncio.gather
+    # kept it as a result nobody read.
+    (line,) = _errors(caplog)
+    assert line.startswith(f"Collection error for source feed: {said}\n")
+    assert KEY not in caplog.text and "172.18.0.5" not in caplog.text
+    assert "shutting down" not in caplog.text
+    assert task.last_error == row().last_error == said
+    assert task.running is False
+
+
+def test_a_failure_the_database_does_not_take_is_said_and_the_scheduler_goes_on(
+    one, monkeypatch, caplog
+):
+    """The collection failed for the database, and so does the note of it."""
+    scheduler, task, row = one
+    Ends(monkeypatch, _database_error())
+
+    def no_session():
+        raise _database_error()
+
+    with caplog.at_level(logging.ERROR, logger=scheduler_main.__name__):
+        monkeypatch.setattr(scheduler_main, "get_db_session", no_session)
+        _collect(scheduler, task)
+        monkeypatch.undo()
+
+    first, second = _errors(caplog)
+    assert first.startswith("Collection error for source feed: OperationalError")
+    assert second == (
+        "The failed collection of source feed could not be recorded: "
+        "OperationalError (Exception)"
+    )
+    assert "shutting down" not in caplog.text
+    assert task.running is False
+
+
+class Pace:
+    """The scheduler's loop at the pace of a test: a tick is a few
+    milliseconds, and a reload is due when the test says."""
+
+    def __init__(self, monkeypatch, scheduler, reload=False):
+        monkeypatch.setattr(scheduler_main, "TICK_SECONDS", 0.005)
+        monkeypatch.setattr(scheduler_main, "RETRY_SECONDS", 0.005)
+        monkeypatch.setattr(scheduler, "_reload_due", lambda current_time: reload)
+        self.scheduler = scheduler
+
+    async def until(self, condition):
+        deadline = asyncio.get_running_loop().time() + 20
+        while not condition():
+            assert asyncio.get_running_loop().time() < deadline, "timed out"
+            assert not self.loop.done(), "the scheduler's loop ended"
+            await asyncio.sleep(0.005)
+
+    def run(self, scenario):
+        async def main():
+            self.scheduler.running = True
+            self.loop = asyncio.ensure_future(self.scheduler._scheduler_loop())
+            try:
+                await scenario()
+            finally:
+                await self.scheduler.stop()
+                await asyncio.wait_for(
+                    asyncio.gather(self.loop, return_exceptions=True), 10
+                )
+            return self.loop
+
+        return asyncio.run(main())
+
+
+def test_the_loop_outlives_a_reload_the_database_does_not_answer(
+    one, monkeypatch, caplog
+):
+    scheduler, task, row = one
+    Ends(monkeypatch, "completed")
+    task.next_run = datetime.now(timezone.utc) + timedelta(days=1)
+    pace = Pace(monkeypatch, scheduler, reload=True)
+    sessions = scheduler_main.get_db_session
+    asked = []
+
+    def away_at_first():
+        asked.append(1)
+        if len(asked) <= 3:
+            raise _database_error()
+        return sessions()
+
+    monkeypatch.setattr(scheduler_main, "get_db_session", away_at_first)
+
+    async def scenario():
+        # Three reloads fail, and the fourth is made, and answered.
+        await pace.until(lambda: len(asked) >= 5)
+
+    with caplog.at_level(logging.ERROR, logger=scheduler_main.__name__):
+        loop = pace.run(scenario)
+
+    # main: the first of them ended the loop, and the process with it.
+    assert loop.exception() is None
+    said = _errors(caplog)
+    assert len(said) == 3
+    for line in said:
+        assert line.startswith(
+            "Error reloading sources: OperationalError (Exception)\n"
+        )
+        assert "_reload_sources" in line
+    assert "shutting down" not in caplog.text
+    # The tasks are the ones it had: a reload that fails removes none.
+    assert list(scheduler.tasks.values()) == [task]
+
+
+def test_the_loop_outlives_an_error_of_its_own_pass(one, monkeypatch, caplog):
+    """Whatever raises in the pass itself, a database error among them."""
+    scheduler, task, row = one
+    Ends(monkeypatch, "completed")
+    task.next_run = datetime.now(timezone.utc) + timedelta(days=1)
+    pace = Pace(monkeypatch, scheduler, reload=True)
+    reloads = []
+
+    async def reload():
+        reloads.append(1)
+        if len(reloads) <= 2:
+            raise _database_error()
+
+    monkeypatch.setattr(scheduler, "_reload_sources", reload)
+
+    async def scenario():
+        await pace.until(lambda: len(reloads) >= 4)
+
+    with caplog.at_level(logging.ERROR, logger=scheduler_main.__name__):
+        loop = pace.run(scenario)
+
+    assert loop.exception() is None
+    said = _errors(caplog)
+    assert len(said) == 2
+    assert said[0].startswith("Error in scheduler loop: OperationalError (Exception)\n")
+    assert "shutting down" not in caplog.text
+
+
+def test_an_error_that_leaves_a_collection_all_the_same_is_said_by_the_loop(
+    one, monkeypatch, caplog
+):
+    """What asyncio.gather keeps as a result is read: once, with the name
+    of the source, and the other collections of the pass are not its."""
+    scheduler, task, row = one
+    task.next_run = datetime.now(timezone.utc) - timedelta(seconds=1)
+    pace = Pace(monkeypatch, scheduler)
+    ran = []
+
+    async def run_collection(due):
+        ran.append(due)
+        due.next_run = datetime.now(timezone.utc) + timedelta(days=1)
+        raise RuntimeError(ERROR_TEXT)
+
+    monkeypatch.setattr(scheduler, "_run_collection", run_collection)
+
+    async def scenario():
+        await pace.until(lambda: ran)
+        for _ in range(20):
+            await asyncio.sleep(0.005)
+
+    with caplog.at_level(logging.ERROR, logger=scheduler_main.__name__):
+        loop = pace.run(scenario)
+
+    assert loop.exception() is None
+    (line,) = _errors(caplog)
+    assert line.startswith("Collection error for source feed: RuntimeError\n")
+    assert KEY not in caplog.text
+
+
+def test_a_stop_asked_for_while_the_loop_waits_after_an_error_is_obeyed(
+    one, monkeypatch
+):
+    scheduler, task, row = one
+    task.next_run = datetime.now(timezone.utc) + timedelta(days=1)
+    pace = Pace(monkeypatch, scheduler, reload=True)
+    monkeypatch.setattr(scheduler_main, "RETRY_SECONDS", 3600)
+    failed = []
+
+    async def reload():
+        failed.append(1)
+        raise _database_error()
+
+    monkeypatch.setattr(scheduler, "_reload_sources", reload)
+
+    async def scenario():
+        await pace.until(lambda: failed)
+        # Twenty ticks of the loop: it is waiting, and makes no other pass.
+        await asyncio.sleep(0.1)
+        assert len(failed) == 1
+
+    # main: asyncio.sleep(60), whatever was asked meanwhile.
+    loop = pace.run(scenario)
+
+    assert loop.exception() is None and len(failed) == 1
+
+
+# --- The same, on a PostgreSQL that stops answering ---------------------------------
+
+
+@pytest.fixture(scope="module")
+def postgres():
+    server = throwaway_postgres.start_or_skip()
+    try:
+        yield server
+    finally:
+        server.stop()
+
+
+def _psql(server, statement):
+    """Ask the server, as its superuser, from inside its container."""
+    done = subprocess.run(
+        ["docker", "exec", server.container, "psql", "-h", "127.0.0.1"]
+        + ["-U", "postgres", "-d", "postgres", "-At", "-c", statement],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    return done.stdout.strip()
+
+
+class Nothing(BaseCollector):
+    """A feed with nothing in it: its collection asks only the database."""
+
+    async def collect_data(self):
+        return
+        yield
+
+    def parse_item(self, raw_item):
+        return None
+
+
+def test_the_scheduler_outlives_a_postgresql_that_refuses_it_and_goes_on_after(
+    postgres, monkeypatch, caplog
+):
+    """A real server, a real collector, the real loop. The server refuses
+    every new connection and drops the open ones, which is what a client
+    sees while PostgreSQL restarts; then it takes them again."""
+    engine = create_engine(postgres.url, pool_pre_ping=True, hide_parameters=True)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, autoflush=False)
+    monkeypatch.setattr(scheduler_main, "get_db_session", factory)
+    monkeypatch.setattr(collectors, "get_db_session", factory)
+    monkeypatch.setitem(CollectorRegistry._collectors, "nothing", Nothing)
+    source = a_source("feed", source_type="nothing")
+    source.collection_interval = 0
+    with factory() as session:
+        session.add(source)
+        session.commit()
+    scheduler = CollectionScheduler()
+    asyncio.run(scheduler._load_sources())
+    (task,) = scheduler.tasks.values()
+    task.next_run = datetime.now(timezone.utc)
+    pace = Pace(monkeypatch, scheduler, reload=True)
+
+    def runs():
+        with factory() as session:
+            return session.query(Source).one().collection_count
+
+    def errors(beginning):
+        return [line for line in _errors(caplog) if line.startswith(beginning)]
+
+    async def off_the_loop(statement):
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _psql, postgres, statement)
+
+    async def scenario():
+        await pace.until(lambda: runs() >= 2)
+        # The server takes no connection to this database, and ends the
+        # ones it has.
+        await off_the_loop("ALTER DATABASE test ALLOW_CONNECTIONS false")
+        await off_the_loop(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = 'test'"
+        )
+        # A reload and a collection have each been refused, and said so.
+        await pace.until(lambda: errors("Error reloading sources: "))
+        await pace.until(lambda: errors("Collection error for source feed: "))
+        await pace.until(lambda: errors("The failed collection of source feed"))
+        # And it takes them again: the collections go on.
+        await off_the_loop("ALTER DATABASE test ALLOW_CONNECTIONS true")
+        before = runs()
+        await pace.until(lambda: runs() >= before + 2)
+
+    try:
+        with caplog.at_level(logging.ERROR, logger=scheduler_main.__name__):
+            loop = pace.run(scenario)
+    finally:
+        _psql(postgres, "ALTER DATABASE test ALLOW_CONNECTIONS true")
+        engine.dispose()
+
+    # main: the first reload that was refused ended the loop.
+    assert loop.exception() is None
+    for line in _errors(caplog):
+        first = line.splitlines()[0]
+        # The class, the driver's class, and nothing the server wrote.
+        assert first.endswith("OperationalError (OperationalError)"), first
+        assert "accepting connections" not in line and "FATAL" not in line
+    assert errors("Error reloading sources: OperationalError (OperationalError)")
+    assert errors("Collection error for source feed: OperationalError")
