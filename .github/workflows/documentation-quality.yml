@@ -129,26 +129,6 @@ jobs:
           git ls-files -z '*.md' ':!:docs/vendor/**' \
             | xargs -0 python scripts/check_prose.py --config .proselintrc.json
 
-  inclusive-language:
-    name: Inclusive Language Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10  # observed max 0.6 min
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-
-      - name: Install alex
-        run: npm install -g alex@11.0.1
-
-      - name: Run alex
-        run: alex '**/*.md' --quiet || true
-        continue-on-error: true
-
   alt-text-check:
     name: Image Alt Text Validation
     runs-on: ubuntu-latest

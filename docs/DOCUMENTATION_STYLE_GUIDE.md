@@ -6,7 +6,7 @@
 
 > **Note.** The checks CI enforces are the ones in
 > `.github/workflows/documentation-quality.yml`: markdownlint, cspell (en-US),
-> markdown-link-check and proselint fail the job; alex only reports. The other
+> markdown-link-check and proselint fail the job. The other
 > rules on this page are guidance. Examples in user-facing pages go through the
 > gateway (`https://<host>/api/v1/<service>/...`), not to backend ports.
 
@@ -476,9 +476,6 @@ markdown-link-check README.md --config .markdown-link-check.json
 # Prose quality (rules in .proselintrc.json; code is masked)
 pip install proselint==0.16.0
 python scripts/check_prose.py --config .proselintrc.json README.md
-
-# Inclusive language (reported in CI, does not fail the job)
-alex "**/*.md"
 ```
 
 ---
