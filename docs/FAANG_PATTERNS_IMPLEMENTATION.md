@@ -56,7 +56,7 @@ Without idempotency, network retries cause duplicate operations:
 RFC-compliant idempotency using Redis-backed storage:
 
 ```python
-from shared.idempotency import IdempotencyMiddleware, idempotent
+from open_security_shared.idempotency import IdempotencyMiddleware, idempotent
 
 # FastAPI middleware (automatic)
 app.add_middleware(IdempotencyMiddleware)
@@ -123,7 +123,7 @@ When external services fail (OpenAI, threat feeds, cloud APIs), without circuit 
 3-state circuit breaker (Netflix Hystrix pattern):
 
 ```python
-from shared.circuit_breaker import circuit_breaker, OPENAI_BREAKER
+from open_security_shared.circuit_breaker import circuit_breaker, OPENAI_BREAKER
 
 @circuit_breaker(OPENAI_BREAKER)
 async def analyze_with_ai(threat_data: dict):
@@ -201,7 +201,7 @@ Without event sourcing:
 Immutable event store with PostgreSQL:
 
 ```python
-from shared.event_sourcing import EventStore, Event, EventTypes
+from open_security_shared.event_sourcing import EventStore, Event, EventTypes
 
 event_store = EventStore("postgresql+asyncpg://...")
 await event_store.initialize()
@@ -294,7 +294,7 @@ Without CQRS:
 Separate command (write) and query (read) models:
 
 ```python
-from shared.cqrs import CommandBus, QueryBus, QueryCache
+from open_security_shared.cqrs import CommandBus, QueryBus, QueryCache
 
 # Write model (commands mutate state)
 command_bus = CommandBus()
@@ -575,7 +575,7 @@ Without feature flags:
 PostgreSQL + Redis feature flag service:
 
 ```python
-from shared.feature_flags import FeatureFlagService, FeatureFlag, RolloutStrategy
+from open_security_shared.feature_flags import FeatureFlagService, FeatureFlag, RolloutStrategy
 
 flags = FeatureFlagService(
     database_url="postgresql+asyncpg://...",

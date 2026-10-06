@@ -207,7 +207,7 @@ Before running this example:
 
 ````markdown
 ```bash
-curl --cacert open-security-gateway/ssl/wildbox.crt https://<host>/api/v1/data/health
+curl --cacert open-security-gateway/ssl/wildbox.crt -H "X-API-Key: <key>" https://<host>/api/v1/data/health
 
 # Expected output:
 {

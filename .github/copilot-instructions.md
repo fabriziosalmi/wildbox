@@ -22,24 +22,26 @@ Browser/API Client → Gateway (port 80/443) → Backend Services
 | --------- | ------ | --------- | ------------- |
 | **gateway** | 80/443 | OpenResty API gateway with Lua auth | JWT + API Key |
 | **identity** | 8001 | FastAPI auth service (JWT, teams, subscriptions) | JWT internally |
-| **api** (tools) | 8000 | FastAPI security tools (55+ tools) | API Key |
-| **data** | 8002 | Django threat intelligence & IOCs | API Key |
+| **api** (tools) | 8000 | FastAPI security tools (52 tools) | API Key |
+| **data** | 8002 | FastAPI threat intelligence & IOCs | API Key |
 | **guardian** | 8013 | Django vulnerability management | API Key |
 | **responder** | 8018 | FastAPI incident response & playbooks | API Key |
-| **agents** | 8006 | FastAPI AI-powered analysis (GPT-4o) | API Key |
-| **cspm** | 8019 | FastAPI cloud security (31 checks) | API Key |
-| **sensor** | 8004 | Rust endpoint monitoring (osquery) | Certificate |
-| **dashboard** | 3000 | Next.js 14 frontend (App Router) | Session + JWT |
+| **agents** | 8006 | FastAPI AI-assisted analysis (Anthropic API; optional `ANTHROPIC_API_KEY`) | API Key |
+| **cspm** | 8019 | FastAPI cloud security (22 AWS checks) | API Key |
+| **sensor** | 8004 | Python (aiohttp) host telemetry agent with osquery; not routed by the gateway | API key on its local API |
+| **dashboard** | 3000 | Next.js 16 frontend (App Router) | Session + JWT |
 | **automations** | 5678 | n8n workflow automation | n8n's own accounts; not behind the gateway |
 
 ### Shared Infrastructure
 
 - **postgres**: Single PostgreSQL 15 instance with separate databases (`identity`, `data`, `guardian`, etc.)
 - **wildbox-redis**: Single Redis 7 instance with logical database separation (DB 0-15)
-  - DB 0: Identity cache
-  - DB 1: Guardian cache
-  - DB 5: Gateway auth cache
-  - etc.
+  - DB 0: identity
+  - DB 1: guardian
+  - DB 2: tools and responder
+  - DB 3: CSPM
+  - DB 4: agents
+  - The gateway does not use Redis: its authorization cache is nginx shared memory (`lua_shared_dict auth_cache`)
 
 ## 🔐 Authentication Architecture
 
@@ -48,7 +50,7 @@ Browser/API Client → Gateway (port 80/443) → Backend Services
 1. **Request arrives** at gateway with Bearer token or API key
 2. **Gateway Lua script** (`/nginx/lua/auth_handler.lua`) extracts token
 3. **Identity service validates** via internal `/internal/authorize` endpoint
-4. **Gateway injects headers** to backend: `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Plan`, `X-Wildbox-Role`
+4. **Gateway injects headers** to backend: `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`, `X-Wildbox-Auth-Type` and, for an API key, `X-Wildbox-Scopes`
 5. **Backend services trust** these headers (never exposed externally)
 
 ### API Key Format
@@ -59,7 +61,7 @@ Example: wsk_a3f4.e7d2c8b1...
 ```
 
 - Generated in identity service via `generate_api_key()` in `app/auth.py`
-- Stored as SHA256 hash in database
+- Stored as an HMAC-SHA256 keyed with `API_KEY_HASH_SECRET`
 - Team-scoped with plan-based permissions
 
 ### Frontend API Client Pattern
@@ -86,11 +88,8 @@ const response = await fetch('http://localhost:8001/api/v1/auth/me')
 ### Starting the Platform
 
 ```bash
-# Full stack (recommended)
-docker-compose up -d
-
-# Wait for initialization (critical for first run)
-sleep 180
+# Full stack (recommended); returns when every service is healthy
+docker compose up -d --wait --wait-timeout 600
 
 # Verify health (non-zero exit when a service is unhealthy)
 make health
@@ -98,7 +97,7 @@ make health
 
 **First-time setup creates**:
 
-- Default admin user: `admin@wildbox.security` / `CHANGE-THIS-PASSWORD`
+- The initial admin, from `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` in `.env` (`make generate-secrets` generates the password; there is no default)
 - API keys for inter-service communication
 - Database schemas via migrations
 
@@ -106,13 +105,13 @@ make health
 
 ```bash
 # View logs for specific service
-docker-compose logs -f [service-name]
+docker compose logs -f [service-name]
 
 # Check authentication flow
-docker-compose logs -f gateway | grep "auth_handler"
+docker compose logs -f gateway | grep "auth_handler"
 
 # Monitor gateway routing decisions
-docker-compose logs -f gateway | grep "proxy_pass"
+docker compose logs -f gateway | grep "proxy_pass"
 
 # Test service directly (bypassing gateway)
 curl http://localhost:8001/health
@@ -123,7 +122,7 @@ curl http://localhost:8001/health
 **"Gateway upstream host not found"**: Services starting in wrong order
 
 ```bash
-docker-compose restart gateway
+docker compose restart gateway
 ```
 
 **"Browser cache showing old data"**: Frontend caching issue
@@ -135,8 +134,8 @@ docker-compose restart gateway
 **"Database does not exist"**: Migration not run
 
 ```bash
-docker-compose exec postgres createdb -U postgres [db-name]
-docker-compose restart [service-name]
+docker compose exec postgres createdb -U postgres [db-name]
+docker compose restart [service-name]
 ```
 
 ## 📦 Adding New Features
@@ -184,20 +183,20 @@ docker-compose restart [service-name]
 
 ```bash
 # Create migration
-docker-compose exec identity alembic revision -m "description"
+docker compose exec identity alembic revision -m "description"
 
 # Apply migration
-docker-compose exec identity alembic upgrade head
+docker compose exec identity alembic upgrade head
 ```
 
-**Django Services** (Guardian, Data):
+**Django service** (Guardian; data is FastAPI with Alembic migrations):
 
 ```bash
 # Create migration
-docker-compose exec guardian python manage.py makemigrations
+docker compose exec guardian python manage.py makemigrations
 
 # Apply migration
-docker-compose exec guardian python manage.py migrate
+docker compose exec guardian python manage.py migrate
 ```
 
 ## 🧪 Testing Patterns
@@ -281,13 +280,13 @@ the `fix` argument.
 
 ### Docker Compose Commands
 
-**Always use** `docker-compose` (not `docker compose`) for consistency:
+**Always use** `docker compose` (the Compose plugin, 2.24.4 or later), not the legacy `docker-compose` binary:
 
 ```bash
-docker-compose up -d        # Start services
-docker-compose logs -f api  # Follow logs
-docker-compose restart api  # Restart one service
-docker-compose down -v      # Stop and remove volumes (destructive)
+docker compose up -d        # Start services
+docker compose logs -f api  # Follow logs
+docker compose restart api  # Restart one service
+docker compose down -v      # Stop and remove volumes (destructive)
 ```
 
 ### Code Style
@@ -322,7 +321,7 @@ docker-compose down -v      # Stop and remove volumes (destructive)
 
 - `open-security-identity/app/auth.py`: JWT/API key generation & validation
 - `open-security-identity/app/internal.py`: Gateway authorization endpoint
-- `open-security-identity/app/api_v1/endpoints/auth.py`: Public auth endpoints
+- `open-security-identity/app/api_v1/endpoints/`: `users.py`, `api_keys.py`, `user_api_keys.py`, `analytics.py`
 
 ### Frontend
 
@@ -342,31 +341,27 @@ docker-compose down -v      # Stop and remove volumes (destructive)
 2. **Trust gateway headers** (`X-Wildbox-*`) only in backend services
 3. **Clear gateway headers** before forwarding to prevent spoofing (handled in Lua)
 4. **API keys are team-scoped** - check team_id matches
-5. **Passwords hashed with bcrypt** - use `pwd_context` from identity service
+5. **Passwords are hashed with Argon2id** (legacy bcrypt hashes still verify) - use `password_helper` from `app/auth.py`
 6. **Rate limiting enforced** at gateway based on subscription plan
 
 ## 🎯 Common Tasks Quick Reference
 
 ```bash
 # Add new Python dependency
-echo "package==version" >> open-security-[service]/requirements.txt
-docker-compose up -d --build [service]
+# edit open-security-[service]/requirements.in, then compile the hash-pinned lock
+./scripts/compile_requirements.sh   # or: make lock
+docker compose up -d --build [service]
 
 # View real-time logs across services
-docker-compose logs -f | grep ERROR
+docker compose logs -f | grep ERROR
 
 # Reset database (destructive)
-docker-compose down -v
-docker-compose up -d postgres wildbox-redis
+docker compose down -v
+docker compose up -d postgres wildbox-redis
 # Wait 10s, then start other services
 
-# Check gateway auth cache
-docker-compose exec wildbox-redis redis-cli
-> SELECT 5
-> KEYS auth:*
-
 # Rebuild single service
-docker-compose up -d --build --no-deps [service]
+docker compose up -d --build --no-deps [service]
 ```
 
 ---
