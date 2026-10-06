@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional, Callable
 from functools import wraps
 import asyncio
 
+from app.log_safety import error_site
+
 logger = logging.getLogger(__name__)
 
 class SecurityIntegration:
@@ -63,7 +65,7 @@ class SecurityIntegration:
                 except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     if self.strict_mode:
                         raise
-                    logger.warning(f"Security check failed for {tool_name}, continuing without security: {e}")
+                    logger.warning(f"Security check failed for {tool_name}, continuing without security: {error_site(e)}")
                     # Execute without security controls in non-strict mode
                     if asyncio.iscoroutinefunction(func):
                         return await func(*args, **kwargs)
@@ -92,7 +94,7 @@ class SecurityIntegration:
             # check and refused the execution itself (#563).
         
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Security control failed for {tool_name}: {e}")
+            logger.error(f"Security control failed for {tool_name}: {error_site(e)}")
             if self.strict_mode:
                 raise
     
@@ -129,7 +131,7 @@ class SecurityIntegration:
                 return self.validator.validate_string(input_data, field_name=field_name)
             return input_data
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.warning(f"Input validation failed for {field_name}: {e}")
+            logger.warning(f"Input validation failed for {field_name}: {error_site(e)}")
             if self.strict_mode:
                 raise
             return input_data

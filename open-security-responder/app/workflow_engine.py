@@ -21,6 +21,7 @@ import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq.results import Results
 from dramatiq.results.backends import RedisBackend
+from open_security_shared.log_safety import quiet_http_client_loggers
 
 from .models import (
     Playbook, PlaybookStep, StepFailurePolicy, ExecutionStatus, step_context_key, 
@@ -42,6 +43,11 @@ result_backend = RedisBackend(url=settings.redis_url)
 broker = RedisBroker(url=settings.redis_url)
 broker.add_middleware(Results(backend=result_backend))
 dramatiq.set_broker(broker)
+
+# The worker starts from this module (`python -m dramatiq app.workflow_engine`)
+# and makes no application: it is where the HTTP client the connectors use is
+# told not to log the URL of each request, query string included (#755).
+quiet_http_client_loggers()
 
 # Jinja2 sandboxed environment for template rendering
 # SECURITY: SandboxedEnvironment prevents access to dangerous attributes
@@ -627,7 +633,7 @@ class WorkflowEngine:
                 self.add_log(run_id, message, level="WARNING")
             return False
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Condition evaluation failed: {e}")
+            logger.error(f"Condition evaluation failed: {type(e).__name__}")
             return False
         return result == "true"
 

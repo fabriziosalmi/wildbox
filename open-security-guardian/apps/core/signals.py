@@ -23,7 +23,6 @@ def user_created_or_updated(sender, instance, created, **kwargs):
                 'event_type': 'user_management',
                 'action': 'user_created',
                 'username': instance.username,
-                'email': instance.email,
             }
         )
 
@@ -37,6 +36,5 @@ def user_deleted(sender, instance, **kwargs):
             'event_type': 'user_management',
             'action': 'user_deleted',
             'username': instance.username,
-            'email': instance.email,
         }
     )

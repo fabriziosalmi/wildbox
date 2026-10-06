@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The data service's statistics no longer count other teams' collection
+  runs** (#755). `GET /api/v1/data/stats` answered `recent_collections` as
+  the number of collection runs of every team's sources in the last 24
+  hours, on a route any member of any team can call. It counts the runs of
+  the sources the caller can see: its team's and the global ones. Every
+  other figure of that answer, and every other route of the service, was
+  already scoped; `open-security-data/tests/unit/test_team_isolation.py`
+  now lists the routes from the application and holds each to a database
+  with two teams' rows, so that a route added later fails until it has a
+  probe.
 - **The Redis health check no longer carries the password on its command
   line, and fails when the password is wrong** (#740). Every compose file
   checked Redis with `redis-cli -a <password> ping`, or with
@@ -546,6 +556,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists the internal ranges the
   operator allows; it is empty by default (see Changed).
 
+- **The tools service no longer records the input of a run** (#755). The
+  record "Executing tool" carried the whole validated input of every run:
+  a password to grade, a token to decode, a key to test. The service's own
+  formatter read a field no record has and so wrote none of a record's
+  fields, the request id included; the input was in the record for any
+  other handler, and would have reached the log the day the formatter was
+  mended. It is mended now, and writes the fields named in `LOGGED_FIELDS`
+  and no other. A run is logged with the tool, the caller's user and team
+  ids, the request id and the names of the fields the caller set, for the
+  synchronous route and for a submission alike. A request is logged by its
+  path, without its query string. An error a tool raises over its input is
+  logged by class and line, a refused target as a refusal without the
+  target, and an authorization by the host of its target. The module no
+  longer logs the broker URL, which holds the Redis password.
+- **A task's message describes its arguments without the input, and a
+  failed task does not store what its tool raised** (#755). Celery sends,
+  beside a task's arguments, a text of them for worker logs,
+  `celery inspect` and Flower, which shows it: the first 1024 characters of
+  the tool's input. The text now says how many fields the input has, for a
+  retry's message too. The result of a task whose tool raised stored the
+  text of the error for an hour, and the caller read it back; it says
+  `Tool execution failed (<class>)` now. The input itself is still the
+  body of the message, which the tool needs to run:
+  `open-security-tools/README.md` says how long Redis holds it.
+- **A workflow step that fails in its tool answers a reason code, not the
+  tool's error** (#755). The orchestrator answered a step whose tool raised
+  a `ValueError`, `KeyError` or `TypeError` with the text of the error, and
+  stored `str(e)` of anything else that reached the step. Every failed step
+  now has an `error_code`, and the four codes of a failure inside the
+  service have one fixed sentence each; what was raised is logged by class
+  and line.
+- **The tools do not log the URLs they are given** (#755). Some eighty
+  log lines of the tools named their target by its whole URL, user,
+  password, path and query included, and ended with the text of the HTTP
+  client's error, which repeats it. Three tools printed the text of a
+  failed lookup's error to the container's output. A target is named by
+  its host and an error by its class. httpx, which logs the URL of every request at INFO, is held to
+  warnings in the API and in the worker.
+- **No service logs the query string of a request** (#755). uvicorn's
+  access log wrote the request line of every request to each of the six
+  FastAPI services, and the gateway's access log `$request` and
+  `$http_referer`: every search term, indicator and filter, and any token
+  a client put in a query string. Both now log the method, the path and
+  the status. The shared package does it for the services where they
+  install their error handlers, and also holds httpx, urllib3 and botocore
+  to warnings and errors whatever `LOG_LEVEL` is: botocore, at DEBUG, logs
+  the request it signs with the session token of the account cspm scans.
+- **What else held a request, or a secret, in a log** (#755): the shared
+  error handler put the `detail` of every HTTP error in its record; the
+  shared request-logging middleware every header but `Authorization`,
+  `X-API-Key` and `Cookie`, which left `X-Gateway-Secret`; responder every
+  parameter of every connector action but those of six key names; agents
+  the indicator under analysis, and the URL of a failed search with the
+  indicator in it; identity the address typed into the login form of a
+  locked account, and with `DEBUG` every SQL statement with its
+  parameters; data the URL of a feed that failed, key included, which it
+  also stored as the run's error and the source's `last_error`; the
+  gateway the body of an unexpected answer from identity; the sensor the
+  value of a variable it could not read as an integer. Each now logs a
+  name, a count, a host, an id or a class.
+  `tests/scripts/test_no_request_values_in_logs.py` reads every logging
+  call of every service, and the gateway's log formats and Lua, and fails
+  when one is handed a request, a part of one or a credential.
+- **cspm's health answer no longer names the exception a check raised**
+  (#755). `GET /health`, which needs no credential, answered
+  `"error": "ValueError"`. It answers the status and `Health check
+  failed`; the cause is logged with its traceback.
+
 ### Removed
 
 - **gateway: five variables Compose passed it and nothing read** (#756).
@@ -865,6 +943,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vulnerability, so the list was always empty; and the `file` of an
   attachment would have been a `/media/` URL, which nothing serves. The
   route answers 404 and its serializer is gone. The table stays, unused.
+- **`open-security-data/scripts/init_feeds.py`, and the source types `http`,
+  `https`, `json`, `csv`, `txt`, `rss` and `atom`** (#665, #755). The
+  script was a second list of default sources, of types no collector was
+  registered for; nothing ran it. The seven types were registered to the
+  two base classes of the collectors, which have no `parse_item` and
+  cannot be instantiated: a source of one of them never collected
+  anything. Default sources that cannot be collected as they are were
+  left out of the one remaining list: Malware Domain List (its feed
+  answers 403), PhishTank (404 without an application key), ThreatFox and
+  MalwareBazaar (401 without an abuse.ch key), AbuseIPDB and URLVoid
+  (offered with a placeholder for a key). Their collectors are still
+  registered, for a source that is given what its feed asks for.
 
 ### Fixed
 
@@ -1885,6 +1975,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays 50. It was ignored: the dashboard home asked for one asset to
   read a count, and for the three newest vulnerabilities, and was sent
   fifty rows each time. `next` and `previous` keep the parameter.
+- **The data service no longer answers 200 for a telemetry batch it did not
+  store** (#755). `POST /api/v1/data/ingest` answered 200 with
+  `events_ingested: 0` when the commit failed with an error that was not
+  SQLAlchemy's. On PostgreSQL a NUL character in `source_host` or
+  `raw_data` did that, and the other events of the batch were lost with
+  it. An event the service could not process was left out of a batch that
+  was otherwise stored, after its sensor's record had counted it. A value
+  the validation let through and a column could not hold (a `sensor_id` of
+  300 characters) was a 503 "send it again" for as long as it was sent,
+  which a sensor obeys: one such event stopped a sensor's delivery for
+  good. A batch is now stored in one transaction, all of it or none.
+  A 200 means all, and `events_ingested` is what was stored. What the
+  database would refuse about an event the validation refuses first, with
+  a 422 that names the event by its place in the batch (`sensor_id` and
+  `source_host` of more than 255 characters; a NUL in `sensor_id`,
+  `source_host` or `raw_data`); a value the database still refuses is a
+  422 with code `BATCH_NOT_STORABLE`; a database that did not take the
+  batch stays a 503 with `Retry-After`; a fault of the service is a 500.
+  The sensor splits a batch on a 422 and keeps it on a 5xx, and
+  `tests/shared/ingest_answer_vectors.json` holds the answers for the
+  tests of both services.
+- **The default threat-intelligence sources can be collected** (#665,
+  #755). `manage.py sources add-defaults` created five sources of type
+  `txt` or `json`, and `scripts/init_feeds.py` six of type `api` or
+  `feed`. The first two types were registered to a collector class that
+  cannot be instantiated and the other two to nothing, so every one of
+  the eleven failed each time the scheduler tried it, and counted as an
+  active feed meanwhile. There is one list now
+  (`open-security-data/app/collectors/defaults.py`), of sources a fresh
+  deployment can collect from as it is: Feodo Tracker, whose feed needs no
+  key. `sources add-defaults` repairs in place the "Feodo Tracker" an
+  earlier release created with a type that had no collector.
+  `sources enable` refuses a source whose type has no collector, and the
+  scheduler disables such a source when it meets one, with the reason in
+  its `last_error`.
 
 ### Changed
 

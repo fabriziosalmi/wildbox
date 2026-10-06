@@ -467,7 +467,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         Logica da eseguire dopo la registrazione di un utente.
         Qui creiamo il Team e la membership (owner).
         """
-        logger.info(f"User {user.email} has registered. Running post-registration logic.")
+        logger.info(f"User {user.id} has registered. Running post-registration logic.")
         
         # Without a request the account was not registered through the API:
         # scripts/init.sh creates the first administrator that way and makes
@@ -499,7 +499,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
 
         # Commit delle modifiche
         await db.commit()
-        logger.info(f"Team and membership (owner) created for user {user.email}.")
+        logger.info(f"Team and membership (owner) created for user {user.id}.")
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):

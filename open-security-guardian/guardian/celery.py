@@ -88,4 +88,6 @@ app.conf.result_compression = 'gzip'
 
 @app.task(bind=True)
 def debug_task(self):
-    print(f'Request: {self.request!r}')
+    # The task's id, not its request: the repr of a request holds its
+    # arguments and headers (#755).
+    print(f'Request: {self.request.id}')

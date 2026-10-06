@@ -289,7 +289,7 @@ async def execute_tool(request: CTLogScannerInput) -> CTLogScannerOutput:
     try:
         entries = await fetch_ct_entries(domain, request.include_subdomains)
     except CTLogLookupError as exc:
-        logger.warning("CT lookup failed for %s: %s", domain, exc)
+        logger.warning("CT lookup failed: %s", type(exc).__name__)
         return CTLogScannerOutput(
             **empty,
             success=False,

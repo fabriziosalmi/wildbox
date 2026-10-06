@@ -859,13 +859,21 @@ or not at the right address keeps the batch, as an outage does.
 
 | The answer | It means | What happens to the batch |
 | :--- | :--- | :--- |
-| 200 or 201 | Stored | It leaves the buffer; `events_forwarded` counts the events the data service says it stored (`events_ingested`), and any it says it did not are counted as dropped |
-| A network error, 5xx | The gateway, identity or the data service is unreachable (`unavailable`) | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). No number of attempts gives it up |
+| 200 or 201 | Stored, every event of it: the data service stores a batch whole or answers an error | It leaves the buffer; `events_forwarded` counts the events the data service says it stored (`events_ingested`) |
+| A network error, 5xx | The gateway, identity or the data service is unreachable, or the data service could not store the batch (`unavailable`) | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). No number of attempts gives it up |
 | 429 | The team's request budget, or nginx's limit per address (`rate_limited`) | Kept, as above; the delay is at least the answer's `Retry-After`, or 10 seconds |
 | 401, or the gateway's 400 `invalid_token` | The key is invalid, expired or revoked (`unauthorized`) | Kept, as above |
 | 403 | The key lacks the `data:ingest` scope, its member left the team or has not changed the initial password (`forbidden`) | Kept, as above |
 | A redirect, 404, another 4xx | The request did not reach the ingest route (`misconfigured`) | Kept, as above |
-| 413, 422, the data service's 400, a 200 that stored nothing | The payload is not acceptable | The batch is split in halves, each sent in its turn, until the event at fault is alone: that one is dropped and counted in `events_dropped_refused`, the others are delivered. A batch refused for its size is delivered in parts and loses nothing |
+| 413, 422, the data service's 400 | The payload is not acceptable: the batch is too large, or the data service refuses one of its events | The batch is split in halves, each sent in its turn, until the event at fault is alone: that one is dropped and counted in `events_dropped_refused`, the others are delivered. A batch refused for its size is delivered in parts and loses nothing |
+
+The data service answers each of these for one reason, listed with the
+route in the [data API reference](../docs/api/data/endpoints.md#post-apiv1dataingest),
+and `tests/shared/ingest_answer_vectors.json` holds its answers for the
+tests of both services. A data service of release 0.11 or earlier could also answer
+200 for a batch it had stored a part of, or none of. The sensor still reads
+the count: events such an answer does not count are counted as dropped,
+and a 200 that stored nothing is taken for a refusal of the batch.
 
 While batches are kept the sensor is **not delivering**, and says so:
 

@@ -175,8 +175,8 @@ class StandardizedToolValidator:
         try:
             return schema(**input_data)
         except ValidationError as e:
-            logger.error(f"Input validation failed for {tool_name}: {e}")
-            raise ValueError(f"Invalid input for {tool_name}: {e}")
+            logger.error(f"Input validation failed for {tool_name}: {e.error_count()} error(s)")
+            raise ValueError(f"Invalid input for {tool_name}") from None
     
     def validate_output(self, tool_name: str, output_data: Dict[str, Any]) -> BaseModel:
         """Validate tool output against registered schema."""

@@ -134,15 +134,22 @@ class BaseConnector(ABC):
 
         try:
             method = getattr(self, action)
-            # Sanitize params before logging to avoid leaking secrets
-            _sensitive_keys = {'api_key', 'password', 'secret', 'token', 'credential', 'auth'}
-            safe_params = {k: '***' if k.lower() in _sensitive_keys else v for k, v in params.items()}
-            self.logger.info(f"Executing action '{action}' with params: {safe_params}")
+            # Which parameters the step passes, by name: never their values.
+            # This logged every value but those of six key names it knew
+            # (api_key, password, secret, token, credential, auth), and a
+            # step's parameters are rendered from the trigger data a caller
+            # submits: an Authorization header, a request body, a target, a
+            # message went to the log as they were (#755).
+            self.logger.info(
+                f"Executing action '{action}' with parameters: {sorted(params)}"
+            )
             result = method(**params)
             self.logger.info(f"Action '{action}' completed successfully")
             return result
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            self.logger.error(f"Action '{action}' failed: {str(e)}")
+            # The class in the log; the text stays with the run, where the
+            # caller who started it reads why its step failed.
+            self.logger.error(f"Action '{action}' failed: {type(e).__name__}")
             raise ConnectorError(f"Action '{action}' failed: {str(e)}")
     
     def validate_params(self, action: str, params: Dict[str, Any]) -> bool:

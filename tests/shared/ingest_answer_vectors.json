@@ -1,0 +1,106 @@
+{
+  "_comment": "What POST /api/v1/ingest of the data service answers, and what the sensor does with each answer (#755). Run by the data service's unit tests, which provoke each case and compare the status and the body's shape (open-security-data/tests/unit/test_ingest_honest_answers.py), and by the sensor's, which give each status and body to the forwarder's classify_answer and stored_events (open-security-sensor/tests/unit/test_ingest_answer_contract.py), so the two agree. 'sensor.outcome' is sent (the events leave the buffer as delivered), retry (the batch is kept whole and sent again) or refused (the batch is split in halves until the event at fault is alone, and that one is dropped). A batch is stored whole or not at all: the data service never answers 200 for a batch it stored a part of, or none of.",
+  "answers": [
+    {
+      "case": "stored",
+      "what": "every event of the batch was stored, in one transaction",
+      "events": 3,
+      "status": 200,
+      "body": {
+        "batch_id": "batch-1",
+        "events_received": 3,
+        "events_ingested": 3,
+        "errors": [],
+        "ingested_at": "2026-10-06T10:00:00Z"
+      },
+      "sensor": {"outcome": "sent", "state": "ok", "stored": 3}
+    },
+    {
+      "case": "invalid_event",
+      "what": "the schema refuses an event; the details name it by its place in the batch and nothing was stored",
+      "events": 3,
+      "status": 422,
+      "body": {
+        "error": {
+          "code": 422,
+          "message": "Request validation failed",
+          "type": "ValidationError",
+          "request_id": "req-1",
+          "details": [
+            {
+              "type": "string_too_long",
+              "loc": ["body", "events", 1, "sensor_id"],
+              "msg": "String should have at most 255 characters"
+            }
+          ]
+        }
+      },
+      "sensor": {"outcome": "refused", "state": "payload"}
+    },
+    {
+      "case": "value_not_storable",
+      "what": "the database refuses a value the schema let through; nothing was stored",
+      "events": 3,
+      "status": 422,
+      "body": {
+        "error": {
+          "code": 422,
+          "message": "The batch holds a value that cannot be stored; none of its events was stored.",
+          "type": "HTTPException",
+          "request_id": "req-1",
+          "details": {
+            "reason": "The batch holds a value that cannot be stored; none of its events was stored.",
+            "code": "BATCH_NOT_STORABLE"
+          }
+        }
+      },
+      "sensor": {"outcome": "refused", "state": "payload"}
+    },
+    {
+      "case": "too_many_events",
+      "what": "more events than MAX_BATCH_SIZE allows; nothing was stored",
+      "events": 3,
+      "status": 400,
+      "body": {
+        "error": {
+          "code": 400,
+          "message": "Too many events in batch. Maximum allowed: 2",
+          "type": "HTTPException",
+          "request_id": "req-1"
+        }
+      },
+      "sensor": {"outcome": "refused", "state": "payload"}
+    },
+    {
+      "case": "database_unavailable",
+      "what": "the database did not take the batch for a reason that may pass; nothing was stored",
+      "events": 3,
+      "status": 503,
+      "headers": {"Retry-After": "5"},
+      "body": {
+        "error": {
+          "code": 503,
+          "message": "The batch was not stored; send it again.",
+          "type": "HTTPException",
+          "request_id": "req-1"
+        }
+      },
+      "sensor": {"outcome": "retry", "state": "unavailable"}
+    },
+    {
+      "case": "service_fault",
+      "what": "the service failed while it stored the batch; nothing was stored",
+      "events": 3,
+      "status": 500,
+      "body": {
+        "error": {
+          "code": 500,
+          "message": "The batch was not stored.",
+          "type": "HTTPException",
+          "request_id": "req-1"
+        }
+      },
+      "sensor": {"outcome": "retry", "state": "unavailable"}
+    }
+  ]
+}

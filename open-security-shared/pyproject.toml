@@ -13,7 +13,7 @@ authors = [{ name = "Wildbox" }]
 
 # The core has no third-party dependency: importing the package resolves
 # nothing eagerly (see __init__.py), and the modules every service can use
-# without an extra (api_docs, circuit_breaker, environment, scopes,
+# without an extra (api_docs, circuit_breaker, environment, log_safety, scopes,
 # target_policy) need the standard library only.
 #
 # It used to require fastapi, pydantic, passlib, PyJWT and prometheus-client
@@ -85,6 +85,7 @@ event_sourcing = ["events"]
 feature_flags = ["events"]
 gateway_auth = ["fastapi"]
 idempotency = ["fastapi", "events"]
+log_safety = []
 observability = ["metrics"]
 scopes = []
 security_middleware = ["fastapi"]

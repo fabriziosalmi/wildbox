@@ -19,12 +19,18 @@ from .checks.runner import check_runner
 from .checks.framework import CloudProvider, ScanReport
 from . import schemas
 from . import scan_store
+from open_security_shared.log_safety import quiet_http_client_loggers
 
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
     format=settings.log_format
 )
+# With LOG_LEVEL=DEBUG, botocore logs each request it signs, session token
+# of the scanned account included, and urllib3 each URL it calls. A worker
+# makes no application, so it says here what the API process is told through
+# its error handlers: those libraries log warnings and errors only (#755).
+quiet_http_client_loggers()
 logger = logging.getLogger(__name__)
 
 # Create Celery app

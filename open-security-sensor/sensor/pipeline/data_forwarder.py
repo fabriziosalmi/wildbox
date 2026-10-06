@@ -41,7 +41,8 @@ them:
   scope, a rate limit), or that the address is wrong, says nothing about
   the events: the batch is kept as in an outage, and the sensor reports
   that it is not delivering and why. Only an answer about the payload (413,
-  422, a 400 of the data service, a 200 that stored nothing) costs events,
+  422, a 400 of the data service, and from a data service older than #755
+  a 200 that stored nothing) costs events,
   and then the batch is split in halves until the event at fault is alone:
   that one is dropped, the others are delivered. ``SPLIT_BUDGET`` bounds the
   requests spent on one batch.
@@ -295,10 +296,15 @@ def classify_answer(status: int, text: str = ""):
 def stored_events(text: str, sent: int) -> int:
     """How many of the ``sent`` events an accepting answer says were stored.
 
-    The data service answers 200 with ``events_ingested``, which is less
-    than what it received when it could not store some events, and 0 when
-    it could not commit the batch. An answer that does not say is taken at
-    its status: all of them.
+    The data service answers 200 with ``events_ingested``. Since #755 that
+    is the whole batch or the answer is not a 200: a batch is stored in one
+    transaction, a batch it refuses is a 422 and one it could not store a
+    5xx (``tests/shared/ingest_answer_vectors.json`` lists its answers, for
+    its tests and for this module's). A data service from before that
+    answered 200 with fewer events than it received when it could not
+    process some, and with 0 when it could not commit the batch: the count
+    is still read, so that such an answer is not taken for a delivery. An
+    answer that does not say is taken at its status: all of them.
     """
     try:
         answer = json.loads(text)
