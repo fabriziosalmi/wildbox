@@ -186,8 +186,8 @@ jobs:
           pip install -r requirements.txt
           # Exact versions, as in the unit-tests job: these go over the
           # service's lock, so they cannot come from the hashed CI lock.
-          # pytest-django was in that lock, with the linters; the image
-          # installs it, so it names no test tool now (#788).
+          # pytest-django was in that lock, with the linters. The lock is
+          # what the image installs, and names no test tool now (#788).
           pip install pytest==9.1.1 pytest-asyncio==1.4.0 pytest-django==4.5.2
 
       - name: Start PostgreSQL
