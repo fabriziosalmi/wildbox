@@ -75,6 +75,7 @@ def _assert_no_secret(*texts):
 
 FAKE_DOCKER = r'''#!/usr/bin/env python3
 """Stub for `docker compose ...` as the backup scripts call it."""
+import itertools
 import os
 import sys
 import time
@@ -109,7 +110,33 @@ def snapshot_id(database):
     return "%08X-0000001B-1" % zlib.crc32(database.encode())
 
 
-def session(database):
+def restore(database, stream):
+    """psql fed the one transaction of a restore: BEGIN ... COMMIT.
+
+    It answers as the server does: the mark of a committed restore only when
+    the COMMIT reached it, and nothing at all, with status 0, when its input
+    ended before that.
+    """
+    if database in os.environ.get("FAKE_FAIL_RESTORE", "").split():
+        # As the transaction leaves it: nothing of this archive.
+        sys.stderr.write("psql:<stdin>:7: ERROR:  stub failure\n")
+        sys.exit(3)
+    if database in os.environ.get("FAKE_INPUT_ENDS_EARLY", "").split():
+        stream = stream[: stream.index("COMMIT;")]
+    lines = stream.splitlines()
+    if "COMMIT;" in lines and "current_setting('wildbox.restore'" in lines[-1]:
+        open(os.path.join(state, "restored_" + database), "w").write(stream)
+        # Whether any snapshot session was still open when the restore
+        # began: every session that has ended left a session_* file.
+        opened = [n for n in os.listdir(state) if n.startswith("dumped_")]
+        closed = [n for n in os.listdir(state) if n.startswith("session_")]
+        with open(os.path.join(state, "sessions_at_restore"), "a") as record:
+            record.write("held\n" if len(closed) < len(opened) else "released\n")
+        print("wildbox-restore: committed")
+    sys.exit(0)
+
+
+def session(database, first):
     """psql fed on stdin: it answers as it reads and stays until stdin ends.
 
     That is the drill's snapshot session. Its transaction, and so the
@@ -125,7 +152,7 @@ def session(database):
         sys.stderr.write("psql: error: stub failure\n")
         sys.exit(2)
     statement = ""
-    for line in sys.stdin:
+    for line in itertools.chain([first], sys.stdin):
         statement += line
         if not line.rstrip().endswith(";"):
             continue
@@ -190,22 +217,27 @@ if command == "exec":
                 sys.exit(1)
             print("; Archive created by the stub")
             print("1; 1259 16385 TABLE public widgets owner")
-        elif database in os.environ.get("FAKE_FAIL_RESTORE", "").split():
-            # As --single-transaction leaves it: nothing of this archive.
-            sys.stderr.write("pg_restore: error: could not execute query: stub failure\n")
-            sys.exit(1)
+            sys.stdout.write(os.environ.get("FAKE_TOC_ENTRY", ""))
         else:
-            open(os.path.join(state, "restored_" + database), "w").write(data)
-            # Whether any snapshot session was still open when the restore
-            # began: every session that has ended left a session_* file.
-            opened = [n for n in os.listdir(state) if n.startswith("dumped_")]
-            closed = [n for n in os.listdir(state) if n.startswith("session_")]
-            with open(os.path.join(state, "sessions_at_restore"), "a") as record:
-                record.write("held\n" if len(closed) < len(opened) else "released\n")
+            # The archive as SQL on stdout. pg_restore is never given a
+            # database: what reaches one goes through psql.
+            assert database is None and tool_args[-2:] == ["-f", "-"], tool_args
+            archived = data.rsplit("-", 1)[-1]
+            print("-- SQL of " + data)
+            # A file cut short on its way to the disk: no error, no end.
+            if archived not in os.environ.get("FAKE_CUT_SQL", "").split():
+                print("--\n-- PostgreSQL database dump complete\n--\n")
+            # And the other way round: an error, whatever was written.
+            if archived in os.environ.get("FAKE_FAIL_SQL", "").split():
+                sys.stderr.write("pg_restore: error: could not read from input file: end of file\n")
+                sys.exit(1)
     elif tool == "psql":
         sql = option("-c", tool_args)
         if sql is None:
-            session(database)
+            first = sys.stdin.readline()
+            if first == "BEGIN;\n":
+                restore(database, first + sys.stdin.read())
+            session(database, first)
         if "query_to_xml" in sql:
             base = os.path.join(os.environ["FAKE_COUNTS"], database)
             nth = base + "." + str(counted(database))
@@ -484,7 +516,26 @@ tool=$(basename "$0")
 } >> "$FAKE_STATE/clients.log"
 case "$tool" in
   pg_dump) printf 'PGDMP-fake-archive' ;;
-  pg_restore) cat >/dev/null; echo "1; 1259 16385 TABLE public widgets owner" ;;
+  pg_restore)
+    cat >/dev/null
+    case " $* " in
+      *" -f - "*) printf -- '-- SQL of the archive\n--\n-- PostgreSQL database dump complete\n--\n\n' ;;
+      *) echo "1; 1259 16385 TABLE public widgets owner" ;;
+    esac ;;
+  psql)
+    case " $* " in
+      *" -c "*)
+        case "$*" in
+          *"FROM pg_database"*) echo 1 ;;
+          *information_schema.tables*) echo 2 ;;
+        esac ;;
+      *)
+        # Fed on stdin: the transaction of a restore.
+        cat > "$FAKE_STATE/stream"
+        if grep -qx 'COMMIT;' "$FAKE_STATE/stream"; then
+          echo 'wildbox-restore: committed'
+        fi ;;
+    esac ;;
   redis-cli)
     while [ $# -gt 0 ]; do
       if [ "$1" = "--rdb" ]; then printf 'REDIS0011-fake' > "$2"; fi
@@ -917,7 +968,7 @@ def test_restore_over_the_live_databases_runs_with_the_flag_and_no_prompt(harnes
     assert _restored(harness) == sorted(DATABASES)
     for db in DATABASES:
         restored = (harness.state / f"restored_{db}").read_text()
-        assert restored == f"PGDMP-fake-archive-of-{db}"
+        assert f"-- SQL of PGDMP-fake-archive-of-{db}\n" in restored
 
 
 def test_the_harmless_targets_need_no_flag(harness):
@@ -977,22 +1028,155 @@ def test_a_missing_archive_stops_the_restore_before_any_database_is_touched(harn
 LIVE = ("--latest", "--overwrite-live-databases")
 
 
+def _restore_calls(harness):
+    """What the restore asked of the server after it had read the archives:
+    (pg_restore calls that write SQL, psql calls fed on stdin)."""
+    # A line ends with the tool and its arguments: "... sh psql -d identity ...".
+    calls = [line.rsplit(" sh ", 1)[-1] for line in harness.docker_log().splitlines()]
+    written = [call for call in calls if call.endswith(" -f -")]
+    fed = [call for call in calls if call.startswith("psql ") and " -c " not in call]
+    return written, fed
+
+
 def test_each_database_is_restored_in_one_transaction(harness):
-    """pg_restore ran statement by statement and carried on after an error."""
+    """pg_restore ran statement by statement and carried on after an error.
+
+    It then ran with --single-transaction (#740). Now it only writes the
+    archive as SQL, and psql runs that SQL between a BEGIN and a COMMIT of
+    the script's own (#773): psql's --single-transaction would commit
+    whatever it had been given when its input ended.
+    """
     _archives(harness)
     result = harness.run(RESTORE, *LIVE)
     assert result.returncode == 0, result.stdout + result.stderr
-    restores = [
-        line
-        for line in harness.docker_log().splitlines()
-        if " sh pg_restore -d " in line
-    ]
-    assert len(restores) == len(DATABASES)
-    for db, line in zip(DATABASES, restores):
-        assert line.endswith(
-            f"sh pg_restore -d {db} --no-owner --no-privileges --clean --if-exists "
-            "--single-transaction"
-        ), line
+    written, fed = _restore_calls(harness)
+    assert written == [
+        "pg_restore --no-owner --no-privileges --clean --if-exists -f -"
+    ] * len(DATABASES)
+    assert fed == [f"psql -d {db} -v ON_ERROR_STOP=1 -X -q -tA" for db in DATABASES]
+    log = harness.docker_log()
+    assert "pg_restore -d " not in log
+    assert "--single-transaction" not in log and " -1" not in log
+    for db in DATABASES:
+        stream = (harness.state / f"restored_{db}").read_text().splitlines()
+        # One BEGIN, first; one COMMIT, after the last line of the archive.
+        assert stream[0] == "BEGIN;" and stream.count("BEGIN;") == 1
+        assert stream.count("COMMIT;") == 1
+        commit = stream.index("COMMIT;")
+        assert commit > stream.index("-- PostgreSQL database dump complete")
+        assert stream.index(f"-- SQL of PGDMP-fake-archive-of-{db}") > 0
+        # And nothing after it but the question whether it committed.
+        assert stream[commit + 1:] == [
+            "SELECT 'wildbox-restore: ' "
+            "|| pg_catalog.current_setting('wildbox.restore', true);"
+        ]
+    # The SQL of an archive is in the work directory, which is gone.
+    assert list(harness.scratch.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "how", ["FAKE_FAIL_SQL", "FAKE_CUT_SQL"], ids=["pg_restore-failed", "file-cut-short"]
+)
+def test_an_archive_is_whole_as_sql_before_its_database_is_touched(harness, how):
+    """An archive whose data cannot be read, or SQL that does not reach the
+    end of a dump with pg_restore's status 0: neither reaches the server."""
+    _archives(harness)
+    result = harness.run(
+        RESTORE, *LIVE, FAKE_EXISTING_DATABASES="identity data guardian", **{how: "data"}
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (
+        f"FAILED: data_{STAMP}.sql.gz could not be read to its end; "
+        "'data' was not touched" in result.stderr
+    )
+    assert "restored from the backup: identity\n" in result.stderr
+    assert "failed, as it was before: data\n" in result.stderr
+    assert "not attempted, unchanged: guardian\n" in result.stderr
+    assert _restored(harness) == ["identity"]
+    written, fed = _restore_calls(harness)
+    assert len(written) == 2 and fed == ["psql -d identity -v ON_ERROR_STOP=1 -X -q -tA"]
+    # Not even asked whether it exists.
+    assert "'data'" not in harness.docker_log()
+    assert list(harness.scratch.iterdir()) == []
+
+
+def test_a_restore_whose_input_ends_before_the_commit_is_a_failed_restore(harness):
+    """psql exits 0 when its input ends, wherever that is: nothing was
+    committed, and its status alone would have called that restored."""
+    _archives(harness)
+    result = harness.run(
+        RESTORE, *LIVE, FAKE_INPUT_ENDS_EARLY="data",
+        FAKE_EXISTING_DATABASES="identity data guardian",
+    )  # fmt: skip
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "FAILED: the restore of 'data' was rolled back" in result.stderr
+    assert "restored from the backup: identity\n" in result.stderr
+    assert "failed, as it was before: data\n" in result.stderr
+    assert "Restore complete" not in result.stdout
+    assert _restored(harness) == ["identity"]
+
+
+def test_only_a_restore_over_a_live_database_removes_what_its_archive_lacks(harness):
+    """#773. The table of contents goes to the server as data; --into-suffix
+    restores into its target as it did."""
+    _archives(harness)
+    # A name with what COPY's text format escapes: a backslash and a tab.
+    odd = "2; 1259 16386 TABLE public odd\\.name\tof a table owner\n"
+    result = harness.run(RESTORE, *LIVE, FAKE_TOC_ENTRY=odd)
+    assert result.returncode == 0, result.stdout + result.stderr
+    stream = (harness.state / "restored_identity").read_text()
+    # Inside the transaction, before the first statement of the archive.
+    removal = stream[: stream.index("-- SQL of PGDMP")]
+    assert removal.startswith("BEGIN;\n")
+    assert (
+        "COPY pg_temp.wildbox_restore_toc (entry) FROM STDIN;\n"
+        "1; 1259 16385 TABLE public widgets owner\n"
+        "2; 1259 16386 TABLE public odd\\\\.name\\tof a table owner\n"
+        "\\.\n"
+    ) in removal
+    # No name is put into a statement by the shell: the server quotes them.
+    statements = removal.split("\\.\n", 1)[1]
+    assert "'DROP %s %I.%I CASCADE'" in statements
+    assert "widgets" not in statements and "odd" not in statements
+
+    for path in harness.state.glob("restored_*"):
+        path.unlink()
+    result = harness.run(RESTORE, "--latest", "--into-suffix", "_check")
+    assert result.returncode == 0, result.stdout + result.stderr
+    stream = (harness.state / "restored_identity_check").read_text()
+    assert stream.startswith("BEGIN;\n-- SQL of PGDMP-fake-archive-of-identity\n")
+    assert "DROP" not in stream and "wildbox_restore_toc" not in stream
+
+
+def test_host_mode_restores_with_the_client_tools_in_the_same_transaction(host):
+    """The same stream, to a psql that connects directly."""
+    _archives(host)
+    # What the restore runs besides the tools the backup needs.
+    for tool in ("gunzip", "ls", "mktemp"):
+        (host.bin / tool).symlink_to(shutil.which(tool))
+    result = host.run(
+        RESTORE, "--latest", "--databases", "identity", "--overwrite-live-databases",
+        path=host.path, **_host_env(),
+    )  # fmt: skip
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Mode:       host (db.example.internal:5432)" in result.stdout
+    assert "restored into 'identity': 2 tables" in result.stdout
+
+    log = (host.state / "clients.log").read_text()
+    _assert_no_secret(log, result.stdout, result.stderr)
+    connection = "-h db.example.internal -p 5432 -U postgres -w"
+    assert (
+        f"pg_restore {connection} --no-owner --no-privileges --clean --if-exists -f - "
+        "[PGPASSWORD]\n"
+    ) in log
+    assert f"psql {connection} -d identity -v ON_ERROR_STOP=1 -X -q -tA [PGPASSWORD]\n" in log
+    assert "pg_restore " + connection + " -d " not in log
+    stream = (host.state / "stream").read_text().splitlines()
+    assert stream[0] == "BEGIN;" and stream[-2] == "COMMIT;"
+    assert stream.index("-- SQL of the archive") > stream.index(
+        "1; 1259 16385 TABLE public widgets owner"
+    )
+    assert list(host.scratch.iterdir()) == []
 
 
 @pytest.mark.parametrize("unreadable", DATABASES)
@@ -1006,8 +1190,10 @@ def test_an_unreadable_archive_stops_the_restore_before_any_database(
     assert f"{unreadable}_{STAMP}.sql.gz is not a readable pg_dump" in result.stderr
     assert "No database was touched." in result.stderr
     assert _restored(harness) == []
+    # No archive was written as SQL, and psql was not run at all.
+    assert _restore_calls(harness) == ([], [])
     log = harness.docker_log()
-    assert " sh pg_restore -d " not in log and "CREATE DATABASE" not in log
+    assert " sh psql " not in log and "CREATE DATABASE" not in log
 
 
 def test_a_database_that_fails_is_reported_with_what_was_and_was_not_restored(
@@ -1027,7 +1213,9 @@ def test_a_database_that_fails_is_reported_with_what_was_and_was_not_restored(
     assert "Restore complete" not in result.stdout
     assert _restored(harness) == ["identity"]
     log = harness.docker_log()
-    assert "pg_restore -d guardian" not in log
+    written, fed = _restore_calls(harness)
+    assert len(written) == 2 and "psql -d guardian" not in log
+    assert fed == [f"psql -d {db} -v ON_ERROR_STOP=1 -X -q -tA" for db in ("identity", "data")]
     # Databases that were there before the run are never dropped.
     assert "DROP DATABASE" not in log
 
@@ -1448,7 +1636,7 @@ def test_real_drill_passes_and_leaves_the_live_databases_alone(stack):
 #
 #   just before pg_dump of `identity` starts   five rows are inserted
 #   SHIM_MODE=shrink, after that pg_dump ends  the five rows are deleted
-#   SHIM_MODE=lose, after pg_restore into the scratch database
+#   SHIM_MODE=lose, after the restore into the scratch database
 #                                              one restored row is deleted
 #
 # Each write leaves a file in SHIM_DIR, so a test can tell that it happened.
@@ -1475,9 +1663,9 @@ def sql(database, statement, done):
 
 mode = os.environ["SHIM_MODE"]
 dump = "pg_dump" in args and "identity" in args
-restore = (
-    "pg_restore" in args and "identity_restore_drill" in args and "--list" not in args
-)
+# The restore is the psql that is fed on stdin: every other one is given -c.
+psql = args[args.index("psql") :] if "psql" in args else []
+restore = "identity_restore_drill" in psql and "-c" not in psql
 if dump:
     sql(
         "identity",
@@ -1612,17 +1800,245 @@ def test_real_restore_over_the_live_databases_happens_only_with_the_flag(
         stack.psql("identity", f"DELETE FROM widgets WHERE name = '{marker}'")
 
 
-def test_real_failed_restore_leaves_the_database_as_it_was(stack, tmp_path):
+# --- a restore leaves what the archive holds, and nothing else (#773) ---------
+
+
+def _relations(stack, database):
+    """Every table, view, materialized view and sequence a database holds."""
+    return stack.psql(
+        database,
+        "SELECT n.nspname || '.' || c.relname || ' ' || c.relkind::text "
+        "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f') "
+        "AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' "
+        "ORDER BY 1",
+    ).splitlines()
+
+
+def _removed(result):
+    """The relations a restore says it removed, as it names them."""
+    return sorted(re.findall(r"^    ((?:[A-Z]+ )+\S+)$", result.stdout, re.M))
+
+
+def _backup_of(stack, tmp_path, database):
+    backups = tmp_path / "backups"
+    result = stack.script(
+        BACKUP, "--databases", database, BACKUP_DIR=str(backups), SKIP_REDIS="true"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return backups
+
+
+OVER_GUARDIAN = ("--latest", "--databases", "guardian", "--overwrite-live-databases")
+
+# What a later release's migrations, or an operator, make after a backup:
+# the statements, what the restore has to remove, and how to undo the
+# statements when the restore did not.
+MADE_AFTER_THE_BACKUP = {
+    # The table of the issue: 0.12.0 made it, the restore to 0.11.2 left it,
+    # and the next upgrade stopped on `relation ... already exists`.
+    "a-table": (
+        "CREATE TABLE later_alone (id int PRIMARY KEY, note text);"
+        "INSERT INTO later_alone VALUES (1, 'made after the backup')",
+        ["TABLE public.later_alone"],
+        "DROP TABLE IF EXISTS later_alone",
+    ),
+    # These two depend on a table the archive holds, which pg_restore --clean
+    # could then not drop: the restore failed.
+    "a-table-with-a-foreign-key-to-a-restored-one": (
+        "CREATE TABLE later_child ("
+        "id serial PRIMARY KEY, widget_id int NOT NULL REFERENCES widgets (id));"
+        "INSERT INTO later_child (widget_id) SELECT min(id) FROM widgets",
+        ["TABLE public.later_child"],
+        "DROP TABLE IF EXISTS later_child",
+    ),
+    "a-view-on-a-restored-table": (
+        "CREATE VIEW later_names AS SELECT name FROM widgets",
+        ["VIEW public.later_names"],
+        "DROP VIEW IF EXISTS later_names",
+    ),
+    "a-sequence-and-a-materialized-view": (
+        "CREATE SEQUENCE later_numbers;"
+        "CREATE MATERIALIZED VIEW later_totals AS SELECT count(*) AS n FROM widgets",
+        ["MATERIALIZED VIEW public.later_totals", "SEQUENCE public.later_numbers"],
+        "DROP MATERIALIZED VIEW IF EXISTS later_totals;"
+        "DROP SEQUENCE IF EXISTS later_numbers",
+    ),
+    # The other direction: a restored table that came to depend on what was
+    # made later, as when a migration adds a column that refers to a new
+    # table. And an identity column, whose sequence only goes with its table.
+    "a-table-and-a-sequence-that-a-restored-table-now-uses": (
+        "CREATE TABLE later_parent (id int PRIMARY KEY);"
+        "CREATE SEQUENCE later_numbers;"
+        "ALTER TABLE widgets"
+        " ADD COLUMN later_parent_id int REFERENCES later_parent (id),"
+        " ADD COLUMN later_number int DEFAULT nextval('later_numbers');"
+        "ALTER TABLE empty_table"
+        " ADD COLUMN later_identity int GENERATED ALWAYS AS IDENTITY;"
+        "CREATE VIEW later_pairs AS"
+        " SELECT w.id, p.id AS parent FROM widgets w JOIN later_parent p ON true",
+        [
+            "SEQUENCE public.later_numbers",
+            "TABLE public.later_parent",
+            "VIEW public.later_pairs",
+        ],
+        "DROP VIEW IF EXISTS later_pairs;"
+        "ALTER TABLE widgets DROP COLUMN IF EXISTS later_parent_id,"
+        " DROP COLUMN IF EXISTS later_number;"
+        "ALTER TABLE empty_table DROP COLUMN IF EXISTS later_identity;"
+        "DROP TABLE IF EXISTS later_parent; DROP SEQUENCE IF EXISTS later_numbers",
+    ),
+    # The archive holds a TABLE of this name; what is there now is a view.
+    "a-table-renamed-and-a-view-under-its-old-name": (
+        "ALTER TABLE empty_table RENAME TO later_renamed;"
+        "CREATE VIEW empty_table AS SELECT 1 AS id",
+        ["TABLE public.later_renamed", "VIEW public.empty_table"],
+        "DO $$ BEGIN IF to_regclass('later_renamed') IS NOT NULL THEN"
+        " DROP VIEW empty_table; ALTER TABLE later_renamed RENAME TO empty_table;"
+        " END IF; END $$",
+    ),
+}
+
+
+@pytest.mark.parametrize("made", list(MADE_AFTER_THE_BACKUP))
+def test_real_restore_removes_what_was_made_after_the_backup(stack, tmp_path, made):
+    statements, removed, undo = MADE_AFTER_THE_BACKUP[made]
+    backups = _backup_of(stack, tmp_path, "guardian")
+    held = _relations(stack, "guardian")
+
+    stack.psql("guardian", statements)
+    assert _relations(stack, "guardian") != held
+    try:
+        restored = stack.script(RESTORE, *OVER_GUARDIAN, BACKUP_DIR=str(backups))
+        assert restored.returncode == 0, restored.stdout + restored.stderr
+        # What the archive holds, and nothing else.
+        assert _relations(stack, "guardian") == held
+        assert stack.psql("guardian", "SELECT count(*) FROM widgets") == "90"
+        assert stack.psql("guardian", "SELECT count(*) FROM empty_table") == "0"
+        assert (
+            stack.psql(
+                "guardian",
+                "SELECT string_agg(attname, ' ' ORDER BY attnum) FROM pg_attribute "
+                "WHERE attrelid = 'widgets'::regclass AND attnum > 0 AND NOT attisdropped",
+            )
+            == "id name"
+        )
+        # And it says what it removed, each relation by its kind and name.
+        assert _removed(restored) == sorted(removed)
+        assert "the archive does not hold" in restored.stdout
+        stack.no_secret_in(restored.stdout, restored.stderr)
+        # The work directory is gone, with the SQL of the archive in it.
+        assert list(stack.scratch.iterdir()) == []
+    finally:
+        stack.psql("guardian", undo)
+    assert _relations(stack, "guardian") == held
+
+
+def test_real_restore_leaves_what_an_extension_owns_and_the_other_schemas(
+    stack, tmp_path
+):
+    """Only relations, only in the schemas the archive holds, never an
+    extension's: pg_buffercache owns a view in `public`, and `later_schema`
+    did not exist when the backup was taken."""
+    backups = _backup_of(stack, tmp_path, "guardian")
+    held = _relations(stack, "guardian")
+    extensions = "SELECT string_agg(extname, ' ' ORDER BY extname) FROM pg_extension"
+
+    stack.psql(
+        "guardian",
+        "CREATE EXTENSION pg_buffercache;"
+        "CREATE TABLE later_alone (id int);"
+        "CREATE SCHEMA later_schema;"
+        "CREATE TABLE later_schema.kept (id int);"
+        "INSERT INTO later_schema.kept VALUES (7)",
+    )
+    try:
+        restored = stack.script(RESTORE, *OVER_GUARDIAN, BACKUP_DIR=str(backups))
+        assert restored.returncode == 0, restored.stdout + restored.stderr
+        assert _removed(restored) == ["TABLE public.later_alone"]
+        assert _relations(stack, "guardian") == sorted(
+            held + ["later_schema.kept r", "public.pg_buffercache v"]
+        )
+        assert stack.psql("guardian", "SELECT id FROM later_schema.kept") == "7"
+        # The extension the archive holds is there as well, as before.
+        assert stack.psql("guardian", extensions) == "pg_buffercache pg_trgm plpgsql"
+        assert stack.psql("guardian", "SELECT similarity('abc', 'abd') > 0") == "t"
+
+        # A second restore finds nothing to remove, and says nothing of it.
+        again = stack.script(RESTORE, *OVER_GUARDIAN, BACKUP_DIR=str(backups))
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert _removed(again) == []
+        assert "the archive does not hold" not in again.stdout
+        assert stack.psql("guardian", "SELECT id FROM later_schema.kept") == "7"
+    finally:
+        stack.psql(
+            "guardian",
+            "DROP EXTENSION IF EXISTS pg_buffercache;"
+            "DROP TABLE IF EXISTS later_alone;"
+            "DROP SCHEMA IF EXISTS later_schema CASCADE",
+        )
+    assert _relations(stack, "guardian") == held
+
+
+def test_real_restore_into_a_suffix_leaves_a_database_that_is_there_as_before(
+    stack, tmp_path
+):
+    """Removing what the archive does not hold is what the flag for the live
+    databases decides; --into-suffix restores into its target as it did."""
+    backups = _backup_of(stack, tmp_path, "guardian")
+    command = (RESTORE, "--latest", "--databases", "guardian", "--into-suffix", "_copy")
+    try:
+        first = stack.script(*command, BACKUP_DIR=str(backups))
+        assert first.returncode == 0, first.stdout + first.stderr
+        stack.psql("guardian_copy", "CREATE TABLE later_alone (id int)")
+        stack.psql("guardian_copy", "DELETE FROM widgets")
+
+        second = stack.script(*command, BACKUP_DIR=str(backups))
+        assert second.returncode == 0, second.stdout + second.stderr
+        assert "database 'guardian_copy' already exists, restoring into it" in second.stdout
+        assert stack.psql("guardian_copy", "SELECT count(*) FROM widgets") == "90"
+        assert "public.later_alone r" in _relations(stack, "guardian_copy")
+        assert _removed(second) == []
+    finally:
+        stack.psql("postgres", 'DROP DATABASE IF EXISTS "guardian_copy" WITH (FORCE)')
+
+
+# What a restore over `data` does not go past: a view in a schema made after
+# the backup, which the archive does not hold and a restore leaves alone.
+# The statement that makes the view, and what the restore says of it.
+BLOCKED_BY = {
+    # The table has to be dropped to be loaded, and the view is in the way.
+    "a-view-on-a-restored-table": (
+        "CREATE VIEW later_reports.blocking AS SELECT name FROM public.widgets",
+        "view later_reports.blocking depends on table public.widgets",
+    ),
+    # The table has to go, and DROP ... CASCADE would take the view with it.
+    "a-view-on-a-table-made-after-the-backup": (
+        "CREATE VIEW later_reports.blocking AS SELECT id FROM public.later_alone",
+        "would also drop, from a schema the archive does not hold: "
+        "VIEW later_reports.blocking",
+    ),
+}
+
+
+@pytest.mark.parametrize("blocked_by", list(BLOCKED_BY))
+def test_real_failed_restore_leaves_the_database_as_it_was(stack, tmp_path, blocked_by):
     """#740: a restore that fails partway used to leave a damaged database.
 
-    A view created after the backup depends on a table of `data`, so
-    pg_restore --clean cannot drop that table. Statement by statement it had
-    already dropped the primary key by then, and went on to load the rows a
-    second time.
+    A view depends on a table of `data`, so that table cannot be dropped.
+    Statement by statement, pg_restore had already dropped the primary key
+    by then, and went on to load the rows a second time.
+
+    The view is in a schema made after the backup, which the archive does
+    not hold: a restore leaves such a schema alone (#773), so it still fails
+    on it. By then the transaction has dropped the table and the view that
+    were made in `public` after the backup, and they are back as well.
     """
+    blocking, said = BLOCKED_BY[blocked_by]
     backups = tmp_path / "backups"
     result = stack.script(BACKUP, BACKUP_DIR=str(backups), SKIP_REDIS="true")
     assert result.returncode == 0, result.stdout + result.stderr
+    held = _relations(stack, "data")
 
     marker = "written after the backup"
     count = "SELECT count(*) FROM widgets"
@@ -1632,36 +2048,186 @@ def test_real_failed_restore_leaves_the_database_as_it_was(stack, tmp_path):
     )
     for db in DATABASES:
         stack.psql(db, f"INSERT INTO widgets (name) VALUES ('{marker}')")
-    stack.psql("data", "CREATE VIEW widget_names AS SELECT name FROM widgets")
+    stack.psql(
+        "data",
+        "CREATE TABLE later_alone (id int PRIMARY KEY);"
+        "INSERT INTO later_alone VALUES (1), (2);"
+        "CREATE VIEW later_names AS SELECT name FROM widgets;"
+        "CREATE SCHEMA later_reports;" + blocking,
+    )
+    before = _relations(stack, "data")
+    assert before == sorted(
+        held + ["later_reports.blocking v", "public.later_alone r", "public.later_names v"]
+    )
     command = (RESTORE, "--latest", "--overwrite-live-databases")
     try:
         failed = stack.script(*command, BACKUP_DIR=str(backups))
         assert failed.returncode == 1, failed.stdout + failed.stderr
-        assert "widget_names" in failed.stderr
+        assert said in failed.stderr
         assert "the restore of 'data' was rolled back" in failed.stderr
         assert "restored from the backup: identity\n" in failed.stderr
         assert "failed, as it was before: data\n" in failed.stderr
         assert "not attempted, unchanged: guardian\n" in failed.stderr
+        # Nothing is reported as removed from a database that was rolled back.
+        assert _removed(failed) == []
 
-        # data: exactly as it was. Its rows, its primary key, the view.
+        # data: exactly as it was. Its rows, its primary key, both views, and
+        # the table made after the backup with its rows.
+        assert _relations(stack, "data") == before
         assert stack.psql("data", count) == "31"
         assert stack.psql("data", keys) == "1"
-        assert stack.psql("data", "SELECT count(*) FROM widget_names") == "31"
+        assert stack.psql("data", "SELECT count(*) FROM later_alone") == "2"
+        assert stack.psql("data", "SELECT count(*) FROM later_names") == "31"
+        assert stack.psql("data", "SELECT count(*) > 0 FROM later_reports.blocking") == "t"
         # What remains non-atomic: the database before it is restored, the
         # one after it was not reached.
         assert stack.psql("identity", count) == "10"
         assert stack.psql("guardian", count) == "91"
 
         # With the cause removed, the same command restores all three.
-        stack.psql("data", "DROP VIEW widget_names")
+        stack.psql("data", "DROP SCHEMA later_reports CASCADE")
         again = stack.script(*command, BACKUP_DIR=str(backups))
         assert again.returncode == 0, again.stdout + again.stderr
         assert [stack.psql(db, count) for db in DATABASES] == ["10", "30", "90"]
         assert stack.psql("data", keys) == "1"
+        assert _relations(stack, "data") == held
+        assert _removed(again) == ["TABLE public.later_alone", "VIEW public.later_names"]
     finally:
-        stack.psql("data", "DROP VIEW IF EXISTS widget_names")
+        stack.psql(
+            "data",
+            "DROP SCHEMA IF EXISTS later_reports CASCADE;"
+            "DROP VIEW IF EXISTS later_names; DROP TABLE IF EXISTS later_alone",
+        )
         for db in DATABASES:
             stack.psql(db, f"DELETE FROM widgets WHERE name = '{marker}'")
+
+
+# The real docker, except that the psql which is fed the restore of `data`
+# gets only the beginning of its input. SHIM_CUT says where the input ends.
+CUTTING_DOCKER = r"""#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+
+real = os.environ["REAL_DOCKER"]
+args = sys.argv[1:]
+# The restore is the psql that is fed on stdin: every other one is given -c.
+psql = args[args.index("psql") :] if "psql" in args else []
+if "data" not in psql or "-c" in psql:
+    os.execv(real, [real, *args])
+
+stream = sys.stdin.buffer.read()
+rows = stream.index(b"COPY public.widgets ")
+cut = {
+    # The relations made after the backup are dropped, and nothing follows.
+    "after-the-removal": stream.index(b"-- PostgreSQL database dump\n"),
+    # In the middle of a row: psql ends the COPY there, without an error.
+    "inside-the-rows-of-a-table": stream.index(b"\n", rows) + 40,
+    # Every statement of the archive, and nothing after its last one.
+    "after-the-last-statement": stream.index(b"-- PostgreSQL database dump complete"),
+}[os.environ["SHIM_CUT"]]
+assert 0 < cut < len(stream)
+with open(os.path.join(os.environ["SHIM_DIR"], "cut"), "wb") as kept:
+    kept.write(stream[:cut])
+sys.exit(subprocess.run([real, *args], input=stream[:cut]).returncode)
+"""
+
+
+@pytest.mark.parametrize(
+    "cut",
+    ["after-the-removal", "inside-the-rows-of-a-table", "after-the-last-statement"],
+)
+def test_real_restore_whose_stream_is_cut_short_commits_nothing(stack, tmp_path, cut):
+    """#740, kept through #773: psql is fed one stream, and a stream can end
+    anywhere. Wherever it does, the database is as it was.
+
+    psql exits with status 0 when its input ends, and with --single-transaction
+    it commits what it was given: neither may decide what a restore did.
+    """
+    backups = _backup_of(stack, tmp_path, "data")
+    held = _relations(stack, "data")
+    count = "SELECT count(*) FROM widgets"
+    stack.psql(
+        "data",
+        "INSERT INTO widgets (name) VALUES ('written after the backup');"
+        "CREATE TABLE later_alone (id int); INSERT INTO later_alone VALUES (1), (2)",
+    )
+    before = _relations(stack, "data")
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    _executable(shim / "docker", CUTTING_DOCKER)
+    command = (RESTORE, "--latest", "--databases", "data", "--overwrite-live-databases")
+    try:
+        failed = stack.script(
+            *command,
+            BACKUP_DIR=str(backups),
+            PATH=f"{shim}{os.pathsep}{os.environ['PATH']}",
+            REAL_DOCKER=shutil.which("docker"),
+            SHIM_DIR=str(tmp_path),
+            SHIM_CUT=cut,
+        )
+        # The stream did reach psql, and did end where this case says: after
+        # the statements that remove what was made later, in every case.
+        given = (tmp_path / "cut").read_bytes()
+        assert b"DROP %s %I.%I CASCADE" in given
+        assert (b"\nCOPY public.widgets " in given) == (cut != "after-the-removal")
+        assert (b"\nALTER TABLE ONLY public.widgets\n    ADD CONSTRAINT" in given) == (
+            cut == "after-the-last-statement"
+        )
+
+        # As it was: the rows written after the backup, the table made after it.
+        assert _relations(stack, "data") == before
+        assert stack.psql("data", count) == "31"
+        assert stack.psql("data", "SELECT count(*) FROM later_alone") == "2"
+        assert stack.psql("data", "SELECT count(*) FROM empty_table") == "0"
+        # And the script does not call that a restore.
+        assert failed.returncode == 1, failed.stdout + failed.stderr
+        assert "the restore of 'data' was rolled back" in failed.stderr
+        assert "failed, as it was before: data\n" in failed.stderr
+        assert "Restore complete" not in failed.stdout
+        assert _removed(failed) == []
+
+        # The same command with its whole stream restores it.
+        again = stack.script(*command, BACKUP_DIR=str(backups))
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert _relations(stack, "data") == held
+        assert stack.psql("data", count) == "30"
+    finally:
+        stack.psql(
+            "data",
+            "DROP TABLE IF EXISTS later_alone;"
+            "DELETE FROM widgets WHERE name = 'written after the backup'",
+        )
+
+
+def test_real_restore_quotes_the_names_it_compares_and_drops(stack, tmp_path):
+    """A name the archive holds and a name it does not, both with what a
+    shell, a COPY and an SQL statement each read as something else."""
+    in_the_archive = 'odd\\.name of a "table"'
+    made_later = "later; DROP TABLE widgets; --"
+
+    def quoted(name):
+        return '"' + name.replace('"', '""') + '"'
+
+    stack.psql("guardian", f"CREATE TABLE {quoted(in_the_archive)} (id int)")
+    try:
+        backups = _backup_of(stack, tmp_path, "guardian")
+        held = _relations(stack, "guardian")
+        assert f"public.{in_the_archive} r" in held
+        stack.psql("guardian", f"CREATE TABLE {quoted(made_later)} (id int)")
+
+        restored = stack.script(RESTORE, *OVER_GUARDIAN, BACKUP_DIR=str(backups))
+        assert restored.returncode == 0, restored.stdout + restored.stderr
+        assert _relations(stack, "guardian") == held
+        assert stack.psql("guardian", "SELECT count(*) FROM widgets") == "90"
+        # The one removed is the one made later, and only that one.
+        removed = re.findall(r"^    (TABLE .*)$", restored.stdout, re.M)
+        assert removed == [f"TABLE public.{quoted(made_later)}"]
+    finally:
+        stack.psql(
+            "guardian",
+            f"DROP TABLE IF EXISTS {quoted(in_the_archive)}, {quoted(made_later)}",
+        )
 
 
 def _damaged_copy(snapshot, stamp):
