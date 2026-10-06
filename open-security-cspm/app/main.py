@@ -257,6 +257,49 @@ def _forget_scan_never_queued(scan_id: str, team_id: str) -> None:
             scan_id, type(error).__name__, error,
         )
 
+
+def _withdraw_scans(scan_ids: List[str], team_id: str) -> List[str]:
+    """Take back the scans a batch had queued before one of its scans could
+    not be; the ids of those that could not be taken back (#788).
+
+    The batch is answered an error, so its caller learns none of its ids:
+    the scans queued before the error ran all the same, recorded under the
+    team, for a request that had failed.
+
+    A scan is taken back by removing its credentials and its record
+    (scan_store.forget_scan): the worker that takes its task finds no
+    credentials and ends without opening a session. The task is then
+    revoked as well, for the worker that had taken it already; that is a
+    broadcast to the workers, and when it cannot be sent the scan is still
+    one no worker can start.
+
+    A store that does not answer is not asked again for the next scan: each
+    removal would wait as long as the first did. The scans from that one on
+    are the answer, and the caller is told their ids.
+    """
+    for position, scan_id in enumerate(scan_ids):
+        try:
+            scan_store.forget_scan(redis_client, scan_id, team_id)
+        except Exception as error:
+            left = scan_ids[position:]
+            logger.error(
+                "A batch failed after %d of its scans were queued, and %d of "
+                "them could not be withdrawn (%s): %s",
+                len(scan_ids), len(left), type(error).__name__, ", ".join(left),
+            )
+            return left
+        try:
+            celery_app.control.revoke(scan_id, terminate=True)
+        except Exception as error:
+            logger.warning(
+                "Scan %s of a batch that failed was withdrawn, and its task "
+                "could not be revoked (%s): a worker that takes it finds no "
+                "credentials and scans nothing",
+                scan_id, type(error).__name__,
+            )
+    return []
+
+
 # Application state
 app_start_time = datetime.utcnow()
 
@@ -934,25 +977,46 @@ def start_batch_scans(
     has the same metadata, team index entry and stored report. A batch that
     names a provider cspm cannot scan is refused whole, with 400, before any
     of its scans is stored or queued.
+
+    All of the batch or none of it (#788). When one of its scans cannot be
+    queued the answer is the error (503 with Redis or the broker away), and
+    the scans queued before it are withdrawn: no record, no credentials, no
+    scan. They used to run, under ids the answer did not give. When they
+    cannot be withdrawn, because the store does not answer the removal
+    either, the 503 says which they are (``error.details.queued_scans``).
     """
     _refuse_unsupported_providers(batch_request.scans)
     try:
         batch_id = str(uuid.uuid4())
         scan_jobs = []
 
-        for scan_config in batch_request.scans:
-            scan_id = _submit_scan(
-                scan_config, current_user, extra_metadata={"batch_id": batch_id}
+        try:
+            for scan_config in batch_request.scans:
+                scan_id = _submit_scan(
+                    scan_config, current_user, extra_metadata={"batch_id": batch_id}
+                )
+                scan_jobs.append({
+                    "scan_id": scan_id,
+                    "provider": scan_config.provider.value,
+                    "account_id": scan_config.account_id,
+                    # The task id is the scan id.
+                    "task_id": scan_id,
+                    "status": "started"
+                })
+        except Exception:
+            left = _withdraw_scans(
+                [job["scan_id"] for job in scan_jobs], current_user["team_id"]
             )
-            scan_jobs.append({
-                "scan_id": scan_id,
-                "provider": scan_config.provider.value,
-                "account_id": scan_config.account_id,
-                # The task id is the scan id.
-                "task_id": scan_id,
-                "status": "started"
-            })
-            
+            if left:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "message": DEPENDENCY_UNAVAILABLE_MESSAGE,
+                        "queued_scans": left,
+                    },
+                ) from None
+            raise
+
         logger.info(f"Started batch scan {batch_id} with {len(scan_jobs)} individual scans")
         
         return schemas.BatchScanResponse(

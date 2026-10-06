@@ -340,11 +340,16 @@ curl -s --cacert "$CA" -X POST "$BASE/batch/scans" \
   and cancelled by its own `scan_id`. `task_id` is the same value.
 - A batch that names a provider other than `aws` is refused whole with `400`; none
   of its scans is stored or queued.
-- The scans are queued one after the other. If the task queue stops taking them
-  partway, the answer is `503`: the scan that could not be queued is not recorded,
-  the ones after it are not tried, and the ones before it are queued and will run.
-  The `503` carries no `scan_id`: those scans count in the team's summaries, and
-  no route lists them.
+- A batch is queued whole or not at all. The scans are queued one after the other;
+  if one cannot be, the answer is the error (`503` when the task queue or the scan
+  store is away), the ones after it are not tried, and the ones before it are
+  withdrawn: their records and credentials are removed and their tasks revoked, so
+  none of them runs or counts in the team's summaries. Until 0.12.2 they stayed
+  queued and ran, and the `503` named none of them.
+- When those scans cannot be withdrawn, because the scan store does not answer the
+  removal either, the `503` lists them in `error.details.queued_scans`: they are
+  recorded under the team and run when Redis is back. `error.message` is the same
+  in both cases.
 - An empty `scans` list is accepted and answers `200` with `total_scans` 0.
 - The request also accepts `parallel_execution_limit` and `metadata`. Neither is
   used: every scan is queued at once, and the worker's concurrency decides how many

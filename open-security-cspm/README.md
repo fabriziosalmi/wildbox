@@ -301,9 +301,13 @@ concurrency decides how many run together.
 
 A scan the task queue does not take, single or in a batch, is answered 503
 and is not recorded: its credentials, its metadata and its index entry are
-removed, where it used to read `queued` until its retention ended. In a
-batch the scans queued before it stay queued and run, and the ones after it
-are not tried; the 503 carries no scan id.
+removed, where it used to read `queued` until its retention ended. A batch
+is queued whole or not at all: the scans after the one that failed are not
+tried, and the ones queued before it are withdrawn (records and credentials
+removed, tasks revoked), so none of them runs. Until 0.12.2 they stayed
+queued and ran, under ids the 503 did not give. If the store does not
+answer that removal either, the 503 lists the scans still queued in
+`error.details.queued_scans`.
 
 ### Supported providers
 
