@@ -37,7 +37,9 @@ def client(monkeypatch):
     "ioc",
     [
         {"type": "ipv4", "value": "not-an-ip"},
-        {"type": "sha256", "value": "abc"},
+        # Not hexadecimal on purpose: the answer carries a random
+        # request_id, and "abc" was found in it about once in 170 runs.
+        {"type": "sha256", "value": "not-a-digest"},
         {"type": "email", "value": "nobody"},
     ],
 )
