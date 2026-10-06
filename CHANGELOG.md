@@ -528,6 +528,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Variables the root Compose files passed to containers that read
+  none of them** (#665). The test added in #743 listed 26; every one
+  but the gateway's is settled here, and the test found more once it
+  stopped counting a variable as read by a service because some module
+  of the shared package the service does not import reads it.
+  - dashboard: `ENVIRONMENT`, `NEXT_PUBLIC_DEBUG`, `NEXTAUTH_SECRET`
+    and `NEXTAUTH_URL`; in `docker-compose.dev.yml` five
+    `NEXT_PUBLIC_*_API_URL` and the two `NEXTAUTH_*`, with the
+    requirement that `NEXTAUTH_SECRET` be set. The dashboard has no
+    NextAuth: its sessions are identity's tokens.
+  - guardian, guardian-worker and guardian-beat: `ENVIRONMENT`.
+    guardian reads none. What it does differently in development (the
+    API schema pages, Django's debug pages, no HTTPS redirect) follows
+    `DEBUG`, which is false unless set.
+  - guardian: `LOG_FILE`, and the `guardian_logs` volume mounted for
+    it. guardian logs to the console only; the volume stayed empty.
+  - sensor: `DEBUG` and `LOG_LEVEL`. Its level is
+    `SENSOR_LOGGING_LEVEL`, which was already passed.
+  - agents: `DEBUG`, and in the production overlay
+    `WORKER_CONCURRENCY` and `CELERY_WORKER_PREFETCH_MULTIPLIER`. The
+    worker's concurrency is set in `scripts/entrypoint.sh` and its
+    prefetch in `app/worker.py`.
+  - identity (production overlay): `LOG_LEVEL` and `REDIS_PASSWORD`;
+    responder (production overlay): `WORKER_CONCURRENCY`.
+  - postgres and automations: `ENVIRONMENT`, which neither image reads;
+    and, in the production overlay, `POSTGRES_MAX_CONNECTIONS=200` and
+    `POSTGRES_SHARED_BUFFERS=256MB`, which the postgres image does not
+    read either: the server has always run with its defaults, 100
+    connections and 128MB. A comment says how to pass the two settings
+    to the server itself.
+
+  Nothing changes for a running stack except that the empty
+  `guardian_logs` volume is no longer mounted.
+- **`NEXTAUTH_SECRET`, `GRAFANA_ADMIN_PASSWORD`, `GUARDIAN_DB_PASSWORD`
+  and five "security settings" in `.env.example`** (#665). No Compose
+  file passed any of them to a container. `SESSION_TIMEOUT`,
+  `MAX_LOGIN_ATTEMPTS`, `LOCKOUT_DURATION`,
+  `REQUIRE_EMAIL_VERIFICATION` and `REQUIRE_MFA` read as switches and
+  switched nothing: identity locks an account for 15 minutes after 5
+  failed logins, its access tokens last 30 minutes, and it has no
+  e-mail verification and no MFA. `generate_secrets.py` no longer
+  writes the first two, `validate_secrets.py` no longer asks for
+  `NEXTAUTH_SECRET` or looks for the Stripe keys of a billing
+  integration removed long ago, and `rotate_secrets.sh` no longer
+  rotates `NEXTAUTH_SECRET` (it answers "not a rotatable secret").
+  `make setup` no longer requires it either
+  (`scripts/shell-scripts/validate_env.sh`). Leftover lines in an
+  existing `.env` are ignored. Two tests now hold the template to the
+  code: every variable `.env.example` offers is interpolated by a root
+  Compose file, and every secret the generator writes or the validator
+  asks for is a variable of the template.
+- **`N8N_ENCRYPTION_KEY`** (#665). `make generate-secrets` wrote one to
+  `.env` and the credentials guide listed it, but no Compose file
+  passed it to n8n, which makes its own key on its first start and
+  keeps it in its data directory
+  (`open-security-automations/n8n-data/config`). The variable is no
+  longer generated or documented as a setting, and it is still not
+  passed: with the pinned image, an instance that has a key exits with
+  `Mismatching encryption keys` when it is given a different one, so
+  passing the value in `.env` would have stopped every existing n8n.
+  The automations README says where the key is and that it belongs in
+  every backup of n8n's database.
+- **Settings that no code read** (#665), found by reading every
+  settings class against its service.
+  - tools: `API_KEY_NAME`, `LOG_FORMAT`, `TOOL_RESULT_TTL`,
+    `ENABLE_CACHING`, `DATABASE_URL`, `ENABLE_AUDIT_LOGGING`,
+    `ENABLE_SECURITY_HEADERS`, `TOOLS_DIRECTORY` and
+    `AUTO_RELOAD_TOOLS`; `get_secret_key()`, which read a field
+    removed before it; `app/security/config.py`, which nothing
+    imported; and `.env.template`, a second template whose copy
+    stopped the service.
+  - responder: `WILDBOX_SENSOR_URL`, `API_KEY`,
+    `DEFAULT_STEP_TIMEOUT`, `MAX_CONCURRENT_EXECUTIONS`,
+    `DRAMATIQ_PROCESSES` and `DRAMATIQ_THREADS`.
+  - cspm: `REDIS_PASSWORD`, `ACCESS_TOKEN_EXPIRE_MINUTES`,
+    `REPORTS_STORAGE_PATH`, `PROMETHEUS_ENABLED`, `PROMETHEUS_PORT`,
+    `WILDBOX_IDENTITY_URL`, `WILDBOX_API_URL`, `WILDBOX_GUARDIAN_URL`,
+    and a second class with `AWS_ENABLED`, `GCP_ENABLED`,
+    `AZURE_ENABLED` and a default region and retry count for each
+    provider.
+  - agents: `DEBUG`, `INTERNAL_API_KEY` and `MAX_CONCURRENT_TASKS`.
+  - data: 47 of the 63 variables `app/config.py` parsed, among
+    them `REDIS_URL` (the service uses no Redis),
+    `RATE_LIMIT_ENABLED`, `COLLECTION_INTERVAL`,
+    `DATA_RETENTION_DAYS`, `BACKUP_ENABLED`, `JWT_EXPIRATION`,
+    `ALLOWED_SOURCES`, `LOG_FILE_ENABLED`, `SENTRY_DSN` and
+    `METRICS_PORT`. Importing the configuration no longer creates
+    `data/` and `logs/` directories, which nothing wrote to.
+  - guardian: `SCANNER_SETTINGS`, `TICKETING_SETTINGS`,
+    `COMPLIANCE_SETTINGS`, `RISK_CALCULATION_SETTINGS`,
+    `PERFORMANCE_SETTINGS` and the Slack and Teams entries of
+    `NOTIFICATION_SETTINGS`: forty variables, `NESSUS_PASSWORD` and
+    `JIRA_API_TOKEN` among them, read into dictionaries no code used.
+
+  In the environment a removed variable is ignored. In a `.env` file in
+  the directory of tools, responder, cspm or agents, which only a run
+  outside the Compose stack reads, it now stops the service at start,
+  as every key those settings do not know does: remove the line. The
+  services' own `.env.example` files are rewritten to what each
+  service reads (guardian's offered 119 variables, of which guardian
+  used fewer than thirty; data's offered 67 for the 17 the service
+  reads), and a test holds them to it.
 - **`ENABLE_METRICS` for identity in `docker-compose.prod.yml`, and
   `ENABLE_METRICS` and `METRICS_PORT` in `.env.example`** (#743). No
   code reads the first, and no Compose file passed the other two to a
@@ -535,10 +637,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it. A test now reads the root Compose files and the code of every
   service built from this repository, and fails when a variable passed
   to a container is neither a field of its settings nor read by its
-  code. The 26 it finds today and this change does not fix are listed
-  in `tests/scripts/test_compose_variables_are_read.py`, by file and
-  service; they include `CORS_ALLOWED_ORIGINS` for guardian in the
-  production overlay, which guardian does not read.
+  code. The 26 it found that the change did not fix were listed in
+  `tests/scripts/test_compose_variables_are_read.py`, by file and
+  service; they are settled by #665 (the first entry of this section,
+  and guardian's `CORS_ALLOWED_ORIGINS` under Fixed), the gateway's
+  excepted.
 - **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
   client that was its only reader.** `WildboxAPIClient.health_check()`
   had no caller, and no tool of the agent calls the responder. The
@@ -710,6 +813,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian reads `CORS_ALLOWED_ORIGINS`** (#665).
+  `docker-compose.prod.yml` has always passed the deployment's
+  `CORS_ORIGINS` to guardian under that name, and guardian's list of
+  origins was written in its settings: a production guardian allowed
+  eight development origins (`http://localhost:3000` and the like),
+  with credentials, and not the origin the operator had named. The
+  variable is now read. Unset, the development origins, as before; set,
+  exactly the comma-separated origins it lists; set and empty, none,
+  which is right behind the gateway. An entry that is not an origin (a
+  wildcard, a host with no scheme, a URL with a path) stops guardian at
+  start-up with a message that names it.
+- **One version per service, wherever it is written** (#665). cspm
+  stated its version in `app/__init__.py` and again as a settings
+  field, the responder in `app/__init__.py` and again in `app/main.py`,
+  the sensor a second time as the `processor_version` it stamps on
+  events, and guardian said `1.0.0` in `guardian/__init__.py` and
+  `0.1.6` in its API schema. Each now has one literal, which the other
+  places read; guardian's is `0.1.6`. The example in cspm's health
+  schema said `1.0.0` and now shows the service's version. The test of
+  #743 followed the two arguments of the FastAPI services only; it now
+  reads every Python service for a version written as an assignment,
+  an annotated field or a dictionary entry.
 - **agents and data report one version** (#743). Each passed one
   version literal to the application and a second to the middleware
   that writes the `X-API-Version` header of every response. Both now
@@ -1660,6 +1785,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **No pydantic v1 form is left in the services** (#665). The
+  responder and cspm declared 48 settings as
+  `Field(env="REDIS_URL")`, which pydantic-settings v2 ignores: each
+  was read from the variable of the field's own name, and worked only
+  because the two matched. The argument is gone, and a test in each
+  service sets every field through its variable. The forms pydantic 2
+  still honors and has announced it will drop are rewritten too: 25
+  nested `class Config` as `model_config`, 13 `@validator` as
+  `@field_validator`, and 30 `Field(example=...)` in the tools'
+  schemas as `json_schema_extra`. The JSON schema of every model is
+  unchanged, so the dashboard's tool forms show the same examples. A
+  test reads the services and fails on any of the four forms.
 - **Images install only the OS packages they name** (#726). agents,
   data, identity, sensor and the tools development image ran
   `apt-get install -y` and took every recommended package with it:
