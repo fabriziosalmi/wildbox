@@ -612,7 +612,26 @@ class DataForwarder:
         self.stats["events_received"] += 1
         # Taken out first: it is not part of what is sent.
         delivery = take_delivery(event)
-        body = self._encode(event)
+        try:
+            body = self._encode(event)
+        except Exception as e:
+            # Not one of the errors _encode expects of an event JSON cannot
+            # carry (a RecursionError, say, for one nested too deep). The
+            # event is dropped like those, and like those it is counted and
+            # its collector told (#765): this used to leave the method, and
+            # the event was received and nothing else, in a log line and in
+            # no counter, its Delivery never settled, so that its log
+            # file's position stayed before it for as long as the sensor
+            # ran.
+            self._count_dropped("unserializable")
+            logger.error(
+                "Dropped an event of type %r: making it into what is sent "
+                "failed with %s: %s",
+                event.get("type") if isinstance(event, dict) else None,
+                type(e).__name__,
+                e,
+            )
+            body = None
         if body is None:
             # Dropped for good: the sensor has finished with it.
             settle(delivery)

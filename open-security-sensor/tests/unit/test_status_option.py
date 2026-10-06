@@ -28,12 +28,6 @@ from sensor.core.config import load_config  # noqa: E402
 
 LOCAL_KEY = "local-api-key-0123456789abcdef"
 
-# aiohttp_cors keeps its state under a plain string key of the application,
-# which aiohttp warns about; the local API's own start is not the subject.
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:It is recommended to use web.AppKey instances for keys"
-)
-
 
 class Agent:
     """What the local API asks of the agent."""

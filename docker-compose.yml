@@ -1178,6 +1178,9 @@ services:
     # Stopping takes time: the collectors are stopped, the sender spends up
     # to 10 seconds on what it still holds, and the log positions are
     # written. Docker's default, 10 seconds, would kill it in the middle.
+    # The sensor's own limits add up to 26 seconds at the worst
+    # (open-security-sensor/sensor/core/agent.py); the other 4 are for what
+    # it writes last. Its tests fail if this is less than that (#765).
     stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true

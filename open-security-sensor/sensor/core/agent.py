@@ -25,9 +25,28 @@ from sensor.pipeline.delivery import take_delivery
 
 logger = logging.getLogger(__name__)
 
+# The stop's time limits (#765), in the order they are spent. Whoever stops
+# the sensor gives it a time to end in (Compose: stop_grace_period, 30
+# seconds in the repository's files) and kills it after that: everything
+# below, and main.py's START_ABORT_SECONDS and EXIT_SECONDS, add up to less,
+# with room for what is written last (the log positions, the file monitor's
+# baseline, the closing log lines), which nothing limits.
+# tests/unit/test_stop_time_limits.py holds the sum against every Compose
+# file that runs the sensor. They used to be 15, 2 and 15 seconds: 32 against
+# the 30 the sensor was given, so a stop that used them was killed before it
+# had written its positions.
+#
+# Seconds the collectors, and the local API, get to stop: the tasks that
+# read are cancelled, a command that follows a log is ended, a query in
+# progress is killed.
+COLLECTORS_STOP_SECONDS = 8.0
 # Seconds the events already collected get to reach the sender when the
 # sensor stops, before the pipeline is stopped under them.
 QUEUE_DRAIN_SECONDS = 2.0
+# Seconds the processor and the sender get to stop. The sender spends up to
+# data_forwarder.STOP_FLUSH_SECONDS of them on its last batches; the rest is
+# for closing its connections.
+PIPELINE_STOP_SECONDS = 12.0
 
 
 class CountingQueue(asyncio.Queue):
@@ -35,17 +54,40 @@ class CountingQueue(asyncio.Queue):
 
     The collectors put their events on one of these: its count is the
     number of events collected, whatever becomes of them afterwards.
+
+    An event is this queue's from the moment a collector calls ``put()``
+    with it (#765). ``put()`` waits while the queue is full, and a collector
+    that is stopped there holds an event that never got on the queue: it is
+    kept in ``turned_away``, in the same step in which the wait ends, so
+    that the agent's stop counts it with what the queues and the workers
+    held. It used to be in no queue, no counter and no log line.
     """
 
     def _init(self, maxsize):
         super()._init(maxsize)
         self.total = 0
         self.last_put: Optional[datetime] = None
+        # The events of the puts that ended without putting anything.
+        self.turned_away: List[Any] = []
 
     def _put(self, item):
         super()._put(item)
         self.total += 1
         self.last_put = datetime.now(timezone.utc)
+
+    async def put(self, item):
+        try:
+            await super().put(item)
+        except BaseException:
+            # Only the wait for room ends this way (the collector's task
+            # was cancelled), and then nothing was put: asyncio.Queue.put
+            # puts in its last statement, after the wait, without awaiting
+            # again. So the event is either on the queue or here, never
+            # both and never neither. Every collector awaits put() as it
+            # is; one that gave it a timeout and tried again would be
+            # counted here once per attempt.
+            self.turned_away.append(item)
+            raise
 
 
 class SecuritySensorAgent:
@@ -197,6 +239,11 @@ class SecuritySensorAgent:
         passed, what carries them, so that the sender's last batches are the
         last events; then the log positions and the file monitor's baseline
         once more, for what those batches delivered.
+
+        Each of the three waits has its limit, at the top of this module;
+        the writes at the end have none, and are what the limits leave room
+        for. It also stops a sensor whose start was abandoned half-way: a
+        component that never started has nothing to stop.
         """
         collectors = [
             component
@@ -215,10 +262,10 @@ class SecuritySensorAgent:
             if component
         ]
 
-        await self._stop_all(collectors)
+        await self._stop_all(collectors, COLLECTORS_STOP_SECONDS)
         if self.data_processor and self.data_forwarder:
             await self._drain_queues()
-        await self._stop_all(pipeline)
+        await self._stop_all(pipeline, PIPELINE_STOP_SECONDS)
         self._report_left_in_queues()
 
         if self.log_forwarder:
@@ -227,7 +274,8 @@ class SecuritySensorAgent:
             self.file_monitor.save_baseline()
 
     @staticmethod
-    async def _stop_all(components):
+    async def _stop_all(components, seconds: float):
+        """Stop ``components`` side by side, within ``seconds``."""
         if not components:
             return
         try:
@@ -236,10 +284,15 @@ class SecuritySensorAgent:
                     *(component.stop() for component in components),
                     return_exceptions=True,
                 ),
-                timeout=15
+                timeout=seconds
             )
         except asyncio.TimeoutError:
-            logger.warning("Some components did not stop within timeout")
+            logger.warning(
+                "Some of %s did not stop within %.0f seconds: the stop goes "
+                "on without waiting for them",
+                ", ".join(type(component).__name__ for component in components),
+                seconds,
+            )
 
     async def _drain_queues(self):
         """Give the events already collected the time to reach the sender.
@@ -272,8 +325,9 @@ class SecuritySensorAgent:
         await self.processed_queue.join()
 
     def _report_left_in_queues(self):
-        """Say what the queues, and the processor's workers, still held when
-        the pipeline stopped: those events never reached the sender, which
+        """Say what the queues, the processor's workers, and the collectors
+        that were waiting for room on the first queue, still held when the
+        pipeline stopped: those events never reached the sender, which
         counts only its own."""
         left = []
         for queue in (self.event_queue, self.processed_queue):
@@ -281,6 +335,12 @@ class SecuritySensorAgent:
                 left.append(take_delivery(queue.get_nowait()))
                 # Counted here: the queue has nothing unfinished left.
                 queue.task_done()
+        # What a collector was waiting to put when it was stopped (#765).
+        # Not settled, like the rest: a collector that keeps a position or
+        # a baseline finds it again after the restart.
+        turned_away = self.event_queue.turned_away
+        left.extend(take_delivery(event) for event in turned_away)
+        turned_away.clear()
         if self.data_processor:
             # And what its workers held when they were stopped.
             left.extend(self.data_processor.interrupted)

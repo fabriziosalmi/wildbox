@@ -30,6 +30,7 @@ sys.path.insert(0, str(SERVICE_ROOT))
 
 from sensor.collectors import osquery_manager  # noqa: E402
 from sensor.collectors.osquery_manager import OsqueryManager  # noqa: E402
+from sensor.core.agent import CountingQueue  # noqa: E402
 from sensor.core.config import (  # noqa: E402
     DataLakeConfig,
     PerformanceConfig,
@@ -499,7 +500,9 @@ async def test_a_cycle_that_waits_for_the_queue_is_ended_by_stop(osquery):
     # With a full queue the cycle waits to hand over an event, as every
     # collector does; stop does not wait with it.
     manager, record, _ = osquery
-    manager.event_queue = asyncio.Queue(maxsize=2)
+    # The agent's queue, which answers for an event from the moment put()
+    # is called with it.
+    manager.event_queue = CountingQueue(maxsize=2)
 
     await manager.start()
     # The version, two queries whose events are in the queue, and a third
@@ -512,6 +515,11 @@ async def test_a_cycle_that_waits_for_the_queue_is_ended_by_stop(osquery):
 
     assert manager.event_queue.qsize() == 2
     assert len(_recorded(record)) == 4
+    # The third answer is not lost from sight (#765): osquery cannot be
+    # asked for it again, and the agent's stop counts it as dropped. main:
+    # it was in no queue and no count.
+    (waiting,) = manager.event_queue.turned_away
+    assert waiting["source"] == "osquery" and waiting["data"] == [{"answer": "a row"}]
 
 
 def test_the_image_links_the_one_binary_the_sensor_runs():
@@ -519,3 +527,18 @@ def test_the_image_links_the_one_binary_the_sensor_runs():
 
     assert "/usr/local/bin/osqueryi" in dockerfile
     assert "/usr/local/bin/osqueryd" not in dockerfile
+    # What ran osquery as a daemon is taken out of the image (#765), and the
+    # build checks that the name is off PATH. The binary itself stays: it is
+    # the one osqueryi is a link to.
+    removed = dockerfile.split("rm -f /usr/bin/osqueryd", 1)[1].split("&&", 1)[0]
+    for path in (
+        "/usr/bin/osqueryctl",
+        "/opt/osquery/bin/osqueryctl",
+        "/etc/init.d/osqueryd",
+        "/etc/default/osqueryd",
+        "/usr/lib/systemd/system/osqueryd.service",
+    ):
+        assert path in removed
+    assert "/opt/osquery/bin/osqueryd" not in removed
+    assert "! command -v osqueryd" in dockerfile
+    assert "test -x /opt/osquery/bin/osqueryd" in dockerfile

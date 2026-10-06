@@ -296,10 +296,18 @@ class FileMonitor:
         self._sequence = 0
         self._baseline_dirty = False
 
-        # Changes the scan of start() found and the queue had no room for:
-        # the monitoring task hands them over, so that a full queue does not
-        # keep the sensor from starting.
+        # The changes a scan found whose events are not queued yet, oldest
+        # first. Every change goes through here (#765): a scan brings
+        # ``file_states`` up to date before any of its events is queued, so
+        # a change that was only in the scan's own list was forgotten when
+        # the queueing ended early, by an error on another change or by the
+        # stop: no later scan saw a difference. The scan of start() leaves
+        # here what the queue has no room for, so that a full queue does
+        # not keep the sensor from starting.
         self._deferred: collections.deque = collections.deque()
+        # Changes found that could not be made into an event: said in the
+        # log, counted here, and not in the saved baseline.
+        self.changes_failed = 0
 
         self._stopped = threading.Event()
         self._tasks: List[asyncio.Task] = []
@@ -425,7 +433,9 @@ class FileMonitor:
     async def stop(self):
         """Stop file monitoring: the scan in progress, and a change that is
         waiting for room in the queue. Such a change stays out of the saved
-        baseline, and is found again at the next start."""
+        baseline, and is found again at the next start; the agent counts
+        its event with what the queues held. The changes behind it, which
+        have no event yet, are said here."""
         logger.info("Stopping file integrity monitor")
         self.running = False
         self._stopped.set()
@@ -433,6 +443,19 @@ class FileMonitor:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        if self._deferred:
+            logger.warning(
+                "File integrity monitoring: stopped with %d changes found "
+                "and not queued yet: %s",
+                len(self._deferred),
+                (
+                    "they are not in the saved baseline, and are found "
+                    "again when the sensor starts"
+                    if self.baseline.persistent
+                    else "they are not reported. data_dir is not set, so the "
+                    "next start takes what it finds as its baseline"
+                ),
+            )
         if self.baseline.persistent and self._baseline_dirty:
             await self._save()
 
@@ -469,8 +492,8 @@ class FileMonitor:
         logger.info("Starting file monitoring loop")
 
         try:
-            while self._deferred:
-                await self._report(self._deferred.popleft())
+            # What the scan of start() left for when the queue has room.
+            await self._hand_over()
         except asyncio.CancelledError:
             return
 
@@ -557,14 +580,52 @@ class FileMonitor:
                 found.files.get(str(Path(path_str)), 0),
             )
 
-        for index, change in enumerate(found.changes):
-            if not wait and self.event_queue.full():
-                self._deferred.append(change)
-                continue
-            await self._report(change)
-            if index % 100 == 99:
-                await asyncio.sleep(0)
+        # In line first, all of them, and queued from there: file_states is
+        # already past these changes, so the line is the only place that
+        # still knows of one until its event is queued.
+        self._deferred.extend(found.changes)
+        await self._hand_over(wait)
         return len(found.changes)
+
+    async def _hand_over(self, wait: bool = True):
+        """Queue the events of the changes in line, oldest first. Without
+        ``wait``, only for as long as the queue has room.
+
+        A change leaves the line when its event is handed to the queue,
+        which answers for it from then on, also when the monitor is stopped
+        while it waits for room there. One that cannot be made into an
+        event is said and counted, and the others follow: it used to end
+        the pass, and the changes behind it were never reported.
+        """
+        handed = 0
+        while self._deferred:
+            if not wait and self.event_queue.full():
+                return
+            change = self._deferred.popleft()
+            try:
+                event = self._event_of(change)
+            except Exception as e:
+                self._not_reported(change, e)
+                continue
+            await self._queue(change, event)
+            handed += 1
+            if handed % 100 == 0:
+                await asyncio.sleep(0)
+
+    def _not_reported(self, change: Change, error: Exception):
+        """A change no event could be made of. It stays out of the saved
+        baseline, so a sensor with ``data_dir`` finds it again when it
+        starts."""
+        kind, path = change[0], change[1]
+        self.changes_failed += 1
+        logger.error(
+            "File integrity monitoring: the change of %s (%s) could not be "
+            "made into an event and is not reported: %s: %s",
+            path,
+            kind,
+            type(error).__name__,
+            error,
+        )
 
     def _note_vanished(self):
         """Say when a watched path goes or comes back."""
@@ -603,9 +664,8 @@ class FileMonitor:
             )
         self.files_over_limit = over_limit
 
-    async def _report(self, change: Change):
-        """Queue the event of one change. Its Delivery moves the saved
-        baseline when the sensor has finished with the event."""
+    def _event_of(self, change: Change) -> Dict[str, Any]:
+        """The event of one change."""
         kind, path, old, new, what = change
         if kind == "created":
             event = self._created_event(path, new)
@@ -616,7 +676,12 @@ class FileMonitor:
         else:
             event = self._deleted_event(path, old)
             logger.info(f"File deleted: {path}")
+        return event
 
+    async def _queue(self, change: Change, event: Dict[str, Any]):
+        """Queue the event of one change. Its Delivery moves the saved
+        baseline when the sensor has finished with the event."""
+        path, new = change[1], change[3]
         self._sequence += 1
         sequence = self._sequence
         self._in_flight.setdefault(path, [0, 0])[0] += 1
@@ -767,5 +832,8 @@ class FileMonitor:
             "files_over_limit": self.files_over_limit,
             "scan_count": self.scan_count,
             "last_scan_duration": self.last_scan_duration,
+            # Changes found that could not be made into an event: each is
+            # in the log with its path.
+            "changes_failed": self.changes_failed,
             "baseline": baseline,
         }
