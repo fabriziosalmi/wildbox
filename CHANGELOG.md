@@ -180,6 +180,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The gateway harness no longer asks the auth routes for three answers
+  in one millisecond.** `rate_limit_tests.py` checks that a gateway started
+  with the suites' rates lets through sixty logins and sixty registrations
+  sent one after another. nginx counts in milliseconds and the burst is
+  not a setting, so more than burst + 1 requests in the same millisecond
+  are refused whatever the rate is. Since the mock identity answers in a
+  third of a millisecond (#776), three registrations could fall in one and
+  the fourth, over the burst of two, got a `429`: Gateway Auth Tests
+  failed once on another pull request (59 answered and one refused, in
+  21 ms) and passed when run again. The two auth routes are now asked two
+  milliseconds apart, a hundred times the production rate and faster than
+  any suite, whose stack answers in seven.
+
 - **The integration tests of guardian's e-mail are skipped on a stack that
   has not opted in to it** (#779). Three tests of
   `tests/integration/test_guardian_notifications.py` need

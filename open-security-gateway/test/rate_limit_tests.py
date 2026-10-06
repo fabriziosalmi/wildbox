@@ -70,6 +70,9 @@ STATIC_RATE, STATIC_BURST = 500, 200
 # What the workflows that run a suite against a stack set for all three
 # (tests/scripts/test_gateway_rate_limit_settings.py holds them to it).
 SUITE_RATE = 10000
+# Between two requests to an auth route at the suite rates: see where it is
+# used. Two milliseconds apart is five hundred a second.
+SUITE_PAUSE = 0.002
 
 SETTINGS = (
     "GATEWAY_RATE_LIMIT_PER_SECOND",
@@ -265,11 +268,16 @@ def stream(gateway, method, path, seconds, connections=4, pause=0.0):
     return Outcome(answers, elapsed)
 
 
-def sequence(gateway, method, path, count):
-    """``count`` requests on one connection, as fast as it answers."""
+def sequence(gateway, method, path, count, pause=0.0):
+    """``count`` requests on one connection, as fast as it answers, or
+    ``pause`` seconds apart."""
     connection = gateway.connection()
     began = time.monotonic()
-    answers = [ask(connection, method, path) for _ in range(count)]
+    answers = []
+    for _ in range(count):
+        answers.append(ask(connection, method, path))
+        if pause:
+            time.sleep(pause)
     elapsed = time.monotonic() - began
     connection.close()
     return Outcome(answers, elapsed)
@@ -648,12 +656,22 @@ def test_the_suite_rates(image, network, production):
             expected in docker("logs", name),
             f"a gateway with the three settings at {SUITE_RATE} reports them",
         )
-        for label, method, path, count, status in (
-            ("requests under the global limit", "GET", GLOBAL_PATH, 600, 401),
-            ("logins", "POST", LOGIN, 60, 200),
-            ("registrations", "POST", REGISTER, 60, 200),
+        # nginx counts in milliseconds, and the burst is not a setting: more
+        # than burst + 1 requests in the same millisecond are refused whatever
+        # the rate is. The mock answers in a third of a millisecond since
+        # #776, so three registrations (burst 2) could fall in one and the
+        # fourth was refused now and then (seen in CI: 59 answered and one
+        # refused, in 21 ms). A suite never sends two requests in the same
+        # millisecond: its stack answers in seven. The
+        # two auth routes are asked at that order of pace, a hundred times the
+        # production rate, and the global limit, whose burst of ten a single
+        # connection cannot fill, as fast as it answers.
+        for label, method, path, count, status, pause in (
+            ("requests under the global limit", "GET", GLOBAL_PATH, 600, 401, 0.0),
+            ("logins", "POST", LOGIN, 60, 200, SUITE_PAUSE),
+            ("registrations", "POST", REGISTER, 60, 200, SUITE_PAUSE),
         ):
-            outcome = sequence(raised, method, path, count)
+            outcome = sequence(raised, method, path, count, pause)
             check(
                 only(outcome, status),
                 f"suite rates: {count} {label} one after another "
