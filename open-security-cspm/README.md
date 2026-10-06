@@ -299,6 +299,12 @@ other scan. The team is always the caller's; a `team_id` in a scan's
 which is not used: every scan is queued at once and the workers'
 concurrency decides how many run together.
 
+A scan the task queue does not take, single or in a batch, is answered 503
+and is not recorded: its credentials, its metadata and its index entry are
+removed, where it used to read `queued` until its retention ended. In a
+batch the scans queued before it stay queued and run, and the ones after it
+are not tried; the 503 carries no scan id.
+
 ### Supported providers
 
 **GET** `/api/v1/providers`
@@ -351,6 +357,12 @@ check carries. The filters `provider`, `category` and `severity` compare
 without regard to case; a value that matches no check, such as
 `provider=gcp`, gives an empty list.
 
+A category has one spelling in the catalog, written with `and`
+(`Logging and Monitoring`, `Identity and Access Management`); a unit test
+fails when two categories differ only by `&` for `and`, case or spacing.
+The `category` filter takes either: `Logging & Monitoring`, the spelling two
+of the three CloudTrail checks had up to 0.12.0, still finds all three.
+
 ### Compliance report of one scan
 
 **GET** `/api/v1/scans/{scan_id}/compliance`
@@ -366,10 +378,10 @@ without regard to case; a value that matches no check, such as
       "total_checks": 4,
       "passed_checks": 1,
       "failed_checks": 2,
-      "compliance_percentage": 25.0
+      "compliance_percentage": 33.33333333333333
     }
   ],
-  "overall_score": 25.0,
+  "overall_score": 33.33333333333333,
   "recommendations": ["Configure S3 bucket to block public access"]
 }
 ```
@@ -378,7 +390,11 @@ One entry per framework the scan's results are tagged with, or only the one
 named by `framework`. `total_checks` counts every result tagged with the
 framework, whatever its status, as `summary.compliance_frameworks` in the
 report does, so `passed_checks` and `failed_checks` add up to less when a
-check errored. `generated_at` is UTC without an offset, like every other
+check errored. The two percentages are over the results with a verdict
+(`passed_checks` and `failed_checks`), as the report's `compliance_score`
+is, and `0` when there is none; up to 0.12.0 they were over `total_checks`,
+so a check that errored or was skipped lowered them as a failed one does.
+`generated_at` is UTC without an offset, like every other
 time in these answers. A scan that has not completed answers as the report
 route does.
 
@@ -403,6 +419,14 @@ A cancelled scan is not run, whether or not the revocation reached a
 worker: Celery keeps revocations in the memory of the workers that were up,
 so the worker reads the scan's stored status before it opens a session, and
 the route deletes the scan's encrypted credentials from Redis.
+
+A scan ends once. The cancellation, the worker's completion and its failure
+each read the scan's status and write the new one in one Redis transaction
+(`WATCH`/`MULTI`, `_end_scan` in `app/scan_store.py`): of two that cross,
+the first to write decides and the other changes nothing. A scan cancelled
+while a worker ran it stays `cancelled` when the worker reaches the end all
+the same, and its report is not stored; a completed scan's report and
+status are written together.
 
 ### Health
 
@@ -431,6 +455,13 @@ own health check, and the API container must not read unhealthy while its
 worker starts or restarts. Compose marks an unhealthy container and does
 not restart it; no service waits for cspm to be healthy.
 
+The workers are given a second to reply, on every probe. The route waits
+for Redis and for them in a thread, so the service answers its other
+requests in the meantime, and until a deadline of 4 seconds
+(`HEALTH_DEADLINE_SECONDS` in `app/main.py`), inside the 5 seconds
+`make health` waits and the 10 of the Compose health check: a check that
+has not answered by then is `unhealthy` in `checks`.
+
 ### When Redis cannot be reached
 
 Every route that reads or writes Redis, and every scan the broker cannot
@@ -438,6 +469,19 @@ take, answers 503 in the error body above, with the message
 `Scan store or task queue temporarily unavailable`. The cause is in the
 service's log. `GET /api/v1/providers` and `GET /api/v1/checks` read nothing
 from Redis and answer as usual.
+
+A Redis that is down refuses the connection and the 503 is immediate. One
+that accepts it and then sends nothing (a paused container, a host that
+stopped) used to hold the route, and the whole API with it, for as long as
+the caller waited. The API now gives each of its three clients (the scan
+store, the Celery broker and the result backend) 2 seconds to open a
+connection and 3 for each reply (`app/connections.py`), and opens a
+connection that failed once, not three or twenty times. Measured with a
+server that accepts and never answers: every route and `/health` answer 503
+in 3 seconds; with the store answering and the queue not, `POST
+/api/v1/scans` in 6. `socket_timeout` and `socket_connect_timeout` in the
+query string of `REDIS_URL` or `CELERY_RESULT_BACKEND` replace the two
+limits of that client. The worker keeps Celery's own waits.
 
 ## Configuration
 

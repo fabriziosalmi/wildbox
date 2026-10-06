@@ -224,9 +224,17 @@ def run_cspm_scan_task(
         # and its team index entry have, and mark the scan completed (#591).
         # The report is no longer part of the task's result: the result
         # backend keeps results for hours, and nothing reads reports there.
-        scan_store.complete_scan(
+        stored = scan_store.complete_scan(
             redis_worker, scan_id, report.model_dump(mode="json"), completed_at
         )
+        if not stored:
+            # Cancelled while it ran, and the revocation did not stop this
+            # process in time: the scan stays cancelled, as DELETE answered,
+            # and its report is not kept. The task says what the store says.
+            ended = (scan_store.load_metadata(redis_worker, scan_id) or {}).get("status")
+            if ended in scan_store.FINAL_STATUSES and ended != "completed":
+                logger.info(f"CSPM scan {scan_id} ran to its end but is {ended}; report not stored")
+                return {"scan_id": scan_id, "status": ended}
 
         logger.info(
             f"CSMP scan {scan_id} completed: "

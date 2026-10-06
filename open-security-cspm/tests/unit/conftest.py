@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import redis
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -45,9 +46,18 @@ class FakeRedis:
         self.sets = {}
         self.zsets = {}
         self.expiry = {}
+        # How many times each key was written: what WATCH compares.
+        self.versions = {}
 
     def ping(self):
         return True
+
+    def _touch(self, *keys):
+        for key in keys:
+            self.versions[key] = self.versions.get(key, 0) + 1
+
+    def pipeline(self):
+        return FakePipeline(self)
 
     # -- expiry ---------------------------------------------------------
     def _alive(self, key):
@@ -57,6 +67,7 @@ class FakeRedis:
         return key in self.values or key in self.sets or key in self.zsets
 
     def delete(self, *keys):
+        self._touch(*keys)
         for key in keys:
             self.values.pop(key, None)
             self.sets.pop(key, None)
@@ -65,10 +76,12 @@ class FakeRedis:
 
     def expire(self, key, seconds):
         if self._alive(key):
+            self._touch(key)
             self.expiry[key] = self.clock() + int(seconds)
 
     def expireat(self, key, when):
         if self._alive(key):
+            self._touch(key)
             self.expiry[key] = float(int(when))
 
     def ttl(self, key):
@@ -86,6 +99,7 @@ class FakeRedis:
         if not isinstance(seconds, int):
             # Redis rejects a float TTL.
             raise TypeError("value is not an integer or out of range")
+        self._touch(key)
         self.values[key] = value
         self.expiry[key] = self.clock() + seconds
 
@@ -100,6 +114,7 @@ class FakeRedis:
     # -- sets -----------------------------------------------------------
     def sadd(self, key, *members):
         self._alive(key)
+        self._touch(key)
         self.sets.setdefault(key, set()).update(members)
 
     def smembers(self, key):
@@ -108,6 +123,7 @@ class FakeRedis:
     # -- sorted sets ----------------------------------------------------
     def zadd(self, key, mapping):
         self._alive(key)
+        self._touch(key)
         self.zsets.setdefault(key, {}).update(
             {member: float(score) for member, score in mapping.items()}
         )
@@ -117,9 +133,20 @@ class FakeRedis:
             return []
         return sorted(self.zsets[key].items(), key=lambda item: (item[1], item[0]))
 
+    def zrem(self, key, *members):
+        if not self._alive(key):
+            return 0
+        self._touch(key)
+        removed = [m for m in members if self.zsets[key].pop(m, None) is not None]
+        if not self.zsets[key]:
+            self.delete(key)
+        return len(removed)
+
     def zremrangebyscore(self, key, low, high):
         low, high = _score(low), _score(high)
         doomed = [m for m, s in self._sorted(key) if low <= s <= high]
+        if doomed:
+            self._touch(key)
         for member in doomed:
             del self.zsets[key][member]
         if key in self.zsets and not self.zsets[key]:
@@ -140,6 +167,71 @@ class FakeRedis:
         if not self._alive(key):
             return None
         return self.zsets[key].get(member)
+
+
+class FakePipeline:
+    """WATCH, MULTI and EXEC, as redis-py's pipeline gives them.
+
+    After ``watch`` a command runs at once and answers. After ``multi`` the
+    commands are queued, and ``execute`` runs them all, or none of them and
+    raises ``WatchError`` when a watched key was written since it was
+    watched. tests/unit/test_scan_transitions.py runs the same races on a
+    Redis server, so this double is held to what the server does.
+    """
+
+    QUEUED = ("setex", "zadd", "delete", "zrem")
+
+    def __init__(self, server):
+        self.server = server
+        self.watched = {}
+        self.queue = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.reset()
+
+    def reset(self):
+        self.watched = {}
+        self.queue = None
+
+    def watch(self, *keys):
+        if self.queue is not None:
+            raise redis.exceptions.RedisError("Cannot issue a WATCH after a MULTI")
+        for key in keys:
+            self.server._alive(key)
+            self.watched[key] = self.server.versions.get(key, 0)
+
+    def unwatch(self):
+        self.watched = {}
+
+    def get(self, key):
+        if self.queue is not None:
+            raise AssertionError("a read after MULTI answers nothing until EXEC")
+        return self.server.get(key)
+
+    def multi(self):
+        self.queue = []
+
+    def __getattr__(self, name):
+        if name not in self.QUEUED:
+            raise AttributeError(name)
+
+        def command(*args, **kwargs):
+            if self.queue is None:
+                return getattr(self.server, name)(*args, **kwargs)
+            self.queue.append((name, args, kwargs))
+            return self
+
+        return command
+
+    def execute(self):
+        queue, watched = self.queue or [], self.watched
+        self.reset()
+        if any(self.server.versions.get(key, 0) != seen for key, seen in watched.items()):
+            raise redis.exceptions.WatchError("Watched variable changed.")
+        return [getattr(self.server, name)(*args, **kwargs) for name, args, kwargs in queue]
 
 
 @pytest.fixture

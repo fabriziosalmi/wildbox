@@ -77,7 +77,6 @@ USED_WITHOUT_IMPORT = {
         "black": DEV_TOOL,
     },
     "cspm": {
-        "httpx": TEST_CLIENT,
         "python-dotenv": ENV_FILE,
         "prometheus-client": METRICS,
     },

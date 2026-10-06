@@ -285,11 +285,14 @@ class ScanReport(BaseModel):
                 elif result.status == CheckStatus.FAILED:
                     frameworks[framework]["failed"] += 1
         
-        # Calculate compliance percentage for each framework
+        # The percentage of each framework, over the results with a verdict:
+        # the rule of compliance_score in finalize(). It was over "total",
+        # which counts every result, so a check that was skipped or failed
+        # to run lowered the percentage exactly as a failed one does (#778).
         for framework in frameworks:
-            total = frameworks[framework]["total"]
             passed = frameworks[framework]["passed"]
-            frameworks[framework]["compliance_percentage"] = (passed / total * 100) if total > 0 else 0
+            verdicts = passed + frameworks[framework]["failed"]
+            frameworks[framework]["compliance_percentage"] = (passed / verdicts * 100) if verdicts > 0 else 0
         
         return frameworks
     

@@ -98,6 +98,21 @@ def _get_resource_inventory_summary(scan_results: Dict[str, Any]) -> Dict[str, A
 # build both answers from the reports of the team's completed scans, and
 # from nothing else.
 
+def category_key(category: str) -> str:
+    """What two spellings of one check category have in common (#778).
+
+    Case, spacing, and ``&`` for ``and``: ``Logging & Monitoring`` and
+    ``logging and  monitoring`` are one category. The catalog spelled two of
+    its categories both ways, so the ``category`` filter of
+    ``GET /api/v1/checks`` gave two of the three CloudTrail checks for one
+    spelling and the third for the other. The catalog has one spelling of
+    each now, with ``and``: the filter is a query parameter, where a bare
+    ``&`` ends the value. The filter compares by this key, so a value in the
+    spelling a client took from an earlier answer still matches.
+    """
+    return " ".join(category.replace("&", " and ").casefold().split())
+
+
 _VERDICTS = ("passed", "failed")
 
 

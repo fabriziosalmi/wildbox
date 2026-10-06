@@ -93,6 +93,14 @@ and the scheduler disables such a source when it meets one, with the
 reason in its `last_error`: a source that cannot be collected is not
 offered as an enabled one.
 
+The scheduler runs every enabled source it can collect, whatever the
+`status` of its row, by one rule at start and at its reload of the sources
+every ten minutes. It used to leave a source in `error` out at start and
+add it at the first reload, so such a source was collected after a restart
+all the same, up to ten minutes later than the others. A source that fails
+is tried again at its own `collection_interval`, and is disabled when a
+collection raises or times out with ten errors counted.
+
 `manage.py` has no other commands besides `init` and `reset`. Both use
 SQLAlchemy `create_all()` rather than Alembic, and `reset` drops every table;
 with the full stack, let the API apply the migrations instead.
@@ -207,6 +215,11 @@ Settings are read from environment variables in `app/config.py`;
 `.env.example` lists them. In the root compose file the service receives:
 
 - `DATABASE_URL`: from `DATA_DATABASE_URL`, falling back to `DATABASE_URL`.
+  A PostgreSQL URL (`postgresql://...`): the tables use PostgreSQL types and
+  the migrations are written for it. A URL of another database is refused
+  when the engine is first asked for, by the name of its backend
+  (`DATABASE_URL names a sqlite database; the data service needs
+  PostgreSQL`).
 - `SECRET_KEY`: from `DATA_SECRET_KEY`, which Compose requires in every
   environment, as it does `ENVIRONMENT`. The service itself refuses to start
   without `SECRET_KEY` and `DATABASE_URL`, or with `DEBUG=true`, unless
@@ -218,6 +231,18 @@ Settings are read from environment variables in `app/config.py`;
 collects at the same time. Each source's own `collection_interval` decides
 when the scheduler runs it. The service uses no Redis and reads no
 `REDIS_URL`. `.env.example` lists every variable `app/config.py` reads.
+
+### What the logs hold of an error
+
+A feed that cannot be fetched is logged, and stored with the run and the
+source, by the class of the error and its HTTP status, not by its text,
+which ends with the feed's URL (#755). A database error is logged the same
+way: its class, its SQLSTATE and the constraint and table it names, with the
+frames it went through, and not the message PostgreSQL wrote, which holds
+values (`DETAIL: Key (...)=(...) already exists` for an indicator stored
+twice, `invalid input syntax for type inet: "..."` with what was searched
+for). That covers an error no route handles, whose answer is the same `500`,
+an indicator the database refuses, and the collection that fails with it.
 
 ## Development
 

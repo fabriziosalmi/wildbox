@@ -248,9 +248,8 @@ expire.
 
 Password login is limited per account:
 
-- Every failed login increments a counter keyed by the email address,
-  trimmed and lower-cased. The counter expires 15 minutes after the first
-  failure.
+- Every failed login increments a counter kept per email address, trimmed
+  and lower-cased. The counter expires 15 minutes after the first failure.
 - Once 5 failures have been counted, the next login attempt locks the account
   for 15 minutes: every login answers 429 with `Retry-After: 900`, **even with
   the correct password**.
@@ -266,17 +265,29 @@ lifetime, Compose does not pass them to the container.
 
 Because anyone who knows an email address can trigger the lock, an attacker can
 keep an account locked out. To lift a lock early, delete its two keys from
-Redis database 0 (replace the address, lower-cased):
+Redis database 0. They are not named after the address: identity names them
+with a keyed digest of it (an HMAC-SHA256 with `API_KEY_HASH_SECRET`), so that
+what is typed in the login form, a password pasted into the wrong field
+included, is not a key name in Redis. Ask identity for the digest of the
+address, then delete the keys (replace the address; its case does not matter):
 
 ```bash
+ACCOUNT="$(docker compose exec -T identity python -c \
+  'import sys; from app.token_blacklist import account_key; print(account_key(sys.argv[1]))' \
+  user@example.com)"
 REDISCLI_AUTH="$(sed -n 's/^REDIS_PASSWORD=//p' .env)" \
   docker compose exec -e REDISCLI_AUTH wildbox-redis \
-  redis-cli -n 0 DEL "login:lockout:user@example.com" "login:attempts:user@example.com"
+  redis-cli -n 0 DEL "login:lockout:$ACCOUNT" "login:attempts:$ACCOUNT"
 ```
 
 The password travels in the environment of the command (`-e REDISCLI_AUTH`
 names the variable only), not as an argument, where the process list would
 show it.
+
+Up to 0.12.0 the two keys were `login:lockout:<address>` and
+`login:attempts:<address>`. Those are no longer read: a lock in progress at
+the upgrade ends with it, and the old keys expire on their own within the 15
+minutes of the lockout.
 
 A wrong current password counts towards the same lock: on change-password,
 on account deletion and on an email change (below). A locked account is

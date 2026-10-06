@@ -187,6 +187,15 @@ service has never had, gives `200` with
 `{"total_checks": 0, "checks": [], "providers": [], "categories": []}`, not an
 error.
 
+A category has one spelling, written with `and`: the catalog has 10, among them
+`Logging and Monitoring` and `Identity and Access Management`. Up to 0.12.0 each of
+those two was also spelled with `&` on some of its checks, so `categories` listed
+both spellings and the filter gave the checks of the one asked for. The `category`
+filter also takes `&` for `and` and any spacing: `category=Logging%20%26%20Monitoring`,
+a value kept from an earlier answer, gives the same three checks as
+`category=logging%20and%20monitoring`. A scan's report and the team's findings do
+not carry a check's category, so nothing stored holds the old spelling.
+
 Without a filter the route lists the 22 AWS checks in
 `open-security-cspm/app/checks/aws/`, which the
 [CSPM README](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-cspm/README.md#checks)
@@ -331,6 +340,11 @@ curl -s --cacert "$CA" -X POST "$BASE/batch/scans" \
   and cancelled by its own `scan_id`. `task_id` is the same value.
 - A batch that names a provider other than `aws` is refused whole with `400`; none
   of its scans is stored or queued.
+- The scans are queued one after the other. If the task queue stops taking them
+  partway, the answer is `503`: the scan that could not be queued is not recorded,
+  the ones after it are not tried, and the ones before it are queued and will run.
+  The `503` carries no `scan_id`: those scans count in the team's summaries, and
+  no route lists them.
 - An empty `scans` list is accepted and answers `200` with `total_scans` 0.
 - The request also accepts `parallel_execution_limit` and `metadata`. Neither is
   used: every scan is queued at once, and the worker's concurrency decides how many
@@ -429,8 +443,8 @@ The report the worker stored when the scan completed. Abridged to one result:
     "checks_by_status": {"passed": 1, "failed": 2, "error": 1, "skipped": 0, "not_implemented": 0},
     "findings_by_severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "info": 0, "unknown": 1},
     "compliance_frameworks": {
-      "CIS AWS Foundations": {"total": 4, "passed": 1, "failed": 2, "compliance_percentage": 25.0},
-      "PCI DSS": {"total": 4, "passed": 1, "failed": 2, "compliance_percentage": 25.0}
+      "CIS AWS Foundations": {"total": 4, "passed": 1, "failed": 2, "compliance_percentage": 33.33333333333333},
+      "PCI DSS": {"total": 4, "passed": 1, "failed": 2, "compliance_percentage": 33.33333333333333}
     },
     "recommendations": ["<how to fix it>"]
   }
@@ -447,7 +461,7 @@ The figures above are illustrative. The fields come from `ScanReportSchema` in
 | `compliance_score` | `passed_checks / (passed_checks + failed_checks) * 100`; results that errored, were skipped or are not implemented do not count |
 | `results[].status` | `passed`, `failed`, `error`, `skipped` or `not_implemented` |
 | `summary.findings_by_severity.unknown` | Failed results whose check is not in the catalog. The count has no top-level field in this response |
-| `summary.compliance_frameworks` | Per framework: `total` counts every result tagged with it, whatever its status |
+| `summary.compliance_frameworks` | Per framework: `total` counts every result tagged with it, whatever its status; `compliance_percentage` is `passed / (passed + failed) * 100`, and `0` without a verdict |
 | `summary.recommendations` | The five most frequent remediation texts among failed results |
 
 | Scan is | Answer |
@@ -482,17 +496,17 @@ For the scan of the [report above](#read-a-scans-report):
       "total_checks": 4,
       "passed_checks": 1,
       "failed_checks": 2,
-      "compliance_percentage": 25.0
+      "compliance_percentage": 33.33333333333333
     },
     {
       "framework": "PCI DSS",
       "total_checks": 4,
       "passed_checks": 1,
       "failed_checks": 2,
-      "compliance_percentage": 25.0
+      "compliance_percentage": 33.33333333333333
     }
   ],
-  "overall_score": 25.0,
+  "overall_score": 33.33333333333333,
   "recommendations": ["<how to fix it>"]
 }
 ```
@@ -502,14 +516,27 @@ For the scan of the [report above](#read-a-scans-report):
 | `generated_at` | When this answer was made, not when the scan ran |
 | `frameworks` | One entry per framework name the scan's results carry; with `framework`, that one only, and an empty list when no result carries it |
 | `frameworks[].total_checks` | Every result tagged with the framework, whatever its status, as `summary.compliance_frameworks` in the report counts them. A result that errored or was skipped is in the total and in neither of the other two counts |
-| `frameworks[].compliance_percentage` | `passed_checks / total_checks * 100` |
-| `overall_score` | The passed share over the frameworks listed: the sum of their `passed_checks` over the sum of their `total_checks`, times 100. A result tagged with two frameworks counts twice. `0` when no framework is listed |
+| `frameworks[].compliance_percentage` | `passed_checks / (passed_checks + failed_checks) * 100`, as `compliance_score` in the report; `0` when the framework has no result with a verdict |
+| `overall_score` | The passed share over the frameworks listed: the sum of their `passed_checks` over the sum of their `passed_checks` and `failed_checks`, times 100. A result tagged with two frameworks counts twice. `0` when no framework is listed, or none has a verdict |
 | `recommendations` | `summary.recommendations` of the report |
 
-These figures count results that have no verdict in their totals, unlike
+The two percentages are over the results that have a verdict, as
 `compliance_score` in the report and the
-[team compliance summary](#team-compliance-summary), which count `passed` and
-`failed` results only: the same scan can read 25% here and 33.3% there.
+[team compliance summary](#team-compliance-summary) are. Up to 0.12.0 they were
+over `total_checks`, so a result that errored or was skipped lowered them as a
+failed one does, and the scan above read 25% here and 33.3% in its report.
+
+Two differences from the team summary remain:
+
+- `total_checks` counts every result here, and `passed` and `failed` results only
+  there.
+- With no verdict at all the percentages are `0` here, and `compliance_score` in
+  the report is `0.0`, where the team summary answers `null`.
+
+`summary.compliance_frameworks` in a report is computed when the scan completes:
+the report of a scan that completed on 0.12.0 or earlier keeps the percentage over
+`total` it was stored with, and this route, which computes from the results,
+answers the new figure for the same scan.
 
 For a scan that has not completed it answers as
 [the report route](#read-a-scans-report) does: `400`, `403` or `404`.
@@ -560,7 +587,13 @@ deletes the scan's encrypted credentials from Redis if no worker took them yet.
   before a worker restarted, is still delivered. The worker reads the scan's stored
   status before it opens a session, and returns without running a scan that reads
   `cancelled`.
-- A scan cancelled while it ran has no report: `GET .../report` answers `400`.
+- A scan cancelled while it ran has no report: `GET .../report` answers `400`. That
+  holds when the revocation does not stop the worker in time and the scan runs to
+  its end: the scan stays `cancelled` and the report is not stored.
+- **A scan ends once.** The cancellation, the worker's completion and its failure
+  each read the scan's status and write the new one in one Redis transaction
+  (`WATCH`/`MULTI`): of two that cross, the first to write decides, and the other
+  changes nothing. A completed scan's report and status are written together.
 
 ---
 
@@ -769,11 +802,16 @@ The status code says what the body says, so a probe that reads only the code
 - Compose marks an unhealthy container and does not restart it, and no service
   waits for `cspm` to be healthy.
 - The route waits one second for the workers' replies, so it takes about that long
-  whenever Redis answers.
-- A Redis that accepts the connection and never answers holds the route, and every
-  other one, for as long as the client waits: the service sets no timeout of its
-  own. `socket_timeout` and `socket_connect_timeout` in the query string of
-  `REDIS_URL` (in seconds) bound that wait; the route then answers `503`.
+  whenever Redis answers. It waits in a thread: the service answers other requests,
+  `/health/live` included, in the meantime.
+- It answers within 4 seconds whatever Redis and the broker do, inside the 5
+  seconds `make health` waits and the 10 of the Compose health check. A check that
+  has not answered by then is `unhealthy` in `checks`: `503` for Redis, `degraded`
+  for the workers.
+- A Redis that accepts the connection and never answers (a paused container, a host
+  that stopped) is `unhealthy` after 3 seconds: the API gives Redis 2 seconds to
+  accept a connection and 3 to send a reply. See
+  [When Redis does not answer](#when-redis-does-not-answer).
 
 ---
 
@@ -821,8 +859,31 @@ with the reason in `error.details.code`: `GATEWAY_AUTH_REQUIRED`,
 
 When Redis cannot be reached, every route that reads or writes it answers `503` in
 this format, and so does a scan the broker cannot take; the cause is in the
-service's log. `GET /providers` and `GET /checks` read nothing from Redis and
+service's log. A scan that could not be queued is not recorded: its credentials,
+its record and its entry in the team's index are removed, so it does not read
+`queued` afterwards. `GET /providers` and `GET /checks` read nothing from Redis and
 answer as usual. [`GET /health`](#health-check) answers `503` with its own body.
+
+### When Redis does not answer
+
+A Redis that is down refuses the connection, and the `503` is immediate. One that
+accepts the connection and then sends nothing is given a limited time by the API:
+
+| Client | Variable | Connection | Each reply |
+| --- | --- | --- | --- |
+| Scan store | `REDIS_URL` | 2 s | 3 s |
+| Task queue | `CELERY_BROKER_URL` | 2 s | 3 s |
+| State of scans in progress | `CELERY_RESULT_BACKEND` | 2 s | 3 s |
+
+- The route then answers `503`, as when Redis is down. Measured with a server that
+  accepts and never answers in all three roles: every route and `/health` in 3
+  seconds. With the store answering and the other two not: `POST /scans` in 6
+  seconds, `GET` and `DELETE /scans/{scan_id}` in 3.
+- `socket_timeout` and `socket_connect_timeout` in the query string of `REDIS_URL`
+  (in seconds) replace the store's two limits, and in `CELERY_RESULT_BACKEND` the
+  backend's. The broker's are not read from its URL.
+- The limits are the API's. The worker keeps Celery's own: it waits on its broker
+  connection for as long as no scan is queued.
 
 ---
 

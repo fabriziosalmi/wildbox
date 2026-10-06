@@ -26,7 +26,7 @@ class CheckCloudTrailEnabled(BaseCheck):
                        "CloudTrail provides audit logs of API calls and is essential for security monitoring.",
             provider=CloudProvider.AWS,
             service="CloudTrail",
-            category="Logging & Monitoring",
+            category="Logging and Monitoring",
             severity=CheckSeverity.HIGH,
             compliance_frameworks=[
                 "CIS AWS Foundations Benchmark v1.4.0 - 3.1",

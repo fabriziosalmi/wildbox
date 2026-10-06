@@ -6,11 +6,12 @@ import logging
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 import uvicorn
 
 from .config import settings
 from .database import get_db
+from .db_errors import code_path, describe_database_error
 from .api_v1.endpoints import users, api_keys, analytics, user_api_keys
 from .internal import router as internal_router
 from .team_contacts import router as team_contacts_router
@@ -101,6 +102,36 @@ async def database_unavailable_handler(request: Request, exc: OperationalError):
     return _error_response(
         code=503,
         message="Database temporarily unavailable",
+        request_id=request_id,
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_error_handler(request: Request, exc: SQLAlchemyError):
+    """500 for any other database error, logged without the database's words.
+
+    The answer is the one the shared handler gives an unhandled error, which
+    is where these went. Its log line is the exception's text and traceback,
+    and PostgreSQL writes values in its messages: ``DETAIL: Key
+    (email)=(alice@example.com) already exists`` for a unique violation,
+    the value itself for one a column's type refuses. ``hide_parameters``
+    removes the bound parameters from the text, not those (#778). The log
+    says the class, the SQLSTATE and the constraint, and where in the code.
+
+    OperationalError keeps the handler above: what it says is about the
+    connection, which the operator needs and no caller wrote.
+    """
+    request_id = _get_request_id(request)
+    logging.getLogger(__name__).error(
+        "Database error: %s\n%s",
+        describe_database_error(exc),
+        code_path(exc),
+        extra={"request_id": request_id, "path": str(request.url.path)},
+    )
+    return _error_response(
+        code=500,
+        message="An internal error occurred",
+        error_type="InternalServerError",
         request_id=request_id,
     )
 

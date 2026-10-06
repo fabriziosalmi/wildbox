@@ -6,6 +6,7 @@ import asyncio
 import hmac
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import uuid
@@ -26,10 +27,11 @@ from .checks.runner import check_runner
 from . import schemas
 from . import scan_store
 from . import providers
+from . import connections
 from open_security_shared.errors import error_response, get_request_id, http_exception_handler
 from .utils import (
     _estimate_scan_duration, _summarize_compliance, _compliance_findings,
-    _count_failed_by_severity,
+    _count_failed_by_severity, category_key,
 )
 
 # Configure logging
@@ -69,8 +71,11 @@ app.add_middleware(
     allow_headers=settings.cors_allow_headers,
 )
 
-# Redis client for caching
-redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+# The scan store's client, and this process's Celery client: each with a
+# limit on every wait, so a Redis that accepts and never answers ends in a
+# 503 and not in a route that never returns (#778, app.connections).
+redis_client = connections.redis_client(settings.redis_url)
+connections.bound_task_queue_waits(celery_app)
 
 
 # --- Redis or the task queue cannot be reached: 503 ---------------------------
@@ -188,11 +193,7 @@ def _submit_scan(
     # protection. Encryption is envelope-style with a service-held key: an
     # attacker with the Redis volume gets ciphertext.
     cred_key = scan_store.credentials_key(scan_id)
-    redis_client.setex(
-        cred_key,
-        300,  # 5 minute TTL
-        encrypt_credentials(scan_request.credentials.model_dump())
-    )
+    encrypted_credentials = encrypt_credentials(scan_request.credentials.model_dump())
 
     # Prepare scan configuration for worker (NO credentials in task args)
     scan_config = {
@@ -219,10 +220,42 @@ def _submit_scan(
     }
     if extra_metadata and "batch_id" in extra_metadata:
         scan_metadata["batch_id"] = extra_metadata["batch_id"]
-    scan_store.save_metadata(redis_client, scan_metadata)
 
-    run_cspm_scan_task.apply_async(args=[scan_config], task_id=scan_id)
+    written = False
+    try:
+        redis_client.setex(cred_key, 300, encrypted_credentials)  # 5 minute TTL
+        written = True
+        scan_store.save_metadata(redis_client, scan_metadata)
+        run_cspm_scan_task.apply_async(args=[scan_config], task_id=scan_id)
+    except Exception:
+        # Not queued: the caller is answered an error and never learns this
+        # id. What was written for it stayed: the scan read `queued` in the
+        # team's list for the whole retention, with no task behind it, and
+        # its credentials waited in Redis for five minutes (#778).
+        #
+        # Nothing to remove when the first write is what failed, and a
+        # store that does not answer is not asked again: the removal would
+        # wait as long as the write did, with the event loop.
+        if written:
+            _forget_scan_never_queued(scan_id, current_user["team_id"])
+        raise
     return scan_id
+
+
+def _forget_scan_never_queued(scan_id: str, team_id: str) -> None:
+    """Remove what _submit_scan wrote for a scan it could not queue.
+
+    The error that stopped the scan is the one the caller is answered: a
+    cleanup that fails as well (the same Redis, as a rule) is logged and
+    nothing more. The credentials then expire by themselves.
+    """
+    try:
+        scan_store.forget_scan(redis_client, scan_id, team_id)
+    except Exception as error:
+        logger.error(
+            "Scan %s could not be queued, and its record could not be removed: %s: %s",
+            scan_id, type(error).__name__, error,
+        )
 
 # Application state
 app_start_time = datetime.utcnow()
@@ -299,6 +332,41 @@ def _celery_health() -> str:
         return "unhealthy"
 
 
+# Seconds /health takes at most, whatever Redis and the broker do. Under the
+# 5 seconds `make health` waits for an answer (scripts/lib/health_endpoints.sh)
+# and the 10 of the Compose health check: an answer that comes after the
+# probe stopped waiting is no answer, and the probe then reads a hung service
+# where the body would have said which dependency is away.
+HEALTH_DEADLINE_SECONDS = 4.0
+
+
+async def _checked_off_the_loop(check, deadline: float) -> str:
+    """Run one of the two checks in a thread and wait for it until ``deadline``.
+
+    Both checks are synchronous clients waiting on a socket. Called in the
+    route they held the event loop, so for the second the workers are given
+    to reply on every probe, and for as long as a Redis that does not answer
+    took, the process served nothing else: no other route, no liveness
+    probe (#778). In a thread they hold only themselves.
+
+    A check that has not answered by the deadline is ``unhealthy``: the
+    route answers in time, and the thread ends on its own when the client's
+    timeout does (app.connections), so they do not pile up.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return "unhealthy"
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(check), remaining)
+    except asyncio.TimeoutError:
+        logger.error(
+            "Health check: %s did not answer within %s seconds",
+            "Redis" if check is _redis_health else "the task queue",
+            HEALTH_DEADLINE_SECONDS,
+        )
+        return "unhealthy"
+
+
 @app.get(
     "/health",
     response_model=schemas.HealthCheckResponse,
@@ -326,14 +394,22 @@ async def health_check(response: Response):
 
     It answered 200 with ``unhealthy`` in the body, and 500 when Redis was
     down, whose errors the route did not catch (#766).
+
+    The two checks run in a thread, and the route waits for them until
+    HEALTH_DEADLINE_SECONDS: a check still waiting then is ``unhealthy``
+    (#778, _checked_off_the_loop).
     """
     uptime = (datetime.utcnow() - app_start_time).total_seconds()
+    deadline = time.monotonic() + HEALTH_DEADLINE_SECONDS
     try:
-        redis_status = _redis_health()
+        redis_status = await _checked_off_the_loop(_redis_health, deadline)
         # The workers are asked through the broker, in the stack the same
         # Redis: with Redis down the answer is already unhealthy, and asking
         # would hold this probe for the seconds the broker client retries.
-        celery_status = _celery_health() if redis_status == "healthy" else "unknown"
+        if redis_status == "healthy":
+            celery_status = await _checked_off_the_loop(_celery_health, deadline)
+        else:
+            celery_status = "unknown"
         if redis_status != "healthy":
             overall_status = "unhealthy"
         elif celery_status != "healthy":
@@ -589,7 +665,8 @@ async def list_checks(
     The three filters compare without regard to case, and a value that
     matches no check gives an empty list. A ``provider`` other than ``aws``,
     ``gcp`` and ``azure`` used to answer 500, where ``gcp``, which has no
-    check either, answered an empty list (#766).
+    check either, answered an empty list (#766). ``category`` also takes
+    ``&`` for ``and`` and any spacing (#778, utils.category_key).
     """
     try:
         # Get available checks
@@ -600,7 +677,8 @@ async def list_checks(
             checks = [c for c in checks if c["provider"].lower() == provider.lower()]
 
         if category:
-            checks = [c for c in checks if c["category"].lower() == category.lower()]
+            wanted = category_key(category)
+            checks = [c for c in checks if category_key(c["category"]) == wanted]
 
         if severity:
             checks = [c for c in checks if c["severity"].lower() == severity.lower()]
@@ -654,9 +732,16 @@ async def get_compliance_report(
                 elif result.status == "failed":
                     framework_results[fw]["failed"] += 1
         
-        # Create framework summaries
+        # Create framework summaries. The percentage is over the results
+        # with a verdict, as the report's own compliance_score and the
+        # team summary are: it was over every result, so a check that was
+        # skipped, or that failed to run, lowered it as a failed one does:
+        # one result passed, two failed and one in error read 33.3 in the
+        # report and 25.0 here (#778). total_checks still counts every
+        # result, and nothing assessed is still 0.
         for fw, stats in framework_results.items():
-            compliance_percentage = (stats["passed"] / stats["total"] * 100) if stats["total"] > 0 else 0
+            verdicts = stats["passed"] + stats["failed"]
+            compliance_percentage = (stats["passed"] / verdicts * 100) if verdicts > 0 else 0
             frameworks_summary.append(
                 schemas.ComplianceReportFrameworkSummary(
                     framework=fw,
@@ -668,9 +753,9 @@ async def get_compliance_report(
             )
         
         # Calculate overall score
-        total_framework_checks = sum(fw.total_checks for fw in frameworks_summary)
         total_passed = sum(fw.passed_checks for fw in frameworks_summary)
-        overall_score = (total_passed / total_framework_checks * 100) if total_framework_checks > 0 else 0
+        total_verdicts = total_passed + sum(fw.failed_checks for fw in frameworks_summary)
+        overall_score = (total_passed / total_verdicts * 100) if total_verdicts > 0 else 0
         
         return schemas.ComplianceReportResponse(
             scan_id=scan_id,

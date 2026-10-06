@@ -7,6 +7,7 @@ matching the token's remaining lifetime.
 """
 
 import hashlib
+import hmac
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -80,13 +81,42 @@ def account_digest(email: str) -> str:
     return hashlib.sha256(str(email).strip().lower().encode("utf-8")).hexdigest()[:12]
 
 
+def account_key(email: str) -> str:
+    """What stands for an address in a Redis key: its keyed digest (#778).
+
+    The lockout counters were kept under the address itself,
+    ``login:attempts:<address>``, and the address is whatever was typed in
+    the login form: a password pasted into the wrong field was written to
+    Redis as a key name, and from there to its append-only file and to
+    every backup of it, for anyone who can list keys to read.
+
+    An HMAC, not the plain digest the log line uses (account_digest): that
+    one is meant to be recomputed by an operator who knows the address, and
+    so can be by anyone who guesses it, or the password. This one is keyed
+    by the secret that keys the API-key digests, which is not in Redis. The
+    label keeps the two uses of that secret apart.
+
+    Case and surrounding space do not count, as at login. A change of the
+    secret gives every address a new key: the counters in progress are left
+    behind and expire on their own, within the lockout period.
+    """
+    from .auth import _api_key_hash_secret
+
+    address = str(email).strip().lower().encode("utf-8")
+    return hmac.new(
+        _api_key_hash_secret().encode("utf-8"),
+        b"login-lockout:" + address,
+        hashlib.sha256,
+    ).hexdigest()
+
+
 async def record_failed_login(email: str) -> int:
     """
     Record a failed login attempt. Returns the current count.
     """
     try:
         r = await get_redis()
-        key = f"{LOGIN_ATTEMPTS_PREFIX}{email}"
+        key = f"{LOGIN_ATTEMPTS_PREFIX}{account_key(email)}"
         count = await r.incr(key)
         # Set expiry on first attempt
         if count == 1:
@@ -101,7 +131,7 @@ async def clear_failed_logins(email: str) -> None:
     """Clear failed login counter on successful login."""
     try:
         r = await get_redis()
-        await r.delete(f"{LOGIN_ATTEMPTS_PREFIX}{email}")
+        await r.delete(f"{LOGIN_ATTEMPTS_PREFIX}{account_key(email)}")
     except Exception as e:
         logger.error(f"Failed to clear login attempts: {e}")
 
@@ -110,11 +140,12 @@ async def is_account_locked(email: str) -> bool:
     """Check if account is temporarily locked due to too many failed attempts."""
     try:
         r = await get_redis()
-        lockout_key = f"{LOGIN_LOCKOUT_PREFIX}{email}"
+        account = account_key(email)
+        lockout_key = f"{LOGIN_LOCKOUT_PREFIX}{account}"
         if await r.exists(lockout_key):
             return True
         # Check if attempts exceeded threshold
-        attempts_key = f"{LOGIN_ATTEMPTS_PREFIX}{email}"
+        attempts_key = f"{LOGIN_ATTEMPTS_PREFIX}{account}"
         count = await r.get(attempts_key)
         if count and int(count) >= settings.max_failed_login_attempts:
             # Lock the account

@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **identity no longer names a Redis key after what was typed in the
+  login form** (#778). The counter of failed logins and the lock were
+  kept under `login:attempts:<address>` and `login:lockout:<address>`,
+  and the address is whatever was typed: a password pasted into the
+  address field became a key name, readable by whoever can list keys and
+  written to Redis's append-only file and to its backups. The keys are
+  now named with an HMAC-SHA256 of the address, keyed by
+  `API_KEY_HASH_SECRET`, which is not in Redis; the log line about a
+  lockout keeps the plain digest an operator can recompute (#755). The
+  lockout itself is unchanged. The keys an earlier release wrote are not
+  read any more, so a lockout in progress at the upgrade ends there, and
+  those keys expire on their own within `ACCOUNT_LOCKOUT_MINUTES` (15 by
+  default). Lifting a lock early by hand now takes the digest of the
+  address, which identity gives: the command is in
+  `docs/guides/authentication.md`.
+- **identity and data log a database error without the values PostgreSQL
+  writes in it** (#778). `hide_parameters` (#755) takes the bound
+  parameters out of the text of an error, not what the server wrote:
+  `DETAIL: Key (email)=(alice@example.com) already exists` for a unique
+  violation, `invalid input syntax for type inet: "..."` with the value
+  itself for one a column refuses. A database error no route handled was
+  logged with that text and with its traceback, which ends with it
+  again; data's collector logged it for an indicator that could not be
+  stored, and again for the collection that failed. Both services now
+  log the class of the error, its SQLSTATE, the constraint and table it
+  names, and the frames it went through. The answers do not change: the
+  same `500`, and identity's `503` for a database that cannot be
+  reached, which is still logged with its cause.
 - **The sensor's start-up log line no longer names the account it runs
   under.** `Platform: {...}` logged, at INFO, the user's name, the home
   directory and the first entries of `PATH`, and on Linux every field of
@@ -70,6 +98,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with no scheme, host or port, and the client resolves it against the
   URL it called. No host is written at all, so the one a client sends
   in `Host` is no longer echoed in the header either (#776).
+- **cspm answers when Redis accepts the connection and then says
+  nothing** (#778). A Redis that is down refuses the connection and the
+  routes answer 503 at once (#766). One that accepts it and never
+  replies, which is what a paused container or a stopped host looks
+  like, held `/health` and every route for as long as the caller waited:
+  the API's three clients (the scan store, the Celery broker and the
+  result backend) had no timeout, and with the event loop held nothing
+  else was served either. Measured with a server that accepts and never
+  answers: no answer from any route in 13 seconds. The API now gives
+  each client 2 seconds to open a connection and 3 for each reply, and
+  opens a connection that failed once, where Celery's own settings try
+  again after pauses of two and four seconds, and twenty times for the
+  result backend. Measured the same way: `/health` and every route
+  answer 503 in 3 seconds; with the store answering and the queue not,
+  `POST /api/v1/scans` answers 503 in 6. `socket_timeout` and
+  `socket_connect_timeout` in the query string of `REDIS_URL` or
+  `CELERY_RESULT_BACKEND` still replace the limits of that client. The
+  worker keeps Celery's own waits: it waits on its broker connection for
+  as long as no scan is queued.
+- **cspm's `/health` no longer stops the service while it waits**
+  (#778). The route asked Redis and then the workers with synchronous
+  clients inside the event loop. The workers are given a second to reply
+  on every probe, so for that second, every 30 seconds for the Compose
+  health check alone, the API answered nothing else, its liveness route
+  included; a slow Redis held it longer. Both checks now run in a
+  thread. The route also has a deadline of 4 seconds, inside the 5
+  seconds `make health` waits and the 10 of the Compose health check: a
+  check that has not answered by then
+  is reported `unhealthy` (503 for Redis, `degraded` for the workers),
+  where an answer that came after the probe stopped waiting told it
+  nothing.
+- **A cspm scan that could not be queued is no longer left recorded as
+  `queued`** (#778). `POST /api/v1/scans` writes the scan's credentials
+  and its record, then queues the task. When the broker refused the task
+  the answer was 503, and what had been written stayed: a scan with no
+  task behind it, under an id the caller was never told, counted in the
+  team's `total_scans` and read `queued` until its retention ended, 90
+  days by default, and its encrypted credentials waited five minutes in
+  Redis for a worker that would not come. The credentials, the record
+  and the team index entry are now removed before the error is answered,
+  whatever stopped the scan between its first write and the queue. In a
+  batch, the scans queued before the one that failed stay queued and
+  run, as before.
+- **A check that did not run no longer lowers a cspm scan's compliance
+  percentage** (#778). `GET /api/v1/scans/{id}/compliance` and
+  `summary.compliance_frameworks` in a scan's report divided the passed
+  results of a framework by every result tagged with it. A result that
+  was skipped, or whose check failed to run, has no verdict, and it
+  lowered the percentage exactly as a failed one does: a scan with one
+  result passed, two failed and one in error read 25% there and 33.3% in
+  its own `compliance_score`, which counts verdicts only, as the team
+  summary does. `compliance_percentage` and `overall_score` are now over
+  the passed and failed results. A scan in which every check ran reads
+  the same as before; one with skipped or errored checks reads higher.
+  `total_checks` still counts every result, and the percentages are
+  still `0` when nothing was assessed. A report stored by an earlier
+  release keeps the percentages it was stored with in its `summary`; the
+  compliance route computes from the results and answers the new figure
+  for the same scan.
+- **A cspm scan cancelled while it ran can no longer end as completed**
+  (#778). The API cancels a scan and the worker completes or fails it,
+  from two processes, and each read the scan's status, decided, and
+  wrote it back in separate commands. A cancellation and a completion
+  that crossed left a scan recorded as cancelled with a report stored
+  and counted in the team's figures, or one the API had answered
+  "cancelled" for that then read completed; the completion did not look
+  at the status at all, so a scan whose worker was not stopped in time
+  always ended as completed. The three now read and write in one Redis
+  transaction (`WATCH`/`MULTI`): the first to write decides, the other
+  changes nothing, and a completed scan's report, status and index entry
+  are written together. A scan cancelled while it ran stays cancelled,
+  and has no report.
+- **cspm's check categories have one spelling each** (#778). Two of the
+  three CloudTrail checks were in `Logging & Monitoring` and the third
+  in `Logging and Monitoring`; two IAM checks in `Identity and Access
+  Management` and the third in `Identity & Access Management`.
+  `GET /api/v1/checks` listed both spellings in `categories`, and its
+  `category` filter gave the checks of the one asked for and left the
+  others out. Both categories are spelled with `and` now, the form that
+  needs no escaping beyond its spaces in a query string, and a unit test
+  fails when two categories of the catalog differ only by `&` for `and`,
+  case or spacing. The filter compares the same way, so a value in the
+  old spelling still finds its checks, all three of them. Reports and
+  findings do not carry a check's category: nothing stored changes.
+- **The data service refuses a database that is not PostgreSQL by
+  saying so** (#778). `app/utils/database.py` had a branch for a SQLite
+  `DATABASE_URL` that gave the engine a `StaticPool` together with
+  `pool_size`, `max_overflow` and `pool_timeout`, which that pool does
+  not take: with such a URL the engine could not be created, and the
+  error was a `TypeError` about pool arguments. Nothing reached the
+  branch. The stack and the documentation give the service PostgreSQL,
+  its tables use PostgreSQL types and its migrations are written for it,
+  and the unit tests that use SQLite build their own engine. The branch
+  is removed, and a URL of another database is refused when the engine
+  is first asked for, by the name of its backend and without the URL,
+  which carries a password.
+- **The data scheduler has one rule for the sources it runs** (#778).
+  At start it left out an enabled source whose status was `error`; its
+  reload of the sources, every ten minutes, did not, and scheduled the
+  same source to run thirty seconds later. A source in error was
+  collected after every restart all the same, up to ten minutes later
+  than the others. Both now schedule every enabled source that has a
+  collector, whatever its status, which is also what the scheduler does
+  with a source that fails while it runs: it is tried again at its own
+  interval. A disabled source is not scheduled, as before.
 - **A data directory that stops answering no longer holds the sensor's
   stop.** The log positions and the file monitor's baseline were written
   one last time by a call in the event loop, which waited for a lock that
@@ -119,6 +252,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `limit_conn_zone ... zone=addr:10m`, and no `limit_conn` named it: it
   limited nothing and held 10 MB of shared memory. The gateway does not
   limit connections per address, and did not before (#776).
+- **Four dashboard types nothing uses** (#778). `ComplianceScan`,
+  `ComplianceFinding` and `RemediationGuide` in
+  `open-security-dashboard/src/types/index.ts` described a compliance
+  scan in a shape no cspm route returns, and were imported by nothing;
+  the compliance page declares the finding it reads itself.
+  `Vulnerability`, the only other type that named `RemediationGuide`, was
+  imported by nothing either: the vulnerability pages use
+  `GuardianVulnerability`. Types only: nothing the dashboard renders or
+  sends changes.
 - **The sensor image no longer contains its test tools.** `pytest`,
   `pytest-asyncio`, `pytest-cov`, `black`, `flake8` and `mypy` were in the
   lock the image installs and in the package's `install_requires`; they
