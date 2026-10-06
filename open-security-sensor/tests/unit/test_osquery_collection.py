@@ -19,9 +19,11 @@ import re
 import stat
 import sys
 import time
+import types
 from pathlib import Path
 
 import pytest
+import yaml
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVICE_ROOT))
@@ -32,6 +34,7 @@ from sensor.core.config import (  # noqa: E402
     DataLakeConfig,
     PerformanceConfig,
     SensorConfig,
+    load_config,
 )
 
 OSQUERYI = """#!{python}
@@ -42,6 +45,10 @@ with open(os.environ["OSQUERY_RECORD"], "a") as handle:
     handle.write(json.dumps({{"program": "osqueryi", "pid": os.getpid(), "query": query}}) + "\\n")
 if os.path.exists(os.environ["OSQUERY_BROKEN"]):
     sys.stderr.write("Error: cannot open the database\\n")
+    sys.exit(1)
+failing = os.environ["OSQUERY_FAILING"]
+if os.path.exists(failing) and open(failing).read().strip() in query:
+    sys.stderr.write("Error: no such table\\n")
     sys.exit(1)
 if os.path.exists(os.environ["OSQUERY_SLOW"]):
     time.sleep(60)
@@ -90,16 +97,22 @@ def osquery(tmp_path, monkeypatch):
     monkeypatch.setenv("OSQUERY_RECORD", str(record))
     monkeypatch.setenv("OSQUERY_BROKEN", str(tmp_path / "broken"))
     monkeypatch.setenv("OSQUERY_SLOW", str(tmp_path / "slow"))
-    for platform, answer in (("linux", True), ("windows", False), ("macos", False)):
+    monkeypatch.setenv("OSQUERY_FAILING", str(tmp_path / "failing"))
+    manager = _manager_on(monkeypatch, "linux", query_interval=3600)
+    return manager, record, tmp_path
+
+
+def _manager_on(monkeypatch, platform, **performance):
+    """A manager that takes the host for ``platform``."""
+    for name in ("linux", "windows", "macos"):
         monkeypatch.setattr(
-            osquery_manager, f"is_{platform}", lambda answer=answer: answer
+            osquery_manager, f"is_{name}", lambda answer=(name == platform): answer
         )
     config = SensorConfig(
         data_lake=DataLakeConfig(endpoint="https://gateway.example", api_key=""),
-        performance=PerformanceConfig(query_interval=3600),
+        performance=PerformanceConfig(**performance),
     )
-    manager = OsqueryManager(config, asyncio.Queue())
-    return manager, record, tmp_path
+    return OsqueryManager(config, asyncio.Queue())
 
 
 def _recorded(record):
@@ -138,8 +151,12 @@ def test_the_packs_are_the_queries_that_answer(osquery):
     assert manager.get_status()["total_queries"] == 11
 
 
-def test_no_query_reads_an_event_table(osquery):
-    manager, _, _ = osquery
+@pytest.mark.parametrize("platform", ["linux", "windows", "macos"])
+def test_no_query_reads_an_event_table(monkeypatch, platform):
+    # main, on Windows: user_events.logon_events read windows_events, an
+    # event table as the three others were, and filtered on a column it does
+    # not have (#754).
+    manager = _manager_on(monkeypatch, platform)
 
     for pack in manager.query_packs.values():
         for name, query in pack["queries"].items():
@@ -148,14 +165,200 @@ def test_no_query_reads_an_event_table(osquery):
             assert not {table for table in tables if table.endswith("_events")}, name
 
 
+def test_on_windows_the_users_pack_is_the_users_logged_in(monkeypatch):
+    manager = _manager_on(monkeypatch, "windows")
+
+    assert sorted(manager.query_packs["user_events"]["queries"]) == ["logged_in_users"]
+
+
 def test_a_query_has_no_interval_of_its_own(osquery):
-    # Each had one, for the schedule of the osqueryd that is gone. The
-    # sensor's cycle never looked at it: every query runs once per cycle.
+    # Each had one, for the schedule of the osqueryd that is gone, and the
+    # sensor's cycle never looked at it. The inventory pack has one now,
+    # which the cycle does look at (#754); the queries still have none.
     manager, _, _ = osquery
 
     for pack in manager.query_packs.values():
         for name, query in pack["queries"].items():
             assert set(query) == {"query", "description"}, name
+    assert {name: pack.get("interval") for name, pack in manager.query_packs.items()} == {
+        "process_events": None,
+        "network": None,
+        "user_events": None,
+        "system_inventory": 3600,
+    }
+
+
+def _asked(record, table):
+    """How many times the cycle asked the query that reads ``table``."""
+    return sum(
+        1
+        for entry in _recorded(record)
+        if re.search(rf"\bFROM {table}\b", entry["query"])
+    )
+
+
+# Seconds the cycle tests below wait for: each query is a process to start,
+# a few dozen in a test, and a loaded host starts two or three a second.
+PATIENCE = 90
+
+INVENTORY_TABLES = (
+    "system_info",
+    "os_version",
+    "deb_packages",
+    "startup_items",
+    "systemd_units",
+    "kernel_info",
+    "kernel_modules",
+)
+
+
+@pytest.mark.asyncio
+async def test_the_inventory_is_not_asked_at_every_cycle(osquery):
+    # main: all eleven queries at every cycle, the inventory's seven among
+    # them, which answer the same thing for hours.
+    manager, record, _ = osquery
+    manager.config.performance.query_interval = 0.01
+
+    await manager.start()
+    try:
+        # The last query of the packs that have no interval.
+        await _until(lambda: _asked(record, "sudoers") >= 3, PATIENCE)
+    finally:
+        await manager.stop()
+
+    assert _asked(record, "processes p") >= 3
+    assert _asked(record, "process_open_sockets s") >= 3
+    assert _asked(record, "logged_in_users") >= 3
+    assert {table: _asked(record, table) for table in INVENTORY_TABLES} == dict.fromkeys(
+        INVENTORY_TABLES, 1
+    )
+    # Its first answers are events like the others'.
+    types = set()
+    while not manager.event_queue.empty():
+        types.add(manager.event_queue.get_nowait()["type"])
+    assert {f"system_inventory.{query}" for query in LINUX_PACKS["system_inventory"]} <= types
+
+
+@pytest.mark.asyncio
+async def test_the_inventory_is_asked_again_when_its_interval_has_passed(
+    monkeypatch, osquery
+):
+    _, record, _ = osquery
+    manager = _manager_on(
+        monkeypatch, "linux", query_interval=0.01, inventory_interval=900
+    )
+    # The manager's clock, moved by the test.
+    now = [5000.0]
+    monkeypatch.setattr(
+        osquery_manager, "time", types.SimpleNamespace(monotonic=lambda: now[0])
+    )
+
+    async def two_more_cycles():
+        # Two ends of a cycle: the second cycle began after this was called.
+        asked = _asked(record, "sudoers")
+        await _until(lambda: _asked(record, "sudoers") >= asked + 2, PATIENCE)
+
+    await manager.start()
+    try:
+        await _until(lambda: _asked(record, "kernel_modules") == 1, PATIENCE)
+        now[0] += 899
+        await two_more_cycles()
+        assert _asked(record, "kernel_info") == 1
+        now[0] += 1
+        await _until(lambda: _asked(record, "kernel_modules") == 2, PATIENCE)
+        # Counted again from those answers: not at the next cycles.
+        await two_more_cycles()
+    finally:
+        await manager.stop()
+
+    assert {table: _asked(record, table) for table in INVENTORY_TABLES} == dict.fromkeys(
+        INVENTORY_TABLES, 2
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_interval_of_zero_asks_the_inventory_at_every_cycle(monkeypatch, osquery):
+    _, record, _ = osquery
+    manager = _manager_on(monkeypatch, "linux", query_interval=0.01, inventory_interval=0)
+
+    await manager.start()
+    try:
+        await _until(lambda: _asked(record, "kernel_modules") >= 2, PATIENCE)
+    finally:
+        await manager.stop()
+
+    assert {table: _asked(record, table) >= 2 for table in INVENTORY_TABLES} == (
+        dict.fromkeys(INVENTORY_TABLES, True)
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_inventory_query_that_fails_is_asked_again_at_the_next_cycle(osquery):
+    # Not an interval later: an hour without the inventory for one osqueryi
+    # that did not answer.
+    manager, record, tmp_path = osquery
+    manager.config.performance.query_interval = 0.01
+    (tmp_path / "failing").write_text("kernel_modules")
+
+    await manager.start()
+    try:
+        await _until(lambda: manager.get_status()["queries_failed"] >= 2, PATIENCE)
+        assert _asked(record, "kernel_modules") >= 2
+        assert _asked(record, "kernel_info") == 1
+        (tmp_path / "failing").unlink()
+
+        types = set()
+
+        def answered():
+            while not manager.event_queue.empty():
+                types.add(manager.event_queue.get_nowait()["type"])
+            return "system_inventory.kernel_modules" in types
+
+        await _until(answered, PATIENCE)
+        asked = _asked(record, "kernel_modules")
+        cycles = _asked(record, "sudoers")
+        await _until(lambda: _asked(record, "sudoers") >= cycles + 2, PATIENCE)
+    finally:
+        await manager.stop()
+
+    # It answered: from then on it waits like the others.
+    assert _asked(record, "kernel_modules") == asked
+
+
+@pytest.mark.parametrize(
+    "written, expected",
+    [({}, 3600), ({"inventory_interval": 900}, 900), ({"inventory_interval": 0}, 0)],
+)
+def test_the_inventory_interval_is_a_setting(tmp_path, written, expected):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "data_lake": {"endpoint": "https://gateway.example", "api_key": ""},
+                "fim": {"enabled": False, "paths": ["/etc"]},
+                "performance": written,
+            }
+        )
+    )
+
+    assert load_config(str(path)).performance.inventory_interval == expected
+
+
+@pytest.mark.parametrize("value", [-1, "hourly", True, None, 8 * 24 * 3600])
+def test_an_inventory_interval_that_is_not_one_stops_the_sensor(tmp_path, value):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "data_lake": {"endpoint": "https://gateway.example", "api_key": ""},
+                "fim": {"enabled": False, "paths": ["/etc"]},
+                "performance": {"inventory_interval": value},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="performance.inventory_interval must be"):
+        load_config(str(path))
 
 
 @pytest.mark.asyncio

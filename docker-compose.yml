@@ -675,6 +675,13 @@ services:
       # did nothing (#645). Only this service serves requests: the worker
       # and beat do not need it.
       - GUARDIAN_RATE_LIMIT_USER=${GUARDIAN_RATE_LIMIT_USER:-}
+      # Internal ranges a discovery or a port scan may reach: CIDR ranges and
+      # IP addresses, comma-separated. Empty refuses every internal target
+      # (#748). guardian's own list, not TOOLS_ALLOWED_INTERNAL_TARGETS. This
+      # service refuses the request; guardian-worker, which scans, must get
+      # the same value. A malformed entry stops both at start-up
+      # (guardian/scan_targets.py).
+      - GUARDIAN_ALLOWED_INTERNAL_TARGETS=${GUARDIAN_ALLOWED_INTERNAL_TARGETS:-}
     volumes:
       - guardian_logs:/app/logs
       # Generated reports: guardian-worker writes them, guardian serves
@@ -770,6 +777,11 @@ services:
       # are a member of the vulnerability's team: the same window as on
       # guardian (#676).
       - GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS=${GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS:-}
+      # The worker is what connects to the addresses a discovery or a port
+      # scan names, from inside the stack's networks: it applies the policy
+      # again when the task runs, with the same list as guardian (#748).
+      # Empty: no internal address is scanned.
+      - GUARDIAN_ALLOWED_INTERNAL_TARGETS=${GUARDIAN_ALLOWED_INTERNAL_TARGETS:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -404,6 +404,7 @@ _MODULE_SERVICE = {
     "test_gateway_security": "gateway",
     "test_guardian_monitoring": "guardian",
     "test_guardian_pagination_links": "guardian",
+    "test_guardian_scan_targets": "guardian",
     "test_guardian_tenancy": "guardian",
     "test_identity_comprehensive": "identity",
     "test_identity_service": "identity",

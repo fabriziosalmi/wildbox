@@ -415,8 +415,13 @@ services:
       - ENVIRONMENT=production
 
   # The broker and the database are on data; egress for what the tasks
-  # reach outside the stack: port scans of asset addresses, threat-intel
-  # URLs, SMTP and chat webhooks. Nothing looks the worker up by name.
+  # reach outside the stack: discoveries and port scans of asset addresses,
+  # and the mail server. Nothing looks the worker up by name. From here the
+  # worker can also dial everything on data (PostgreSQL, Redis, identity),
+  # the Docker host and a cloud metadata address, which is why a scan of an
+  # internal address is refused unless GUARDIAN_ALLOWED_INTERNAL_TARGETS
+  # lists it (#748). The base file passes that variable to guardian and to
+  # this service; nothing here overrides it.
   # identity is on data too: the worker asks it there who may be e-mailed
   # about a team (#705), with GUARDIAN_CONTACTS_SECRET. It is not on
   # backend and holds no GATEWAY_INTERNAL_SECRET.

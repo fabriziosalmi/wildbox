@@ -52,6 +52,11 @@ jobs:
       # Likewise the user-schedule dispatcher, every 15 s instead of every
       # minute (#548).
       GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
+      # The one internal range guardian may scan here: loopback, where
+      # guardian-worker scans itself (#748). The integration suite's port
+      # scan and discovery rule need a host that answers, and it reads the
+      # variable to know the stack allows one; see integration-tests.yml.
+      GUARDIAN_ALLOWED_INTERNAL_TARGETS: "127.0.0.0/8"
 
     steps:
       - name: Checkout code

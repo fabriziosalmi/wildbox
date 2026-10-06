@@ -18,6 +18,7 @@ import logging
 import os
 import stat
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -846,6 +847,48 @@ async def test_stopping_the_forwarder_writes_the_positions(data_dir, log):
 
 
 @pytest.mark.asyncio
+async def test_a_periodic_write_under_way_at_the_stop_is_not_taken_for_made(
+    data_dir, log, monkeypatch
+):
+    # The periodic write is made in a thread, and the stop cancels the task
+    # that waits for it. main took the positions for written from the moment
+    # the write began: when it then failed, the stop wrote nothing, and the
+    # lines accepted since the last write were sent again after the restart
+    # (#754).
+    monkeypatch.setattr(log_forwarder, "POSITION_SAVE_INTERVAL", 0.01)
+    log.write_text("")
+    queue = asyncio.Queue()
+    forwarder = LogForwarder(_config(data_dir, _source(log)), queue)
+    forwarder.poll_interval = 0.01
+    writing, failed = threading.Event(), threading.Event()
+    real_save = forwarder.positions.save
+    writes = []
+
+    def save(snapshot, serial):
+        writes.append(serial)
+        if len(writes) == 1:
+            # The periodic one: under way when the sensor stops, and failing.
+            writing.set()
+            failed.wait(10)
+            return False
+        return real_save(snapshot, serial)
+
+    await forwarder.start()
+    monkeypatch.setattr(forwarder.positions, "save", save)
+    try:
+        _append(log, "one\n")
+        event = await asyncio.wait_for(queue.get(), timeout=5)
+        take_delivery(event).settle()
+        await _until(writing.is_set)
+        await forwarder.stop()
+    finally:
+        failed.set()
+
+    assert len(writes) == 2 and writes[1] > writes[0]
+    assert _saved_offset(data_dir) == len("one\n")
+
+
+@pytest.mark.asyncio
 async def test_the_status_shows_how_far_each_file_was_read_and_accepted(data_dir, log):
     log.write_text("")
     source = _source(log)
@@ -1094,6 +1137,15 @@ async def test_what_was_collected_just_before_the_stop_still_reaches_the_gateway
 ):
     # Stopping the pipeline under the events still in its queues dropped
     # them without a word.
+    from sensor.core import agent as agent_module
+
+    # The wait is what is tested here, not its deadline: the nine events
+    # take 0.9 seconds of sleeping, and the two seconds the sensor gives
+    # them are seconds of the clock, which a starved host can let pass in
+    # one go (#754: a wait of 2.6 seconds was measured for this very test
+    # with the CPUs taken). What the deadline leaves behind has its own
+    # tests, below and in test_stop_accounting.py.
+    monkeypatch.setattr(agent_module, "QUEUE_DRAIN_SECONDS", 60)
     log.write_text("")
     accepted = _stand_in_gateway(monkeypatch, lambda: SENT)
     agent = SecuritySensorAgent(

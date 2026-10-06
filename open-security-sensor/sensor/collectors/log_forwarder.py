@@ -681,9 +681,17 @@ class LogForwarder:
             # after the one made at stop must not replace it.
             serial = self.positions.next_serial()
             snapshot = self._snapshot()
-            saved = await loop.run_in_executor(
-                None, self.positions.save, snapshot, serial
-            )
+            try:
+                saved = await loop.run_in_executor(
+                    None, self.positions.save, snapshot, serial
+                )
+            except asyncio.CancelledError:
+                # Stopped while the write was being made: how it ends is
+                # not known here, so stop() writes the positions once more.
+                # It used to take them for written, and when this write
+                # failed nothing was saved at the stop (#754).
+                self._positions_dirty = True
+                raise
             if not saved:
                 self._positions_dirty = True
 

@@ -454,10 +454,16 @@ def test_an_invalid_address_is_down():
 
 
 @pytest.mark.django_db
-def test_a_network_scan_records_a_host_that_is_up(monkeypatch):
+def test_a_network_scan_records_a_host_that_is_up(monkeypatch, settings):
     from apps.assets import tasks
     from apps.assets.models import Asset
+    from guardian.scan_targets import ALLOWLIST_VARIABLE, allowed_internal_targets
 
+    # The host that is up is this one. Loopback is refused unless the
+    # operator allows it (#748), so this deployment's operator has.
+    settings.SCAN_ALLOWED_INTERNAL_TARGETS = allowed_internal_targets(
+        {ALLOWLIST_VARIABLE: "127.0.0.0/8"}
+    )
     monkeypatch.setattr(tasks, "HOST_PROBE_PORTS", (_closed_port(),))
     with mock.patch("apps.assets.signals.scan_asset_ports"):
         result = tasks.discover_assets.apply(args=("127.0.0.1/32",)).get()
