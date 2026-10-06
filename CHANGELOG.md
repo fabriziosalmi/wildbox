@@ -58,6 +58,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before any tool, already refused both, so nothing was reachable through
   it. Compared over the shared vector file and 720,000 generated
   addresses, nothing the old expression refused is accepted now.
+- **An error no route handles is logged without its text** (#788). The
+  text of an error is made from the values at hand when it is raised, in
+  a route the request's: `invalid literal for int() with base 10: '<what
+  the caller sent>'`. The shared handler of the six FastAPI services
+  logged it, with a traceback that ends with it again, and uvicorn logged
+  the traceback of the same error once more (`Exception in ASGI
+  application`): one request that raised left the caller's value on five
+  lines of the log. Both records now hold the class of the error, the
+  file, line and function it was raised at and the frames it went
+  through, then the same for each error behind it (`caused by ...`,
+  `raised while handling ...`), and the text of none. The answer is
+  unchanged, and never had the text. To find an error in a log, look for
+  its class and its place.
+- **The data scheduler stores and logs the class of a collection's
+  error, not its text** (#788). When a collection raised, the scheduler
+  stored the error's text as the source's `last_error`, which
+  `manage.py sources list` prints, and logged it with its traceback. The
+  text of an error raised while a feed is fetched can hold the feed's
+  URL, and with it the key. It stores and logs the class, with the HTTP
+  status when the error has one, as the collectors have done for their
+  own errors since 0.12.0.
 
 ### Fixed
 
@@ -160,6 +181,122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release; nothing else in either lock moved. No Celery release calls
   the other name, so Celery stays where it was. tools and agents lock
   redis-py 5.2.1 and were not affected.
+- **The sensor's last line counts every line and event it had read**
+  (#788). A log file is read a chunk at a time and a Windows event log
+  an answer at a time. A reader stopped while one line waited for room
+  on the queue held the rest of its chunk, which nobody counted: with
+  ten lines read, `Stopped with N events still on their way to the
+  sender` said four where seven were. 0.12.1 fixed this for `journalctl`
+  and `log stream`; file sources and Windows event logs are counted the
+  same way now, as read again when positions are saved (`data_dir`) and
+  as dropped when they are not.
+- **An error in the handling of one log line no longer costs the lines
+  read with it** (#788). The error ended the read it was in: `journalctl`
+  or `log stream` was started again and the entries after that one were
+  passed over, for good for the unified log; the rest of a file's chunk
+  was never forwarded, the file's position being already beyond it; and
+  the reader of a Windows event log ended until the sensor was
+  restarted. The error is now that line's: it is counted
+  (`entries_failed` in a source's status and `lines_failed` in the
+  forwarder's, both new), logged once per source and class of error, and
+  passed over, and what was read with it is forwarded.
+- **The sensor's exit limit ends the process when the log itself does
+  not answer** (#788). The limit that ends a sensor whose worker threads
+  do not return logged why, and flushed the log, before it ended the
+  process: a log handler that did not return (a log file in a directory
+  that hangs, a pipe nobody reads) held it, and the sensor stayed until
+  it was killed. The line is now written by a thread of its own, which
+  gets 1 second. With a log that does not answer the stop's limits add
+  up to 29 seconds, against the 30 of `stop_grace_period`.
+- **The sensor starts when the file monitor's first baseline cannot be
+  written in time** (#788). That write had no limit: a data directory
+  that did not answer at start held the monitor's start, and the
+  sensor's behind it. It gets the 2 seconds every other write of the
+  baseline has. When they are spent the monitor starts with the baseline
+  it holds in memory, tries the write again every 5 seconds, and says in
+  the log what a restart before one succeeds means.
+- **cspm serves other requests while one waits for Redis** (#788).
+  Every route called the synchronous Redis and Celery clients from the
+  event loop, so the requests went through one at a time and nothing
+  else was served meanwhile: with five requests waiting for a Redis that
+  accepts and never answers, `/health/live` answered after 15 seconds.
+  The nine routes that ask Redis or the task queue now run in threads:
+  `/health/live` answers in 16 ms, and the five end together after 3
+  seconds. `/health/live`, `/api/v1/providers` and `/api/v1/checks`,
+  which ask nothing, still answer from the event loop.
+- **The cspm worker gives up on a scan store that never answers, and a
+  scan whose last write fails is not lost** (#788). The worker's Redis
+  client had no timeout: a Redis that accepted and never answered held a
+  scan's task where it was, at its first read or at its last write with
+  the account already scanned. It has the API's limits now (2 seconds to
+  connect, 3 for a reply), and the write that ends a scan is made up to
+  four times, 1, 3 and 9 seconds apart, each failed attempt logged. A
+  scan whose report could not be stored ends as `failed`, with
+  `failure_reason: report_not_stored` in its record. When Redis stays
+  away for the failure's attempts too, the worker goes on to its next
+  task and its log names the scan left in progress, whose record
+  expires with `CSPM_REPORT_RETENTION_DAYS`.
+- **A cspm batch that cannot be queued whole leaves none of its scans
+  queued** (#788). When one scan of `POST /api/v1/cspm/batch/scans`
+  could not be queued the answer was the error, `503` with Redis or the
+  broker away, while the scans queued before it ran, under ids the
+  answer did not give. They are now withdrawn: their records and
+  credentials are removed and their tasks revoked, and a worker that
+  takes such a task all the same finds no credentials and scans nothing.
+  When they cannot be withdrawn, because the scan store does not answer
+  the removal either, the `503` lists them in
+  `error.details.queued_scans`. The status codes are unchanged.
+- **The five IAM checks of cspm are one category** (#788). Two of them
+  (`AWS_IAM_005`, `AWS_IAM_006`) were in `Access Management` and the
+  other three in `Identity and Access Management`, so the `category`
+  filter of `GET /api/v1/cspm/checks` gave a part of the IAM checks for
+  either name. All five are in `Identity and Access Management`, and the
+  catalog has 9 categories instead of 10. `category=Access Management`
+  still finds them, all five. `Access Control`, the policy of a KMS key,
+  an S3 bucket or a Lambda function, is a different subject and is
+  unchanged.
+- **`scripts/wait-for-services.sh` gives a health answer the time `make
+  health` does** (#788). It waited 3 seconds, less than the 4 that cspm's
+  `/health` may take to say that its workers have not replied, so a cspm
+  that `make health` read as up was read as down. It waits 5 seconds,
+  and `HEALTH_TIMEOUT` sets another wait for either.
+- **The data scheduler outlives a database restart, and logs every
+  collection that fails** (#788). Its loop caught five builtin error
+  classes, none of them a database error. Run under a PostgreSQL that
+  was stopped and started again: the collections that asked the database
+  meanwhile failed without a line in the log, and the first reload of
+  the sources ended the process with status 1, for Compose to start
+  again. No error of a pass ends the loop now. A collection that raises
+  is logged once, by the class of its error and the code path; a reload
+  or a pass that fails is made again a minute later; and the collections
+  go on when the database is back.
+- **One rule for the failures that disable a data source** (#788). A
+  collection that raised or timed out was counted and disabled its
+  source at ten errors; one whose collector returned `failed`, the usual
+  way for a feed to fail, was counted and disabled nothing; and no
+  success set the count back, so ten meant ten since the source was
+  created. Now ten collections in a row that fail, whichever way,
+  disable the source, and one that completes sets `error_count` back to
+  0. A failure of the data service's own database is not counted, and
+  `manage.py sources enable` starts the count again. A count left by an
+  earlier release is corrected when the scheduler starts, from the
+  record of the source's runs, so no source is disabled for failures it
+  had long ago.
+- **identity's `/health` answers its own body whatever a check raises**
+  (#788). The database check caught the errors it had listed, and a
+  database host name that does not resolve raises one that was not
+  among them: `/health` answered `500` in the error body. It answers
+  what it answers a database that refuses the connection, `unhealthy`
+  with `200`, as before for the errors it caught.
+- **responder's `/health` asks Redis with one client** (#788). Every
+  probe made a Redis client of its own and opened a new connection, the
+  client had no timeout, and the `PING` was sent from the event loop: a
+  Redis that accepted and never answered held the probe, and every other
+  request, for as long as it said nothing. One client is kept between
+  probes and closed when the service stops, with 2 seconds to connect
+  and 2 to answer, and the `PING` is sent from a thread: such a Redis is
+  `unhealthy` after 2 seconds. The body and the status code of the
+  answer are unchanged.
 
 ### Removed
 
