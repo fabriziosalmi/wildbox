@@ -404,10 +404,10 @@ class ThreatFoxCollector(HTTPCollector):
         }
 
 
-# Register all collectors
+# Register the collectors that can run. HTTPCollector itself is their base
+# class: it has no parse_item and is not one of them.
 from app.collectors import CollectorRegistry
 
-CollectorRegistry.register_collector('http', HTTPCollector)
 CollectorRegistry.register_collector('malware_domain_list', MalwareDomainListCollector)
 CollectorRegistry.register_collector('abuseipdb', AbuseIPDBCollector)
 CollectorRegistry.register_collector('urlvoid', URLVoidCollector)

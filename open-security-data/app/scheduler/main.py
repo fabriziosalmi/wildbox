@@ -17,7 +17,7 @@ from sqlalchemy import and_
 from app.config import get_config
 from app.models import Source, CollectionRun
 from app.utils.database import get_db_session, wait_for_schema
-from app.collectors import CollectorRegistry
+from app.collectors import CollectorRegistry, NoCollector
 # Import collectors to register them
 import app.collectors.sources  # noqa: F401
 
@@ -65,17 +65,43 @@ class CollectionScheduler:
         self.running = False
         self._shutdown_event.set()
     
+    @staticmethod
+    def _collectable(db, sources: List[Source]) -> List[Source]:
+        """The sources that can be collected; the others are disabled.
+
+        A source nothing can collect is not scheduled, and is no longer
+        offered as an enabled one (#665, #755): its row says why. Such rows
+        exist where `manage.py sources add-defaults` or scripts/init_feeds.py
+        ran before this release: both created sources of types that had no
+        collector that could run.
+        """
+        collectable = []
+        for source in sources:
+            if CollectorRegistry.can_collect(source.source_type):
+                collectable.append(source)
+                continue
+            reason = str(NoCollector(str(source.source_type or "").lower()))
+            logger.warning(f"Source '{source.name}' is disabled: {reason}")
+            source.enabled = False
+            source.status = 'inactive'
+            source.last_error = reason
+        if len(collectable) != len(sources):
+            db.commit()
+        return collectable
+
     async def _load_sources(self):
         """Load enabled sources from database"""
         db = get_db_session()
         try:
-            sources = db.query(Source).filter(
-                and_(
-                    Source.enabled == True,
-                    Source.status != 'error'
-                )
-            ).all()
-            
+            enabled = db.query(Source).filter(Source.enabled == True).all()
+            # Every enabled source is looked at, the ones in error too, so
+            # that one nothing can collect stops being offered as enabled.
+            sources = [
+                source
+                for source in self._collectable(db, enabled)
+                if source.status != 'error'
+            ]
+
             current_time = datetime.now(timezone.utc)
             
             for source in sources:
@@ -234,7 +260,9 @@ class CollectionScheduler:
             
             db = get_db_session()
             try:
-                sources = db.query(Source).filter(Source.enabled == True).all()
+                sources = self._collectable(
+                    db, db.query(Source).filter(Source.enabled == True).all()
+                )
                 
                 # Update existing tasks and add new ones
                 current_source_ids = set(self.tasks.keys())

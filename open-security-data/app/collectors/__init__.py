@@ -5,6 +5,7 @@ Core framework for collecting security data from various public sources.
 """
 
 import asyncio
+import inspect
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -457,36 +458,56 @@ class RSSCollector(BaseCollector):
             logger.error(f"Error collecting RSS from {url}: {e}")
             raise
 
+class NoCollector(ValueError):
+    """No collector can run a source of this type."""
+
+    def __init__(self, source_type: str):
+        super().__init__(f"No collector for source type '{source_type}'")
+        self.source_type = source_type
+
+
 class CollectorRegistry:
-    """Registry for managing different collector types"""
-    
-    _collectors = {
-        'http': HTTPCollector,
-        'https': HTTPCollector,
-        'json': HTTPCollector,
-        'csv': HTTPCollector,
-        'txt': HTTPCollector,
-        'rss': RSSCollector,
-        'atom': RSSCollector,
-    }
-    
+    """The collector for each source type: only collectors that can run.
+
+    A type is registered with a class that can be instantiated. The registry
+    used to map ``http``, ``https``, ``json``, ``csv`` and ``txt`` to
+    ``HTTPCollector`` and ``rss`` and ``atom`` to ``RSSCollector``: neither
+    has a ``parse_item``, so neither can be instantiated, and every source of
+    those seven types failed each time it was tried (#665, #755). They are
+    base classes for the collectors of ``app/collectors/sources.py``, which
+    register themselves here.
+    """
+
+    _collectors: Dict[str, type] = {}
+
     @classmethod
     def register_collector(cls, source_type: str, collector_class: type):
-        """Register a new collector type"""
-        cls._collectors[source_type] = collector_class
-    
+        """Register a collector for a source type.
+
+        Raises TypeError for a class that cannot be instantiated: a type
+        nothing can collect must not be on offer.
+        """
+        if inspect.isabstract(collector_class):
+            missing = ", ".join(sorted(collector_class.__abstractmethods__))
+            raise TypeError(
+                f"{collector_class.__name__} cannot collect: it does not define {missing}"
+            )
+        cls._collectors[source_type.lower()] = collector_class
+
+    @classmethod
+    def can_collect(cls, source_type: Optional[str]) -> bool:
+        """Whether a source of this type can be collected at all."""
+        return isinstance(source_type, str) and source_type.lower() in cls._collectors
+
     @classmethod
     def get_collector(cls, source: Source) -> BaseCollector:
-        """Get appropriate collector for source"""
-        source_type = source.source_type.lower()
-        
+        """The collector for a source; NoCollector when its type has none."""
+        source_type = str(source.source_type or "").lower()
         if source_type not in cls._collectors:
-            raise ValueError(f"Unknown source type: {source_type}")
-        
-        collector_class = cls._collectors[source_type]
-        return collector_class(source)
-    
+            raise NoCollector(source_type)
+        return cls._collectors[source_type](source)
+
     @classmethod
     def list_supported_types(cls) -> List[str]:
-        """List all supported collector types"""
-        return list(cls._collectors.keys())
+        """The source types that can be collected."""
+        return sorted(cls._collectors)
