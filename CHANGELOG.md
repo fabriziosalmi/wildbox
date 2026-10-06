@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The data service's statistics no longer count other teams' collection
+  runs** (#755). `GET /api/v1/data/stats` answered `recent_collections` as
+  the number of collection runs of every team's sources in the last 24
+  hours, on a route any member of any team can call. It counts the runs of
+  the sources the caller can see: its team's and the global ones. Every
+  other figure of that answer, and every other route of the service, was
+  already scoped; `open-security-data/tests/unit/test_team_isolation.py`
+  now lists the routes from the application and holds each to a database
+  with two teams' rows, so that a route added later fails until it has a
+  probe.
 - **The Redis health check no longer carries the password on its command
   line, and fails when the password is wrong** (#740). Every compose file
   checked Redis with `redis-cli -a <password> ping`, or with
@@ -829,6 +839,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vulnerability, so the list was always empty; and the `file` of an
   attachment would have been a `/media/` URL, which nothing serves. The
   route answers 404 and its serializer is gone. The table stays, unused.
+- **`open-security-data/scripts/init_feeds.py`, and the source types `http`,
+  `https`, `json`, `csv`, `txt`, `rss` and `atom`** (#665, #755). The
+  script was a second list of default sources, of types no collector was
+  registered for; nothing ran it. The seven types were registered to the
+  two base classes of the collectors, which have no `parse_item` and
+  cannot be instantiated: a source of one of them never collected
+  anything. Default sources that cannot be collected as they are were
+  left out of the one remaining list: Malware Domain List (its feed
+  answers 403), PhishTank (404 without an application key), ThreatFox and
+  MalwareBazaar (401 without an abuse.ch key), AbuseIPDB and URLVoid
+  (offered with a placeholder for a key). Their collectors are still
+  registered, for a source that is given what its feed asks for.
 
 ### Fixed
 
@@ -1823,6 +1845,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays 50. It was ignored: the dashboard home asked for one asset to
   read a count, and for the three newest vulnerabilities, and was sent
   fifty rows each time. `next` and `previous` keep the parameter.
+- **The data service no longer answers 200 for a telemetry batch it did not
+  store** (#755). `POST /api/v1/data/ingest` answered 200 with
+  `events_ingested: 0` when the commit failed with an error that was not
+  SQLAlchemy's. On PostgreSQL a NUL character in `source_host` or
+  `raw_data` did that, and the other events of the batch were lost with
+  it. An event the service could not process was left out of a batch that
+  was otherwise stored, after its sensor's record had counted it. A value
+  the validation let through and a column could not hold (a `sensor_id` of
+  300 characters) was a 503 "send it again" for as long as it was sent,
+  which a sensor obeys: one such event stopped a sensor's delivery for
+  good. A batch is now stored in one transaction, all of it or none.
+  A 200 means all, and `events_ingested` is what was stored. What the
+  database would refuse about an event the validation refuses first, with
+  a 422 that names the event by its place in the batch (`sensor_id` and
+  `source_host` of more than 255 characters; a NUL in `sensor_id`,
+  `source_host` or `raw_data`); a value the database still refuses is a
+  422 with code `BATCH_NOT_STORABLE`; a database that did not take the
+  batch stays a 503 with `Retry-After`; a fault of the service is a 500.
+  The sensor splits a batch on a 422 and keeps it on a 5xx, and
+  `tests/shared/ingest_answer_vectors.json` holds the answers for the
+  tests of both services.
+- **The default threat-intelligence sources can be collected** (#665,
+  #755). `manage.py sources add-defaults` created five sources of type
+  `txt` or `json`, and `scripts/init_feeds.py` six of type `api` or
+  `feed`. The first two types were registered to a collector class that
+  cannot be instantiated and the other two to nothing, so every one of
+  the eleven failed each time the scheduler tried it, and counted as an
+  active feed meanwhile. There is one list now
+  (`open-security-data/app/collectors/defaults.py`), of sources a fresh
+  deployment can collect from as it is: Feodo Tracker, whose feed needs no
+  key. `sources add-defaults` repairs in place the "Feodo Tracker" an
+  earlier release created with a type that had no collector.
+  `sources enable` refuses a source whose type has no collector, and the
+  scheduler disables such a source when it meets one, with the reason in
+  its `last_error`.
 
 ### Changed
 

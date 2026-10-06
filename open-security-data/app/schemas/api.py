@@ -197,8 +197,31 @@ class TelemetryEventBase(BaseModel):
     tags: List[str] = Field(default=[], description="Event tags")
 
 class TelemetryEventCreate(TelemetryEventBase):
-    """Schema for creating telemetry events"""
-    pass
+    """One event of an ingest batch: what the database can hold of it.
+
+    The base schema is also the shape of an event that is read back; these
+    are the limits of one that is written. Each is a limit of a column of
+    ``telemetry_events`` (and of ``sensor_metadata``, which takes the sensor
+    ID and the host name): 255 characters for ``sensor_id`` and
+    ``source_host``, and no NUL character in a text column, which
+    PostgreSQL cannot store. An event that broke one of them used to pass
+    here and fail in the database, with the rest of its batch: as a 503
+    "send it again" for a value too long, and as a 200 with
+    ``events_ingested: 0`` for a NUL (#755). Refused here, it is a 422 that
+    names the event by its place in the batch, which is what a sensor
+    splits a batch on.
+    """
+    sensor_id: str = Field(..., max_length=255, description="Unique sensor identifier")
+    source_host: Optional[str] = Field(None, max_length=255, description="Source host/system")
+
+    @field_validator('sensor_id', 'source_host', 'raw_data')
+    @classmethod
+    def _no_nul_character(cls, value):
+        # The message does not repeat the value (see field_errors in the
+        # shared package: a validator's message is returned as written).
+        if isinstance(value, str) and '\x00' in value:
+            raise ValueError('must not contain a NUL character')
+        return value
 
 class TelemetryEvent(TelemetryEventBase):
     """Schema for telemetry event response"""
