@@ -24,6 +24,11 @@
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
+# For guardian's unit tests only, whose pytest.ini sets
+# DJANGO_SETTINGS_MODULE: the two jobs that run them name it at this version,
+# on top of guardian's lock, which named it before (#788). In a job without
+# Django settings the plugin loads and does nothing.
+pytest-django==4.5.2
 
 # Clients the integration and script suites use
 httpx==0.28.1

@@ -119,8 +119,8 @@ Commit `requirements.in` and `requirements.txt` together.
 ## The CI Tools
 
 `tests/ci-tools/requirements.in` names the tools the workflows install: the
-test runner (pytest, pytest-asyncio, pytest-cov), the clients the integration
-suites use (httpx, requests, python-dotenv, psycopg2-binary, pyyaml,
+test runner (pytest, pytest-asyncio, pytest-cov, and pytest-django for
+guardian), the clients the integration suites use (httpx, requests, python-dotenv, psycopg2-binary, pyyaml,
 packaging) and the linters (black, flake8, isort, mypy), each at an exact
 version. `requirements.txt` next to it is the hash-pinned lock:
 
@@ -135,6 +135,15 @@ this lock would move, so they name the tool with the version the file gives it
 (`pip install pytest==...`). To move a tool, change the version in
 `requirements.in`, compile, and change the same version in those two workflows:
 `scripts/check_workflow_pins.py` fails while they differ.
+
+No service's `requirements.in` names a test runner or a linter: the lock made
+from it is what the image installs. A library only a service's tests use is
+installed by the Unit Tests job for that service, on top of its lock, at the
+version `tests/ci-tools/requirements.in` gives: pytest-django for guardian,
+httpx for data and tools, whose code does not import it and whose tests need
+it for `TestClient`. `tests/scripts/test_requirements_are_imported.py` fails
+when a lock names a tool, and when a test imports what neither the lock nor
+the job provides.
 
 ## Security Upgrades
 

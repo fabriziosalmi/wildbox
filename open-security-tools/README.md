@@ -550,13 +550,15 @@ open-security-tools/
 ## Development
 
 The service imports the shared package from `../open-security-shared`.
-Install both, then run the unit tests from this directory as CI does:
+Install both, then run the unit tests from this directory as CI does. The
+image holds no test tool: the test runner goes on top of the lock, with
+`httpx`, which only `TestClient` needs:
 
 ```bash
 cd open-security-tools
 pip install ../open-security-shared
 pip install -r requirements.txt
-pip install pytest pytest-cov pytest-asyncio
+pip install pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0 httpx==0.28.1
 pytest tests/unit/ -v
 ```
 

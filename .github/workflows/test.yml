@@ -77,6 +77,17 @@ jobs:
           # tests/ci-tools/requirements.in; scripts/check_workflow_pins.py
           # fails when they differ (#726).
           pip install pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0
+          # What a service's tests need beside those and its image does not:
+          # no lock names a test tool any more (#788). guardian's pytest.ini
+          # sets DJANGO_SETTINGS_MODULE, which pytest-django reads; no module
+          # of data or of tools imports httpx, which their tests need for
+          # fastapi.testclient.TestClient. Exact versions, as above;
+          # tests/scripts/test_requirements_are_imported.py fails when a
+          # test imports what neither the lock nor this step provides.
+          case "${{ matrix.service }}" in
+            guardian)   pip install pytest-django==4.5.2 ;;
+            data|tools) pip install httpx==0.28.1 ;;
+          esac
 
       # The tools service keeps in Redis what its processes must share: each
       # caller's hourly operation count and the outcomes of asynchronous runs
@@ -175,7 +186,9 @@ jobs:
           pip install -r requirements.txt
           # Exact versions, as in the unit-tests job: these go over the
           # service's lock, so they cannot come from the hashed CI lock.
-          pip install pytest==9.1.1 pytest-asyncio==1.4.0
+          # pytest-django was in that lock, with the linters. The lock is
+          # what the image installs, and names no test tool now (#788).
+          pip install pytest==9.1.1 pytest-asyncio==1.4.0 pytest-django==4.5.2
 
       - name: Start PostgreSQL
         # The major version of docker-compose.yml. A password made for this
@@ -213,7 +226,12 @@ jobs:
   shared-package-tests:
     name: Shared Package Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # observed max 0.4 min
+    # The comment here said "observed max 0.4 min" under a limit of 10: true
+    # when the job ran tests/shared alone. It runs tests/scripts too, whose
+    # backup, restore and rotation tests start PostgreSQL and Redis with the
+    # runner's Docker, and took 5 min 51 s on #782, more than half the limit
+    # (#788). Three times and more what was observed.
+    timeout-minutes: 20  # observed max 5.9 min (4.1 to 5.8 over the last ten runs on main, 2026-10-06)
     steps:
       - uses: actions/checkout@v7
 

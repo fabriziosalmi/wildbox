@@ -18,8 +18,13 @@ count, so guardian, which imports ``scopes`` only, passed for reading
   ``env("X")``, ``Field(alias="X")``; a mention in a comment or a docstring
   is not a read, or
 * in a construct that reads the environment in JavaScript
-  (``process.env.X``), Lua (``os.getenv("X")``), nginx (``env X;``), a shell
-  script or template (``$X``, ``${X}``) or a Dockerfile (``ARG``, ``ENV``).
+  (``process.env.X``), Lua (``os.getenv("X")``), a shell script or template
+  (``$X``, ``${X}``) or a Dockerfile (``ARG``, ``ENV``).
+
+nginx's ``env X;`` is not one of them (#788). It keeps a variable for the
+worker processes, where the Lua may then ask for it; it reads nothing. It
+counted as a read, so a variable Compose passed and nginx.conf declared
+passed this test with no line of Lua or of the configuration using it.
 
 Services that run somebody else's image (PostgreSQL, Redis, n8n, Prometheus,
 Alertmanager) are not checked: what those images read is in their own
@@ -93,7 +98,6 @@ READS = (
     r"process\.env\.{name}\b",
     r"process\.env\[\s*['\"]{name}['\"]\s*\]",
     r"getenv\(\s*['\"]{name}['\"]",
-    r"^\s*env\s+{name}\s*;",
     r"\$\{{?{name}\b",
     r"^\s*(?:ARG|ENV)\s+{name}\b",
 )
@@ -372,6 +376,45 @@ def test_a_name_in_a_comment_or_a_docstring_is_not_a_read(tmp_path):
 
     assert is_read("LOG_LEVEL", tmp_path)
     assert not is_read("WORKERS", tmp_path)
+
+
+def test_a_declaration_for_nginx_workers_is_not_a_read(tmp_path):
+    """``env NAME;`` alone passed: the declaration was taken for the use."""
+    (tmp_path / "nginx.conf").write_text(
+        "env GATEWAY_DEBUG;\nenv AUTH_CACHE_TTL;\nenv CORS_ORIGINS;\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "handler.lua").write_text(
+        'local ttl = tonumber(os.getenv("AUTH_CACHE_TTL"))\n', encoding="utf-8"
+    )
+    (tmp_path / "server.conf").write_text(
+        "set_by_lua_block $origins { return os.getenv('CORS_ORIGINS') }\n",
+        encoding="utf-8",
+    )
+
+    assert not is_read("GATEWAY_DEBUG", tmp_path)
+    # Declared and asked for, in Lua or in a block of the configuration.
+    assert is_read("AUTH_CACHE_TTL", tmp_path)
+    assert is_read("CORS_ORIGINS", tmp_path)
+
+
+def test_every_variable_compose_passes_the_gateway_is_asked_for_by_name():
+    """On the tree: each one is read by the Lua, by a block of the
+    configuration or by a script of the image, and not only declared."""
+    gateway = build_contexts()["gateway"]
+    declared = set(
+        re.findall(
+            r"^env (\w+);$", (gateway / "nginx" / "nginx.conf").read_text(), re.M
+        )
+    )
+    passed = set()
+    for file in COMPOSE_FILES:
+        services = compose(file).get("services") or {}
+        passed |= environment_names(services.get("gateway"))
+
+    assert passed & declared, "the declarations of nginx.conf were not read"
+    for name in sorted(passed):
+        assert is_read(name, gateway), name
 
 
 def test_a_settings_field_is_read_under_its_prefix(tmp_path):

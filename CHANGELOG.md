@@ -74,6 +74,163 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error and would have refused every body that holds a URL; the
   application never added it. It is removed with the three `sanitize_*`
   methods and the pattern list only it used.
+- **guardian's log of a discovery that could not be queued names the
+  error, not its text** (#788). When the broker did not take a network's
+  scan, the rule's result said so in guardian's own words (#775), and the
+  line in `guardian-worker`'s log beside it held the exception's text,
+  which names the broker and its address and may hold the URL it was
+  given. The line now names the network and the class of the error.
+
+### Fixed
+
+- **Every redirect the gateway writes keeps the client on the port it
+  called** (#788). 0.12.1 fixed this for guardian's location (#776).
+  The `301` nginx writes for the eight other proxied prefixes asked
+  without their trailing slash (`/api/v1/data`, `/api/v1/cspm`,
+  `/api/v1/responder`, `/api/v1/identity`, `/api/v1/identity/auth`,
+  `/auth/users`, `/auth/jwt`, `/ws`) was still completed into
+  `https://<host>/...` with no port, and so was a `Location` on an
+  upstream's own name that a location's default `proxy_redirect` turns
+  into a gateway path: a gateway published on 8443, or behind a balancer
+  that maps a port, sent the client to port 443 of the same host. The
+  HTTPS server now sets `absolute_redirect off` for all its locations:
+  each of those redirects is a path alone, which a client resolves
+  against the URL it asked for. A `Location` that an upstream writes and
+  no `proxy_redirect` matches is passed on as before.
+  `open-security-gateway/test/redirect_tests.sh` asks for every one of
+  them on the production image, the locations read from the
+  configuration.
+
+- **The redirect from ports 80 and 8080 keeps the name the client
+  called, when it is one of the gateway's** (#788). Both listeners sent
+  every request to the first `server_name`: `http://wildbox.local/x` led
+  to `https://api.wildbox.local/x`. A request for `api.wildbox.local`,
+  `wildbox.local` or a name under `*.wildbox.local` is now redirected to
+  HTTPS on that name. Any other `Host` still gets
+  `https://api.wildbox.local`: those listeners answer for every `Host`,
+  and the gateway does not build a redirect from a name it was not
+  given. The redirect names no port, so it leads to 443 wherever HTTPS is
+  published; the gateway cannot learn that port from a request to port
+  80, and its README now says so.
+
+- **guardian's `import_vulnerabilities` command imports a file** (#788).
+  It could not: for the first row of a JSON or a CSV file it gave the
+  asset an `is_active` and a text for `environment`, and the
+  vulnerability a `cvss_score`, a `discovered_at` and a `hostname`, none
+  of which the models have, and every run ended `Import failed` with
+  nothing stored. A row is now turned into the models' fields in one
+  place for both formats (`cvss_score` is stored as `cvss_v3_score`) and
+  checked by the model's own validators: a severity that is not one of
+  the five, a score outside 0 to 10 or a port that is not one stop the
+  import with the row's number and title, and nothing of the file is
+  kept. A finding the team already has, by asset, CVE and port, is
+  skipped, or updated with `--force`, in JSON as in CSV; one with neither
+  a CVE nor a port is always stored, as the API stores it. An asset the
+  command creates has a name, the hostname. A finding the file gives no
+  score is stored without one; the old code meant to write `5.0` for
+  it. The sources `nist`, `nessus`
+  and `openvas`, which printed "not yet implemented" and ended with
+  status 0, end with an error. The command is described in guardian's
+  README.
+
+- **A port scan closes every socket it opens, and says when it could
+  not reach the host** (#788). `scan_asset_ports` closed a probe's socket
+  after the connection attempt returned, and not when it raised; the
+  banner probe likewise. Both now close it whatever happens. And every
+  error was read as "port closed": no route to the host and a network
+  that is down like a connection refused. A refused or unanswered port
+  is still not open, with no word. Any other outcome is counted by the
+  name of its error, and the scan writes one warning to the worker's log
+  with how many ports could not be tried and why. The task's result is
+  unchanged: telling the two apart there is #787.
+
+- **An IPv6 host that discovery finds without a reverse name is named
+  without colons** (#788). The name was `host-` and the address with its
+  dots replaced, so an IPv6 host was stored as `host-2606:2800:21f::1`.
+  It is now the address in full with hyphens,
+  `host-2606-2800-021f-0000-0000-0000-0000-0001`. An IPv4 host is named
+  as before (`host-93-184-215-14`) and no stored name is changed: a host
+  is found again by its address.
+- **cspm and guardian can reconnect to the Celery result backend**
+  (#788). Both locked redis-py 5.0.1 beside Celery 5.3.1, with Redis as
+  the result backend. That release of redis-py, and no other, named
+  `Connection.register_connect_callback` with a leading underscore, and
+  Celery calls the public name when it finds the pub/sub connection of
+  its result consumer closed with nothing subscribed: the reconnection
+  raised `AttributeError`, logged as `Exception ignored in
+  AsyncResult.__del__` when a result was dropped after Redis had closed
+  the connection. Both services now lock redis-py 5.0.8, the newest 5.0
+  release; nothing else in either lock moved. No Celery release calls
+  the other name, so Celery stays where it was. tools and agents lock
+  redis-py 5.2.1 and were not affected.
+
+### Removed
+
+- **`validate_team_access` in the gateway's Lua** (#788). Nothing called
+  it: `authenticate()` takes the user and the team from identity's
+  answer. `tests/scripts/test_gateway_unused_parts.py` fails for a
+  function a Lua module exports and nothing calls.
+
+- **The registration location of the gateway's test configuration**
+  (#788). `/api/v1/auth/register` was limited as production limits
+  registration and no script of the harness sent it a request. The same
+  test now fails for a location of that file no script names.
+- **Six more images no longer contain their test tools** (#788). The
+  locks of guardian, data, identity, agents, tools and responder named
+  `pytest` and its plugins and, between them, `black`, `flake8`, `isort`,
+  `mypy`, `pre-commit` and `django-stubs`, so each image installed them
+  with everything they bring: in guardian's and data's, the packages
+  `pre-commit` uses to build Python and Node.js environments. They are
+  gone from the six `requirements.in` and from the locks: guardian's
+  went from 83 packages to 52, data's from 67 to 36, identity's from 63
+  to 47, agents' from 81 to 71, tools' from 72 to 65 and responder's
+  from 44 to 35, and no version of a package that stays moved. `httpx`
+  left the locks of data and tools with them: no module of either
+  service imports it, and only the `TestClient` of their unit tests
+  used it. To run a service's tests by hand, install
+  `pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0` after
+  `requirements.txt`, with `pytest-django==4.5.2` for guardian and
+  `httpx==0.28.1` for data and tools. A command that ran one of the
+  tools inside a container, such as `docker compose exec identity
+  pytest`, no longer finds it.
+
+### CI
+
+- **`test_gateway_hardening.py` tests the roles** (#788). Its two RBAC
+  tests passed on any of 200, 401 and 403, or asked only that the
+  administrator be served. They now create a member and an admin in a
+  team through identity and require, through the gateway, that guardian
+  lets the admin write and refuses the member, also when the member
+  sends an `X-Wildbox-Role` of its own. Its two playbook tests are
+  removed: they passed for a run that completed, failed or could not be
+  read, on a stack where no service fails and no address is a known
+  threat, and what they named is tested in
+  `open-security-responder/tests/unit/test_shipped_playbooks_run.py` and
+  `tests/chaos`. So is the module's own runner, which counted the return
+  value of tests that return nothing.
+
+- **A variable nginx only declares is not a variable the gateway reads**
+  (#788). `tests/scripts/test_compose_variables_are_read.py` took
+  `env NAME;` in `nginx.conf` for a read, so a variable Compose passed
+  and nginx kept for its workers passed with no line of Lua or of the
+  configuration using it. The declaration no longer counts. Nothing in
+  the gateway was hiding behind it.
+
+- **The job that runs `tests/scripts` has a limit of 20 minutes** (#788).
+  Its limit was 10 and its comment said "observed max 0.4 min", from
+  when it ran `tests/shared` alone. It took 4.1 to 5.8 minutes over the
+  last ten runs on main and 5 min 51 s on #782.
+- **The unit-test jobs install what each suite needs beside the test
+  runner** (#788). With no test tool left in a service's lock, the two
+  jobs that run guardian's suite install `pytest-django`, and the legs of
+  data and tools install `httpx`, each on top of the lock and at the
+  version `tests/ci-tools/requirements.in` pins; `pytest-django` is
+  added to that file and to its lock.
+  `tests/scripts/test_requirements_are_imported.py` now fails when a
+  lock names a test runner, a linter or a package only those bring, when
+  a service's tests import a module that neither its lock nor the job
+  provides, and when the job names a tool the CI tools lock does not pin
+  at that version.
 
 ## [0.12.1] - 2026-10-06
 

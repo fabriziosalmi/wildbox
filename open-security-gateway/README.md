@@ -39,8 +39,29 @@ Published ports:
 | 80 | `/health`; everything else answers `301` to HTTPS |
 | 8080 | `/health`; everything else answers `301` to HTTPS |
 
-The redirect target uses the first `server_name`, so `http://localhost/x` is
-redirected to `https://api.wildbox.local/x`. Use HTTPS directly.
+### Redirects
+
+The redirect from ports 80 and 8080 keeps the name the client called when it
+is one of the names in `nginx/conf.d/wildbox_gateway.conf`
+(`api.wildbox.local`, `wildbox.local`, `*.wildbox.local`):
+`http://wildbox.local/x` is redirected to `https://wildbox.local/x`. For any
+other `Host` it names the first of them, so `http://localhost/x` is
+redirected to `https://api.wildbox.local/x`: these listeners answer for every
+`Host`, and a redirect is never built from a name the gateway was not given.
+Use HTTPS directly.
+
+That redirect names no port, so it leads to 443. A request to port 80 says
+nothing of where HTTPS is published, and no setting tells the gateway: a
+deployment that publishes HTTPS on another port has no working redirect from
+plain HTTP.
+
+On the HTTPS listener, every redirect the gateway writes itself is a path
+alone, with no scheme, host or port (`absolute_redirect off`): the `301` for
+a prefix such as `/api/v1/data` asked without its trailing slash, and a
+`Location` an upstream wrote that a `proxy_redirect` turns into a gateway
+path. A client follows it on the address it called, whatever port the
+gateway is published on and whatever stands in front of it. A `Location` an
+upstream writes that no `proxy_redirect` matches is passed on as written.
 
 A fourth listener on port 8081 is not published. Only containers on the
 Compose network reach it; identity calls the auth-cache purge endpoint there.
@@ -508,7 +529,9 @@ CI runs two checks on this directory:
   runs against the same image: which of Wildbox's own headers each
   proxying location sends its upstream. `test/redirect_tests.sh` checks, on
   the same image, that a `Location` guardian writes reaches the client as an
-  address the gateway serves, on the host and port the client called. `test/cors_tests.sh` checks CORS against it and against the test
+  address the gateway serves, on the host and port the client called; that
+  every other redirect the HTTPS listener writes keeps the client there
+  too; and where ports 80 and 8080 redirect, by `Host`. `test/cors_tests.sh` checks CORS against it and against the test
   configuration. `test/production_image_tests.sh` checks the
   image as built, with nothing mounted over `/etc/nginx`: only this
   project's configuration is loaded, port 80 answers `/health` and

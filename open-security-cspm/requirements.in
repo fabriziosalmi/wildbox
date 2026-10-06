@@ -19,7 +19,13 @@
 fastapi>=0.116.0,<1.0.0
 uvicorn[standard]==0.24.0
 celery[redis]==5.3.1
-redis==5.0.1
+# Not 5.0.1. That release alone named Connection.register_connect_callback
+# with a leading underscore, and Celery's Redis result consumer calls the
+# public name when it finds its pub/sub connection closed with nothing
+# subscribed: AttributeError, seen as "Exception ignored in
+# AsyncResult.__del__" (#788). No Celery release calls the other name; 5.0.8
+# is the newest 5.0.
+redis==5.0.8
 boto3==1.34.63
 botocore==1.34.63
 # AWS is the only provider the service scans: it refuses the others (#624),

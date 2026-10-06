@@ -9,9 +9,12 @@ if this page and that file disagree, the file is right and this page is a bug.
 
 - The **gateway** is the only service published on all interfaces. Clients
   use it over HTTPS on port 443. Ports 80 and 8080 answer `/health` and
-  answer everything else with a 301 to `https://api.wildbox.local` (the first
-  `server_name` of the gateway configuration, whatever host was asked for),
-  so authentication never happens in clear.
+  answer everything else with a 301 to HTTPS, so authentication never happens
+  in clear: on the host that was asked for when it is one of the names of
+  the gateway configuration (`api.wildbox.local`, `wildbox.local`,
+  `*.wildbox.local`), and on `https://api.wildbox.local`, the first of them,
+  for any other host. The redirect names no port: it leads to 443, wherever
+  HTTPS is published.
 - Every other published port is bound to `127.0.0.1`. Those addresses work on
   the machine running Docker and nowhere else; they are for health checks,
   debugging and the integration tests, not for clients.
