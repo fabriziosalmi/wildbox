@@ -131,6 +131,6 @@ The procedure and the reasoning behind it are in
   `make generate-secrets` again (it backs up the old file first).
 - **An API key stopped working after a rotation**: `./scripts/rotate_secrets.sh --list`
   explains what rotating each secret invalidates.
-- **identity exits naming `API_KEY_HASH_SECRET`**: it is required with
-  `ENVIRONMENT=production`. On an existing deployment run
+- **identity exits naming `API_KEY_HASH_SECRET`**: it is required unless
+  `ENVIRONMENT` is `development`. On an existing deployment run
   `make init-api-key-hash`; on a fresh one, `make generate-secrets`.

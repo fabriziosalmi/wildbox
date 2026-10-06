@@ -1,5 +1,6 @@
 """Enhanced configuration with better validation and security."""
 
+from open_security_shared.environment import is_development, production_checks_apply
 from pydantic_settings import BaseSettings
 from pydantic import Field, validator, SecretStr
 from typing import Optional, List, Union
@@ -173,13 +174,19 @@ class Settings(BaseSettings):
         """Get the secret key as a string."""
         return self.secret_key.get_secret_value()
     
-    def is_production(self) -> bool:
-        """Check if running in production environment."""
-        return self.environment == "production"
-    
+    def production_checks_apply(self) -> bool:
+        """Whether the start-up checks of app/main.py are fatal.
+
+        True for every environment that is not explicitly development, by
+        the rule every service shares. There was an is_production() here,
+        true for the exact value "production" only, so "staging" started
+        with a weak API key, and so did an undeclared environment (#736).
+        """
+        return production_checks_apply(self.environment)
+
     def is_development(self) -> bool:
         """Check if running in development environment."""
-        return self.environment == "development"
+        return is_development(self.environment)
 
 
 # Global settings instance

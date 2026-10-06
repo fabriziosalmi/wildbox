@@ -88,14 +88,36 @@ def _record_membership(user, team_id):
     why it expires (apps.core.tenancy.current_memberships): a user identity
     has removed from the team no longer gets here to refresh it.
     """
+    from apps.core.memberships import revoked_recently
     from apps.core.models import TeamMembership
 
     now = timezone.now()
+    membership = TeamMembership.objects.filter(team_id=team_id, user=user).first()
+    if membership is not None:
+        if membership.last_seen < now - MEMBERSHIP_REFRESH_INTERVAL:
+            TeamMembership.objects.filter(pk=membership.pk).update(last_seen=now)
+        return
+
+    # No row. identity may have just said that this membership ended, and
+    # this request have been authenticated a moment before it did: recording
+    # it would make the former member one of the team's users again for a
+    # whole window (#724; apps.core.memberships).
+    if revoked_recently(user.username, team_id, now):
+        logger.info(
+            "[GATEWAY-AUTH] Membership of %s in %s not recorded: identity "
+            "ended it moments ago",
+            user.username,
+            team_id,
+        )
+        return
     membership, created = TeamMembership.objects.get_or_create(
         team_id=team_id, user=user, defaults={'last_seen': now}
     )
-    if not created and membership.last_seen < now - MEMBERSHIP_REFRESH_INTERVAL:
-        TeamMembership.objects.filter(pk=membership.pk).update(last_seen=now)
+    # The notice may have arrived between the check and the row. It is
+    # written before the rows are deleted, so one of the two sees the other:
+    # either the deletion removed this row, or the note is there now.
+    if created and revoked_recently(user.username, team_id):
+        TeamMembership.objects.filter(pk=membership.pk).delete()
 
 
 class GatewayUser:

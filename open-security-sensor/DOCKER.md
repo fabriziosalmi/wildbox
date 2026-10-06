@@ -97,13 +97,33 @@ stack itself the root `docker-compose.yml` already wires all of this.
 | :--- | :--- |
 | `./config.yaml.example:/etc/security-sensor/config.yaml:ro` | Configuration |
 | `sensor_logs:/var/log/security-sensor` | Sensor log file |
-| `sensor_data:/var/lib/security-sensor` | Sensor state |
+| `sensor_data:/var/lib/security-sensor` | Sensor state: the log forwarder's read positions (`data_dir`), so that a recreated container goes on where the last one stopped |
 | `/proc/stat`, `/proc/meminfo`, the `/proc` load average file, `/sys/class/net` (read-only, under `/host`) | Host metrics |
 
 The root `docker-compose.yml` also mounts the gateway's certificate,
 `gateway_cert:/etc/ssl/wildbox`, read-only. The compose files do not mount
 the host's `/proc`, `/etc`, `/var/log` or the Docker socket: this table is
 everything of the host the container can read.
+
+## Watching host files
+
+File integrity monitoring is on in the shipped configuration, and its paths,
+`/host/etc`, `/host/bin`, `/host/usr/bin` and `/host/opt`, are not mounted
+by the compose files: the sensor logs that it is watching nothing, and
+`GET /api/v1/components` shows `file_monitor.watching: false` with the four
+paths under `missing_paths`. To watch a host directory, mount it read-only
+in a `docker-compose.override.yml`:
+
+```yaml
+services:
+  sensor:
+    volumes:
+      - /etc:/host/etc:ro
+```
+
+and keep in `fim.paths` what you mounted. The sensor reads the mount as uid
+999: what that user cannot read is watched without a hash. See
+[README.md](README.md#file-integrity-monitoring).
 
 ## Forwarding host logs
 
@@ -154,8 +174,15 @@ docker compose logs sensor | grep "Log source"
 - A source follows no link out of the directory its path names, and reads
   regular files only.
 
-The keys of `log_sources`, rotation, and what is a start-up error or a
-warning are in [README.md](README.md#log-forwarding).
+- The position reached in each file is kept in the `sensor_data` volume:
+  after `docker compose up -d` recreates the container, or a restart, the
+  sensor goes on after the last line Wildbox accepted. `docker compose down
+  -v` removes the volume, and with it the positions: each source then starts
+  as its `read_from` says. Do not share the volume between sensors;
+  `docker-compose.scale.yml` does, so do not enable log forwarding with it.
+
+The keys of `log_sources`, rotation, restarts, and what is a start-up error
+or a warning are in [README.md](README.md#log-forwarding).
 
 ## Management
 
@@ -184,6 +211,9 @@ docker compose down
 - `Security Sensor not started: ... log_sources[0] ('name'): ...`: the
   `log_sources` section has an entry the sensor cannot understand; the
   message says which and why. See [README.md](README.md#log-forwarding).
+- `File integrity monitoring is enabled and none of the 4 paths in fim.paths
+  exists: it is watching nothing`: no host directory is mounted for it. See
+  [Watching host files](#watching-host-files).
 - `Log source 'name': <path> is not read: ...`: the file is not mounted, does
   not exist yet, or uid 999 may not read it. See
   [Forwarding host logs](#forwarding-host-logs).

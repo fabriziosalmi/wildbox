@@ -33,7 +33,7 @@ app.autodiscover_tasks()
 #              queue that carries notifications and SLA checks
 #   reporting  report generation and alert-rule evaluation
 #   analytics  full recomputation of risk scores and compliance metrics
-#   default    notifications, enrichment and the maintenance sweeps
+#   default    notifications and the maintenance sweeps
 #
 # guardian-worker in docker-compose.yml consumes exactly these queues; the
 # same test compares its -Q list with the keys below.
@@ -62,7 +62,6 @@ TASK_QUEUES = {
         'apps.compliance.tasks.check_expiring_exceptions',
         'apps.vulnerabilities.tasks.notify_vulnerability_assignment',
         'apps.vulnerabilities.tasks.check_sla_violations',
-        'apps.vulnerabilities.tasks.enrich_vulnerability_with_threat_intel',
         'apps.vulnerabilities.tasks.cleanup_old_vulnerability_history',
         # Only queues other tasks, each on its own queue (#548).
         'apps.core.tasks.dispatch_due_schedules',

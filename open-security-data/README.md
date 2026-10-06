@@ -194,8 +194,8 @@ Settings are read from environment variables in `app/config.py`;
 `.env.example` lists them. In the root compose file the service receives:
 
 - `DATABASE_URL`: from `DATA_DATABASE_URL`, falling back to `DATABASE_URL`.
-- `SECRET_KEY`: from `DATA_SECRET_KEY`; required when `ENVIRONMENT` is
-  `production`.
+- `SECRET_KEY`: from `DATA_SECRET_KEY`; required unless `ENVIRONMENT` is
+  `development`, as are `DATABASE_URL` and `DEBUG=false`.
 - `GATEWAY_INTERNAL_SECRET`: shared with the gateway.
 - `ENVIRONMENT`, `DEBUG`, `LOG_LEVEL`, `CORS_ORIGINS`.
 

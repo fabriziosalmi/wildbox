@@ -37,7 +37,9 @@ class ComplianceFrameworkViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         """Get all controls for a framework"""
         framework = self.get_object()
         controls = framework.controls.all()
-        serializer = ComplianceControlSerializer(controls, many=True)
+        serializer = ComplianceControlSerializer(
+            controls, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
@@ -47,7 +49,9 @@ class ComplianceFrameworkViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         # A shared framework is assessed by many teams: only the caller's
         # assessments (#642).
         assessments = self.team_queryset(framework.assessments.all())
-        serializer = ComplianceAssessmentSerializer(assessments, many=True)
+        serializer = ComplianceAssessmentSerializer(
+            assessments, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
@@ -56,7 +60,9 @@ class ComplianceFrameworkViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         framework = self.get_object()
         metrics = self.team_queryset(framework.metrics.all()).order_by('-metric_date').first()
         if metrics:
-            serializer = ComplianceMetricsSerializer(metrics)
+            serializer = ComplianceMetricsSerializer(
+                metrics, context=self.get_serializer_context()
+            )
             return Response(serializer.data)
         return Response({'detail': 'No metrics available'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -77,7 +83,9 @@ class ComplianceControlViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         control = self.get_object()
         # A shared control is tested by many teams (#642).
         results = self.team_queryset(control.results.all())
-        serializer = ComplianceResultSerializer(results, many=True)
+        serializer = ComplianceResultSerializer(
+            results, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
@@ -85,7 +93,9 @@ class ComplianceControlViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         """Get all evidence for a control"""
         control = self.get_object()
         evidence = self.team_queryset(control.evidence.all())
-        serializer = ComplianceEvidenceSerializer(evidence, many=True)
+        serializer = ComplianceEvidenceSerializer(
+            evidence, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
 
@@ -104,7 +114,9 @@ class ComplianceAssessmentViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet)
         """Get all results for an assessment"""
         assessment = self.get_object()
         results = assessment.results.select_related('control').all()
-        serializer = ComplianceResultSerializer(results, many=True)
+        serializer = ComplianceResultSerializer(
+            results, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
@@ -112,7 +124,9 @@ class ComplianceAssessmentViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet)
         """Get all evidence for an assessment"""
         assessment = self.get_object()
         evidence = assessment.evidence.select_related('control').all()
-        serializer = ComplianceEvidenceSerializer(evidence, many=True)
+        serializer = ComplianceEvidenceSerializer(
+            evidence, many=True, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])

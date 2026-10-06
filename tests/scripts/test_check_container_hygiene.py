@@ -1486,14 +1486,12 @@ def test_every_image_is_built_on_a_pull_request():
     assert build[0]["with"]["context"] == "./open-security-${{ matrix.service }}"
     assert build[0]["with"]["push"] is False
     # A change to a Dockerfile, to what it copies or to the shared package
-    # starts the workflow. PyYAML reads the key `on` as the boolean True.
+    # starts the workflow: the filter is every service directory whole, the
+    # shared package among them (#736; tests/scripts/
+    # test_workflow_path_filters.py derives what it must cover). PyYAML reads
+    # the key `on` as the boolean True.
     paths = workflow[True]["pull_request"]["paths"]
-    for pattern in (
-        "open-security-*/Dockerfile",
-        "open-security-*/sensor/**",
-        "open-security-shared/**",
-    ):
-        assert pattern in paths, pattern
+    assert "open-security-*/**" in paths
 
 
 def test_no_compose_file_runs_a_log_shipper():

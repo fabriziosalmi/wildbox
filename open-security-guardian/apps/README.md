@@ -22,9 +22,10 @@ authenticated caller.
 or talk to external systems:
 
 - `scanners`: no code contacts Nessus, Qualys, OpenVAS or any other scanner.
-  A scan's `status` is a field of the record, set with `PATCH`. Creating,
-  changing, triggering or enabling a scan schedule answers 400
-  (`ScanScheduleViewSet`).
+  A scan's `status` is a field of the record, set with `PATCH`. A scan
+  schedule would never run, so the API has no route that creates, changes,
+  triggers or enables one (`ScanScheduleViewSet`: list, retrieve, delete
+  and `disable/` only).
 - `integrations`: no code contacts an external system, synchronizes
   anything, receives or sends a webhook, delivers through a notification
   channel, or writes an integration log. The one action is `cleanup_logs`,
