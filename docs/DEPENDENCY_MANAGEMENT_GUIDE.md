@@ -78,7 +78,20 @@ The same check reads how an image installs OS packages and binaries:
   for each architecture and a failure for any other. The tools image does this
   for Trivy and the sensor image for osquery.
 
-The dashboard uses `package-lock.json` and `npm ci`.
+The dashboard uses `package-lock.json` and `npm ci`. To move a transitive
+package, run `npm update <package>` in `open-security-dashboard`: it rewrites
+the lock within the ranges the parents declare. An entry under `overrides` in
+`package.json` is for the case where no release of the parent accepts the
+version that is needed, and it stays until one does:
+
+- `seroval` and `seroval-plugins` at `^1.6.3`. solid-js 1.9.15, which
+  `@tanstack/react-query-devtools` brings in, declares `~1.5.4` for both, and
+  the two advisories of October 2026 (GHSA-p6vx-979v-rg4c, GHSA-jp82-f5mq-hwhp)
+  are fixed from 1.6.2 and 1.6.3 only. The two packages are released together,
+  so they are overridden together. Remove both entries when
+  `npm view solid-js dependencies` shows a range that admits `seroval` 1.6.3
+  or later, or when the devtools no longer depend on solid-js 1.x, then run
+  `npm install` and check `npm ls seroval`.
 
 ## Compiling the Locks
 
