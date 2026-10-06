@@ -4,6 +4,7 @@ FastAPI main application for Open Security Responder
 SOAR orchestration service with REST API interface.
 """
 
+import asyncio
 import logging
 import os
 from datetime import datetime
@@ -89,9 +90,62 @@ async def lifespan(app: FastAPI):
         raise
     
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Open Security Responder...")
+    _close_health_redis()
+
+
+# --- The Redis client of /health -----------------------------------------------
+# One client for every probe (#788). /health made a new one each time it was
+# asked, with a connection pool of its own, opened a connection, and left
+# both to the garbage collector: a connection to Redis opened and dropped
+# every few seconds, for as long as the service ran. And it had no timeout:
+# a Redis that accepts the connection and never answers held the probe, and
+# the event loop the PING was sent from, for as long as it did.
+
+# Seconds /health gives Redis to accept a connection, and to answer the PING.
+# Under the 5 seconds `make health` waits for the answer
+# (scripts/lib/health_endpoints.sh).
+HEALTH_REDIS_TIMEOUT_SECONDS = 2.0
+
+_health_redis: Optional["redis.Redis"] = None
+
+
+def _health_redis_client() -> "redis.Redis":
+    """The client /health asks, made at the first probe: from_url does not
+    connect, and the pool keeps one connection between two probes."""
+    global _health_redis
+    if _health_redis is None:
+        _health_redis = redis.from_url(
+            settings.redis_url,
+            socket_connect_timeout=HEALTH_REDIS_TIMEOUT_SECONDS,
+            socket_timeout=HEALTH_REDIS_TIMEOUT_SECONDS,
+        )
+    return _health_redis
+
+
+def _close_health_redis() -> None:
+    """Close the client and its connections, when the service stops."""
+    global _health_redis
+    client, _health_redis = _health_redis, None
+    if client is not None:
+        try:
+            client.close()
+        except Exception as error:
+            logger.warning(
+                "The Redis client of /health could not be closed: %s",
+                type(error).__name__,
+            )
+
+
+def _redis_answers() -> bool:
+    """Whether Redis answers a PING within its limits."""
+    try:
+        _health_redis_client().ping()
+    except Exception:
+        return False
+    return True
 
 
 # /docs, /redoc and /openapi.json are served in development only, by the rule
@@ -169,14 +223,11 @@ app.add_middleware(
 async def health_check():
     """Health check endpoint"""
     try:
-        # Test Redis connection
-        redis_client = redis.from_url(settings.redis_url)
-        redis_connected = True
-        try:
-            redis_client.ping()
-        except Exception:
-            redis_connected = False
-        
+        # Test Redis connection: the one client of /health, and in a thread,
+        # so that a Redis that is slow to answer holds the probe for its
+        # limit and nothing else (#788).
+        redis_connected = await asyncio.to_thread(_redis_answers)
+
         # Count loaded playbooks
         playbooks_loaded = len(playbook_parser.playbooks)
         

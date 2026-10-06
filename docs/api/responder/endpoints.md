@@ -449,6 +449,13 @@ does not route it (`/api/v1/responder/health` maps to `/v1/health`, which does n
 exist). It returns `{"status": "healthy", "timestamp": "..."}`, or
 `"status": "unhealthy"` when Redis does not answer.
 
+Redis is asked with one client, kept between probes and closed when the service
+stops, and given 2 seconds to accept a connection and 2 to answer the `PING`: a
+Redis that accepts and never answers is `unhealthy` after 2 seconds. Until 0.12.2
+every probe made a client of its own and opened a new connection, the client had
+no timeout, and the `PING` was sent from the event loop, so such a Redis held the
+probe, and every other request, for as long as it said nothing.
+
 ---
 
 ## Rate limits
