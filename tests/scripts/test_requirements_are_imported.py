@@ -126,12 +126,9 @@ USED_WITHOUT_IMPORT = {
         "pytest-asyncio": TEST_PLUGIN,
         "pytest-cov": TEST_PLUGIN + " (Makefile)",
     },
-    "sensor": {
-        "pytest-cov": TEST_PLUGIN,
-        "black": DEV_TOOL,
-        "flake8": DEV_TOOL,
-        "mypy": DEV_TOOL,
-    },
+    # Nothing: its lock holds what the sensor imports. Its test runner and
+    # linters are the ones the workflows install (#777).
+    "sensor": {},
     "tools": {
         "python-dotenv": ENV_FILE,
         "aiodns": "aiohttp resolves names with it when it is installed"

@@ -54,6 +54,14 @@ follows them (``journalctl --follow``, ``log stream``):
 * A command that ends is started again, after a delay that doubles from
   ``CHILD_RESTART_MIN`` to ``CHILD_RESTART_MAX`` seconds and starts over
   once a run has lasted ``CHILD_STABLE_SECONDS``.
+* A command that must end is asked to (SIGTERM), killed if it has not after
+  ``CHILD_TERM_SECONDS``, and given ``CHILD_KILL_SECONDS`` more to be gone;
+  its output is read to its end meanwhile. Both are parts of the time the
+  collectors have to stop (``sensor.core.stop_limits``).
+* The entries of a read of the command's output that are not events yet
+  when the forwarder stops are counted (``interrupted``), as the events
+  still in the sensor are: the journal's are read again from the saved
+  cursor, the unified log's are lost.
 * The journal is followed from the cursor of the last entry read, so a
   restart of the command neither skips nor repeats; the cursor of the last
   entry the data service accepted is saved with the file positions, and a
@@ -99,6 +107,11 @@ from sensor.collectors.position_store import (
     file_entries,
 )
 from sensor.core.config import LogSourceConfig, SensorConfig, has_wildcard
+from sensor.core.stop_limits import (
+    CHILD_KILL_SECONDS,
+    CHILD_TERM_SECONDS,
+    STATE_WRITE_SECONDS,
+)
 from sensor.pipeline.delivery import DELIVERY_KEY, Delivery
 from sensor.utils.platform import is_windows, is_linux, is_macos
 
@@ -138,8 +151,6 @@ MAX_ENTRY_BYTES = 256 * 1024
 CHILD_RESTART_MIN = 1.0
 CHILD_RESTART_MAX = 300.0
 CHILD_STABLE_SECONDS = 60.0
-# Seconds a command gets to end after it is told to.
-CHILD_STOP_SECONDS = 5.0
 # Bytes of a command's standard error kept for the log and the status.
 STDERR_KEPT = 512
 # Starts in a row that a saved journal cursor may fail before it is given up.
@@ -446,6 +457,13 @@ class LogForwarder:
         self._own_log = os.path.realpath(own_log) if own_log else None
 
         self.stats = {"lines_forwarded": 0, "lines_truncated": 0}
+        # What the forwarder had read from a command and made no event of
+        # yet when it was stopped (#777): one item for each such entry, a
+        # Delivery that is never settled when the entry will be read again
+        # (the journal, with a saved cursor), None when it is lost. The
+        # agent counts them at the stop with what its queues held, as it
+        # does the processor's ``interrupted``.
+        self.interrupted: List[Optional[Delivery]] = []
 
     def _initialize_log_sources(self) -> List[LogSourceConfig]:
         """The enabled sources: the configured ones, or the platform's
@@ -579,7 +597,20 @@ class LogForwarder:
         for runtime in self._system_sources.values():
             if runtime.state not in ("skipped", "unavailable"):
                 runtime.state = "stopped"
-        self.save_positions()
+        # In a worker thread, and not for longer than a collector may take:
+        # the periodic write may be stuck in its own (a data directory that
+        # does not answer) and hold the store's lock. This was a call in the
+        # event loop, which then waited for that lock itself, for ever, and
+        # with it everything that could have ended the stop (#777).
+        try:
+            await asyncio.wait_for(self.write_positions(), STATE_WRITE_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "The log positions were not written within %.0f seconds of "
+                "the log forwarder's stop: a write to %s has not ended",
+                STATE_WRITE_SECONDS,
+                self.positions.directory,
+            )
 
     # -- read positions ---------------------------------------------------
 
@@ -659,7 +690,11 @@ class LogForwarder:
         return sources
 
     def save_positions(self) -> bool:
-        """Write the positions now, if they have moved since the last write."""
+        """Write the positions now, if they have moved since the last write.
+
+        In the calling thread, which waits for a write in progress: not for
+        the event loop, whose writes are ``write_positions()``.
+        """
         if not self.positions.persistent or not self._positions_dirty:
             return False
         self._positions_dirty = False
@@ -669,31 +704,45 @@ class LogForwarder:
         self._positions_dirty = True  # tried again at the next interval
         return False
 
-    async def _save_periodically(self):
-        """Write the positions while they move, off the event loop."""
+    async def write_positions(self) -> Optional[str]:
+        """Write the positions now, if they have moved since the last write,
+        in a worker thread: the event loop never waits for the disk, nor for
+        a write that is waiting for it.
+
+        Why they could not be written, or None: they are written, or had not
+        moved. It has no time limit of its own; a caller that has one gives
+        it up (``asyncio.wait_for``), and the write is then left to its
+        thread.
+        """
+        if not self.positions.persistent or not self._positions_dirty:
+            return None
+        self._positions_dirty = False
+        # Numbered here, on the loop: a write that reaches the disk after a
+        # later one must not replace it.
+        serial = self.positions.next_serial()
+        snapshot = self._snapshot()
         loop = asyncio.get_running_loop()
+        try:
+            saved = await loop.run_in_executor(
+                None, self.positions.save, snapshot, serial
+            )
+        except asyncio.CancelledError:
+            # Given up while the write was being made: how it ends is not
+            # known here, so the next write is made whatever became of this
+            # one. It used to be taken for written, and when it failed
+            # nothing was saved at the stop (#754).
+            self._positions_dirty = True
+            raise
+        if saved:
+            return None
+        self._positions_dirty = True  # tried again at the next interval
+        return self.positions.problem or "the write failed"
+
+    async def _save_periodically(self):
+        """Write the positions while they move."""
         while self.running:
             await asyncio.sleep(POSITION_SAVE_INTERVAL)
-            if not self._positions_dirty:
-                continue
-            self._positions_dirty = False
-            # Numbered here, on the loop: a write that reaches the disk
-            # after the one made at stop must not replace it.
-            serial = self.positions.next_serial()
-            snapshot = self._snapshot()
-            try:
-                saved = await loop.run_in_executor(
-                    None, self.positions.save, snapshot, serial
-                )
-            except asyncio.CancelledError:
-                # Stopped while the write was being made: how it ends is
-                # not known here, so stop() writes the positions once more.
-                # It used to take them for written, and when this write
-                # failed nothing was saved at the stop (#754).
-                self._positions_dirty = True
-                raise
-            if not saved:
-                self._positions_dirty = True
+            await self.write_positions()
 
     # -- file sources -----------------------------------------------------
 
@@ -1207,7 +1256,11 @@ class LogForwarder:
                 errors = asyncio.create_task(self._read_stderr(process, runtime))
                 closed = False
                 try:
-                    await self._read_entries(process.stdout, handle)
+                    await self._read_entries(
+                        process.stdout,
+                        handle,
+                        lambda lines: self._not_handled(runtime, lines),
+                    )
                     closed = True  # it closed its output: it is ending
                 except asyncio.CancelledError:
                     raise
@@ -1216,14 +1269,12 @@ class LogForwarder:
                     # again, from where the reading had got to.
                     logger.error("Log source %r: error reading %s: %s", source.name, argv[0], e)
                 finally:
-                    await self._end_command(process, ending=closed)
-                    # What it had written and nobody read: taken out of the
-                    # pipe, so that the pipe closes with the command.
-                    rest = asyncio.gather(self._discard(process.stdout), errors)
-                    try:
-                        await asyncio.wait_for(rest, CHILD_STOP_SECONDS)
-                    except (asyncio.TimeoutError, asyncio.CancelledError):
-                        pass
+                    await self._end_command(
+                        process,
+                        errors,
+                        f"Log source {source.name!r}: {argv[0]}",
+                        ending=closed,
+                    )
                 runtime.last_exit = process.returncode
             if not self.running:
                 break
@@ -1255,9 +1306,16 @@ class LogForwarder:
         if runtime.ended is not None:
             runtime.ended(forwarded)
 
-    async def _read_entries(self, stream: asyncio.StreamReader, handle):
+    async def _read_entries(self, stream: asyncio.StreamReader, handle, left=None):
         """Give ``handle`` each line of ``stream``, holding at most
-        ``MAX_ENTRY_BYTES`` and one read of it."""
+        ``MAX_ENTRY_BYTES`` and one read of it.
+
+        One read is many lines, and ``handle`` waits while the queue is
+        full: a reader that is stopped there holds the lines after the one
+        it was handling. ``left`` is called with them (#777). They used to
+        be in no count: the line being handled is the queue's
+        (``CountingQueue.turned_away``), the ones behind it were nobody's.
+        """
         partial = b""
         discarding = False
         while True:
@@ -1268,12 +1326,17 @@ class LogForwarder:
                 return  # the command closed its output: it has ended
             lines = (partial + chunk).split(b"\n")
             partial = lines.pop()
-            for line in lines:
+            for index, line in enumerate(lines):
                 if discarding:
                     # The end of an entry whose beginning was forwarded cut.
                     discarding = False
                     continue
-                await handle(line, len(line) > MAX_ENTRY_BYTES)
+                try:
+                    await handle(line, len(line) > MAX_ENTRY_BYTES)
+                except asyncio.CancelledError:
+                    if left is not None:
+                        left(lines[index + 1 :])
+                    raise
             if len(partial) > MAX_ENTRY_BYTES:
                 if not discarding:
                     await handle(partial, True)
@@ -1298,34 +1361,119 @@ class LogForwarder:
         while await stream.read(READ_CHUNK):
             pass
 
-    @staticmethod
-    async def _end_command(process, ending: bool = False):
-        """End the command if it is still running, and wait for it.
+    def _not_handled(self, runtime: _SystemSource, lines: List[bytes]):
+        """The reader of a command was stopped with ``lines`` read and not
+        handled: keep one item of ``interrupted`` for each that is an entry.
+
+        A journal entry is read again after the restart when its cursor is
+        kept (the saved one is of the last entry accepted, which is before
+        all of these); an entry of the unified log is not, ``log stream``
+        cannot be asked for it again.
+        """
+        again = runtime.source.type == "journald" and self.positions.persistent
+        for line in lines:
+            data, _ = self._entry_data(line, len(line) > MAX_ENTRY_BYTES)
+            if data is None:
+                continue
+            self.interrupted.append(
+                Delivery(_nothing_to_settle, replayable=True) if again else None
+            )
+
+    async def _end_command(self, process, errors, what: str, ending: bool = False):
+        """End the command if it is still running, and wait until it is
+        gone: exited, waited for, and its output read to its end.
 
         ``ending``: it closed its output and is expected to exit by itself.
         It is then waited for first: signalling a process that has exited
         and was not waited for yet loses its exit status.
+
+        Every wait has a limit, and the limits are parts of the time the
+        collectors have to stop (``sensor.core.stop_limits``). They used to
+        be 5 seconds to end, no limit at all once killed, and 5 more for the
+        output: more than the 8 the agent waits, which then cut this short
+        where it was. And a stop that came while a command was ending by
+        itself left it running (#777).
         """
-        if process.returncode is not None:
-            return
+        # What it had written and nobody read is taken out of its pipes
+        # while it is waited for: asyncio (3.11) does not report the exit of
+        # a child whose output is still unread, and a command that is
+        # writing to a full pipe does not see that it was asked to end.
+        gone = asyncio.ensure_future(
+            asyncio.gather(
+                self._discard(process.stdout),
+                errors,
+                process.wait(),
+                return_exceptions=True,
+            )
+        )
+        # However it ends, when it is given up too: nobody is left to ask.
+        gone.add_done_callback(lambda future: future.cancelled() or future.exception())
+        steps = [
+            (process.terminate, CHILD_TERM_SECONDS),
+            (process.kill, CHILD_KILL_SECONDS),
+        ]
         if ending:
-            try:
-                await asyncio.wait_for(process.wait(), CHILD_STOP_SECONDS)
-                return
-            except asyncio.TimeoutError:
-                pass
+            steps.insert(0, (None, CHILD_TERM_SECONDS))
         try:
-            process.terminate()
-        except (OSError, ProcessLookupError):
-            pass
+            for signal_it, seconds in steps:
+                if signal_it is not None and process.returncode is None:
+                    try:
+                        signal_it()
+                    except (OSError, ProcessLookupError):
+                        pass
+                done, _ = await asyncio.wait({gone}, timeout=seconds)
+                if done:
+                    return
+            logger.error(
+                "%s (pid %s) was killed and was not gone within %.0f "
+                "seconds: its output is closed",
+                what,
+                process.pid,
+                CHILD_KILL_SECONDS,
+            )
+        except asyncio.CancelledError:
+            # The forwarder is stopped while the command was ending by
+            # itself, or being asked to: it is not asked again. Killed, and
+            # given the time a killed child has, so that it is waited for
+            # and does not outlive the forwarder.
+            if not gone.done():
+                try:
+                    process.kill()
+                except (OSError, ProcessLookupError):
+                    pass
+                await asyncio.wait({gone}, timeout=CHILD_KILL_SECONDS)
+            raise
+        finally:
+            if not gone.done():
+                # A process it started still holds its output open, or the
+                # agent has stopped waiting: the pipes are closed on this
+                # side, so that nothing of the command is left here.
+                gone.cancel()
+                transport = getattr(process, "_transport", None)
+                if transport is not None:
+                    transport.close()
+
+    @staticmethod
+    def _entry_data(raw: bytes, cut: bool) -> Tuple[Optional[Any], Optional[str]]:
+        """What a line of a command's output holds.
+
+        ``(data, None)`` for an entry: the object it is, or, for the
+        beginning of an entry too long to forward whole (``cut``), that text
+        as ``raw_message``. ``(None, why)`` for a line that is none:
+        ``"blank"``, or ``"unparsed"`` when it is not a JSON object.
+        """
+        if cut:
+            return {'raw_message': LogForwarder._cut_text(raw)}, None
+        text = raw.decode("utf-8", errors="replace").strip()
+        if not text:
+            return None, "blank"
         try:
-            await asyncio.wait_for(process.wait(), CHILD_STOP_SECONDS)
-        except asyncio.TimeoutError:
-            try:
-                process.kill()
-            except (OSError, ProcessLookupError):
-                pass
-            await process.wait()
+            data = json.loads(text)
+        except (ValueError, RecursionError):
+            data = None
+        if not isinstance(data, dict):
+            return None, "unparsed"
+        return data, None
 
     @staticmethod
     def _cut_text(raw: bytes) -> str:
@@ -1388,25 +1536,19 @@ class LogForwarder:
         """Queue one entry of journalctl's output."""
         source = runtime.source
         metadata = {'log_source': source.name, 'format': 'json'}
+        data, why_not = self._entry_data(raw, cut)
+        if data is None:
+            if why_not == "unparsed":
+                runtime.entries_unparsed += 1
+                logger.debug("Log source %r: a line of journalctl is not an entry", source.name)
+            return
         if cut:
-            data: Any = {'raw_message': self._cut_text(raw)}
             metadata['truncated'] = True
             # Wherever it is in what was kept: journalctl does not print
             # an entry's fields in a fixed order.
             found = _JOURNAL_CURSOR.search(raw)
             cursor = found.group(1).decode("ascii", errors="replace") if found else None
         else:
-            text = raw.decode("utf-8", errors="replace").strip()
-            if not text:
-                return
-            try:
-                data = json.loads(text)
-            except (ValueError, RecursionError):
-                data = None
-            if not isinstance(data, dict):
-                runtime.entries_unparsed += 1
-                logger.debug("Log source %r: a line of journalctl is not an entry", source.name)
-                return
             cursor = data.get('__CURSOR')
         if not isinstance(cursor, str) or not CURSOR_PATTERN.match(cursor):
             cursor = None
@@ -1665,22 +1807,15 @@ class LogForwarder:
         """Queue one entry of log stream's output."""
         source = runtime.source
         metadata = {'log_source': source.name, 'format': 'json'}
-        if cut:
-            data: Any = {'raw_message': self._cut_text(raw)}
-            metadata['truncated'] = True
-        else:
-            text = raw.decode("utf-8", errors="replace").strip()
-            if not text:
-                return
-            try:
-                data = json.loads(text)
-            except (ValueError, RecursionError):
-                data = None
-            if not isinstance(data, dict):
+        data, why_not = self._entry_data(raw, cut)
+        if data is None:
+            if why_not == "unparsed":
                 # Among them the line log stream begins with, which says
                 # what it filters on.
                 runtime.entries_unparsed += 1
-                return
+            return
+        if cut:
+            metadata['truncated'] = True
 
         event = {
             'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -1858,3 +1993,7 @@ class LogForwarder:
 
 def _uid() -> Any:
     return os.geteuid() if hasattr(os, "geteuid") else "unknown"
+
+
+def _nothing_to_settle() -> None:
+    """What the Delivery of an entry that never became an event does."""

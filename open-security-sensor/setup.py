@@ -60,8 +60,9 @@ requirements = _read_requirements()
 #
 # The `windows` and `macos` extras named pywin32, wmi and pyobjc, which no
 # module of the sensor imports: it reads the Windows event log and the macOS
-# unified log by running the system's own commands. The `dev` extra repeated
-# the test tools requirements.in already pins.
+# unified log by running the system's own commands. The `dev` extra named
+# test tools; the ones the tests run with are those CI installs over the lock
+# (tests/ci-tools/requirements.in), and requirements.in names none (#777).
 #
 # `security-sensor` and `ossensor` pointed at `main:main`, and main.py is not
 # part of what this file packages (find_packages() finds `sensor` only): after

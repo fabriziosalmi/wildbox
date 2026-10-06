@@ -187,7 +187,7 @@ async def test_a_killed_query_whose_output_stays_open_is_not_waited_for(
     manager, record = osqueryi
     # Long enough for the child to have started the other process.
     monkeypatch.setattr(osquery_manager, "QUERY_TIMEOUT", 3)
-    monkeypatch.setattr(osquery_manager, "KILL_WAIT", 0.5)
+    monkeypatch.setattr(osquery_manager, "CHILD_KILL_SECONDS", 0.5)
 
     held = _open_descriptors()
     started = time.monotonic()

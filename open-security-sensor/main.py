@@ -80,15 +80,16 @@ from typing import Optional  # noqa: E402
 
 from sensor.core.agent import SecuritySensorAgent  # noqa: E402
 from sensor.core.config import SensorConfig, load_config  # noqa: E402
+from sensor.core.stop_limits import LAST_WRITES_SECONDS  # noqa: E402
 from sensor.utils.logging import setup_logging  # noqa: E402
-from sensor.utils.platform import get_platform_info  # noqa: E402
+from sensor.utils.platform import describe_platform  # noqa: E402
 
 __version__ = "1.0.0"
 
 logger = logging.getLogger(__name__)
 
 # Two more of the stop's time limits; the others, and what they add up to,
-# are in sensor/core/agent.py.
+# are in sensor/core/stop_limits.py.
 #
 # Seconds a start that is abandoned gets to end, when the stop is asked for
 # while the sensor is starting: a query that was running is killed and
@@ -97,9 +98,16 @@ START_ABORT_SECONDS = 2.0
 # Seconds the process gets to end by itself once the sensor has stopped. The
 # event loop and the interpreter wait, without a limit of their own, for
 # every worker thread: a reverse DNS lookup the resolver has not answered,
-# a scan in a file system that does not answer. Such a thread has nothing
-# left to write and cannot be interrupted, and the process leaves without
-# it.
+# a scan in a file system that does not answer, a write of the log positions
+# to a data directory that does not. Such a thread cannot be interrupted,
+# and the process leaves without it.
+#
+# The limit is armed twice (#777). First when the agent's last writes begin,
+# for LAST_WRITES_SECONDS and these: from then on the process ends whatever
+# the writes, the last log lines or the event loop itself do. Then, as
+# before, when the sensor has stopped, for these alone. It used to be armed
+# only then, after the writes, and a write that never returned was never
+# followed by it.
 EXIT_SECONDS = 2.0
 
 
@@ -116,8 +124,38 @@ class SensorDaemon:
         # The stop signals noted since the process started, if it is the
         # sensor's own process.
         self._stop_asked = stop_asked
+        # Is the sensor stopping because it was asked to (exit status 0), or
+        # is the agent stopping what a failed start had started (1)?
+        self._stopping = False
+        # The exit limit armed when the agent's last writes began.
+        self._last_writes_limit: Optional[threading.Timer] = None
 
     async def start(self):
+        """Run the sensor until it is asked to stop, and until it has
+        stopped; its exit status."""
+        try:
+            return await self._run_and_stop()
+        finally:
+            # The daemon has ended, and _run() arms the exit limit proper
+            # in its next statement.
+            limit, self._last_writes_limit = self._last_writes_limit, None
+            if limit is not None:
+                limit.cancel()
+
+    def _limit_the_last_writes(self):
+        """Called by the agent as its last writes begin: arm the exit
+        limit, for the time those writes are given and the process's own
+        end. The writes are made in worker threads and the agent stops
+        waiting for them by itself; this is for whatever does not keep to
+        that, a call that holds the event loop included."""
+        if self._last_writes_limit is None:
+            self._last_writes_limit = _leave_within(
+                LAST_WRITES_SECONDS + EXIT_SECONDS,
+                0 if self._stopping else 1,
+                stopped=False,
+            )
+
+    async def _run_and_stop(self):
         """Run the sensor until it is asked to stop, and until it has
         stopped.
 
@@ -161,10 +199,14 @@ class SensorDaemon:
             setup_logging(self.config.logging)
 
             logger.info(f"Starting Open Security Sensor v{__version__}")
-            logger.info(f"Platform: {get_platform_info()}")
+            # The system, its release, the architecture and the Python
+            # version. Not the account or the environment: see
+            # describe_platform().
+            logger.info("Platform: %s", describe_platform())
 
             # Initialize the agent
             self.agent = SecuritySensorAgent(self.config)
+            self.agent.before_last_writes = self._limit_the_last_writes
 
             # The event loop's handlers, here and not earlier: they act
             # when the loop runs, and nothing above lets it. Up to this
@@ -245,6 +287,7 @@ class SensorDaemon:
     async def _stop(self):
         logger.info("Stopping Security Sensor...")
         self.running = False
+        self._stopping = True
 
         if self.agent:
             await self.agent.stop()
@@ -278,12 +321,13 @@ class SensorDaemon:
             self._request_stop(self._stop_asked.signum)
 
 
-def _leave_within(seconds: float, code: int) -> threading.Timer:
+def _leave_within(seconds: float, code: int, stopped: bool = True) -> threading.Timer:
     """End the process with ``code`` if it is still there in ``seconds``.
 
-    Called when the sensor has stopped and written what it writes last. See
-    EXIT_SECONDS: what is left is the event loop's and the interpreter's own
-    tidying up, which waits for worker threads for as long as they take.
+    Called when the sensor has stopped (``stopped``). See EXIT_SECONDS: what
+    is left is the event loop's and the interpreter's own tidying up, which
+    waits for worker threads for as long as they take. And called before
+    that, when the sensor begins to write what it writes last.
     """
 
     def leave():
@@ -293,9 +337,15 @@ def _leave_within(seconds: float, code: int) -> threading.Timer:
             if thread is not threading.main_thread() and not thread.daemon
         ]
         logger.warning(
-            "The sensor has stopped and its process has not ended after "
-            "%.0f seconds: it is waiting for threads that are still busy "
-            "(%s). The process ends without waiting for them",
+            "%s and its process has not ended after %.0f seconds: it is "
+            "waiting for threads that are still busy (%s). The process ends "
+            "without waiting for them",
+            (
+                "The sensor has stopped"
+                if stopped
+                else "The sensor began to write its log positions and its "
+                "file monitor's baseline for the last time"
+            ),
             seconds,
             ", ".join(busy) or "none is left",
         )
