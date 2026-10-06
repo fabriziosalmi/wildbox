@@ -17,7 +17,8 @@ file's noeviction with allkeys-lru, and nothing noticed.
   runtime  Against the running stack, read the same settings from Redis
            itself (CONFIG GET) and the limit Docker applied, and print the
            memory in use. Needs REDIS_PASSWORD in the environment or in
-           --env-file.
+           --env-file; it reaches redis-cli through the environment, never
+           as an argument.
 
 Usage:
   scripts/check_redis_config.py config [--env-file FILE]
@@ -127,11 +128,11 @@ def check_settings(opts, limit):
     return failures
 
 
-def compose(args, env_file):
+def compose(args, env_file, env=None):
     cmd = ["docker", "compose"]
     if env_file:
         cmd += ["--env-file", env_file]
-    r = subprocess.run(cmd + args, capture_output=True, text=True)
+    r = subprocess.run(cmd + args, capture_output=True, text=True, env=env)
     if r.returncode != 0:
         sys.exit(f"docker compose {args[0]} failed:\n{r.stderr}")
     return r.stdout
@@ -174,18 +175,15 @@ def check_runtime(env_file):
         sys.exit("REDIS_PASSWORD is not set (environment or --env-file)")
 
     def cli(*argv):
-        # REDISCLI_AUTH keeps the password off the command line.
+        # `-e REDISCLI_AUTH` names the variable and nothing else: docker
+        # takes its value from this process's environment. With the value
+        # written after the name, as it was, the password is an argument
+        # of the docker command, which every local user can read with ps
+        # (#740).
         return compose(
-            [
-                "exec",
-                "-T",
-                "-e",
-                f"REDISCLI_AUTH={password}",
-                SERVICE,
-                "redis-cli",
-                *argv,
-            ],
-            None,
+            ["exec", "-T", "-e", "REDISCLI_AUTH", SERVICE, "redis-cli", *argv],
+            env_file,
+            env={**os.environ, "REDISCLI_AUTH": password},
         )
 
     def config_get(name):
@@ -199,7 +197,7 @@ def check_runtime(env_file):
         "maxmemory": config_get("maxmemory"),
         "appendonly": config_get("appendonly"),
     }
-    container = compose(["ps", "-q", SERVICE], None).strip()
+    container = compose(["ps", "-q", SERVICE], env_file).strip()
     r = subprocess.run(
         ["docker", "inspect", "-f", "{{.HostConfig.Memory}}", container],
         capture_output=True,

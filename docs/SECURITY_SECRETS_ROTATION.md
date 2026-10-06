@@ -213,10 +213,18 @@ without Redis for those seconds, and work running in a worker when it is
 recreated is interrupted, as at any restart of that worker. If you run the
 `backup` profile, recreate that container too.
 
-The health check of the Redis container does not notice a wrong password:
-`redis-cli` exits with status 0 when the server answers `NOAUTH`. The
-container stays `healthy` between the rotation and the recreation, and that
-status says nothing about which password the server holds.
+Between the rotation and the recreation the Redis container turns
+`unhealthy`, about 90 seconds after the rotation. Its health check
+authenticates with the password the container was created with
+(`REDISCLI_AUTH` in its environment) and requires `PONG`, and the running
+server no longer accepts that password. Nothing restarts the container for
+it; the status says that the container and the server disagree, which is
+what the command above ends.
+
+`make health` asks Redis with the password in `.env` and requires `PONG`. It
+passes right after the rotation, and fails if the server and `.env` come to
+disagree, for example when the Redis container restarts before it is
+recreated.
 
 ### POSTGRES_PASSWORD
 

@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The Redis health check no longer carries the password on its command
+  line, and fails when the password is wrong** (#740). Every compose file
+  checked Redis with `redis-cli -a <password> ping`, or with
+  `redis-cli ping` and no password. The password was an argument of a
+  process that runs every 30 seconds, visible in the container's process
+  list. `redis-cli` also exits 0 when the server answers with an error,
+  so the check passed on `NOAUTH` and `WRONGPASS`: a Redis whose password
+  no longer matched stayed `healthy`, and in `open-security-data` the
+  check sent a literal `${REDIS_PASSWORD...}` as the password and was
+  healthy all the same. The check is now
+  `redis-cli ping | grep -qx PONG` in `docker-compose.yml` and in the
+  nine per-service compose files that have one, and each Redis that
+  requires a password receives it as `REDISCLI_AUTH` in its environment.
+  A Redis that is still loading its data is not healthy yet. After a
+  `REDIS_PASSWORD` rotation the container reports `unhealthy` until it is
+  recreated, which the rotation asks for.
+- **The Redis password is no longer an argument of a `docker` command**
+  (#740). `scripts/check_redis_config.py runtime` ran
+  `docker compose exec -e REDISCLI_AUTH=<password>`, and the deployment
+  guide, the authentication guide and `TROUBLESHOOTING.md` told operators
+  to do the same: the password reaches `redis-cli` through its
+  environment, but on the way it is an argument of the `docker` process
+  on the host, which every local user can read in the process list. The
+  script and the three pages now name the variable only
+  (`-e REDISCLI_AUTH`), and `docker` takes the value from the
+  environment of the command. `runtime --env-file FILE` also passes the
+  file to `docker compose`, which it used to leave out.
 - **Prometheus 3.13.4 and osquery 5.23.1 replace releases that no longer
   get fixes** (#726). The monitoring profile ran Prometheus v2.55.1, the
   last release of the 2.x line (November 2024): CVE-2026-44903, a stored
@@ -743,6 +770,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a credential, for a route it serves (the tool list, the data
   health probe, the agents statistics) and expects 200, and expects the
   tools service's own 404 for the mistaken path.
+- **`restore_postgres.sh --latest` restores one backup run** (#740). It
+  took the newest archive of each database on its own, so after a run
+  limited with `--databases` the three databases were restored from
+  different runs, hours or days apart, without a word. `--latest` now
+  means the newest run, the archives that carry the newest timestamp,
+  read from the file names and no longer from modification times, which
+  a copy from another disk changes. If that run does not hold every
+  database asked for, the script refuses, shows what the run holds and
+  names the newest run that is complete. `restore_redis.sh --latest`
+  refuses in the same way when the newest run holds no Redis snapshot
+  (`SKIP_REDIS=true`). A run that is not the newest is named with
+  `--timestamp`; runs are mixed on purpose with `--databases` and
+  `--timestamp`, one database at a time.
+- **A restore that fails leaves the data that was there** (#740).
+  `scripts/restore_redis.sh` deleted the contents of the Redis volume and
+  then loaded the snapshot, so a snapshot that did not load left an empty
+  Redis. It now loads the snapshot in a scratch directory of the volume,
+  requires the temporary server to answer and to hold as many keys as the
+  snapshot, reads back the append-only file it wrote, and only then swaps
+  it with the data in place; the volume needs room for both meanwhile.
+  `scripts/restore_postgres.sh` ran `pg_restore --clean` statement by
+  statement and carried on after an error: measured on a table that a
+  later view depended on, the failed restore left it without its primary
+  key and with its rows loaded twice. Each database is now restored in
+  one transaction (`--single-transaction`) and is rolled back whole when
+  anything fails, and every archive is read before the first database is
+  touched. The three databases remain three transactions: if one fails,
+  the script says which were restored, which failed and which were not
+  reached, and the same command run again restores all of them.
+- **`make health` no longer reports a Redis it cannot log in to as
+  healthy** (#740). The check ran `redis-cli ping` without a password and
+  counted `NOAUTH` as success, so a Redis whose password no longer
+  matched `.env`, which no service can use, passed. It now authenticates
+  with `REDIS_PASSWORD` from the environment or from the env file Compose
+  reads (`ENV_FILE`, default `.env`), passes the password by name through
+  the environment, and requires the reply to be `PONG`. A refused
+  password, a Redis that is still loading and a missing password each
+  fail the check with a message of their own.
 - **tools: an arm64 image ships a Trivy it can run** (#726). The
   Dockerfile downloaded `trivy_*_Linux-64bit.tar.gz` whatever the
   platform, so an image built on or for arm64 (an Apple Silicon laptop,

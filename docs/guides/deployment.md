@@ -236,10 +236,15 @@ Monitor the headroom and alert well before the ceiling, for example when
 `errorstat_OOM`, the count of refused writes:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec \
-  -e REDISCLI_AUTH="$REDIS_PASSWORD" wildbox-redis \
+REDISCLI_AUTH="$(sed -n 's/^REDIS_PASSWORD=//p' .env)" \
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec \
+  -e REDISCLI_AUTH wildbox-redis \
   sh -c 'redis-cli INFO memory | grep -E "^(used_memory|maxmemory):"; redis-cli INFO errorstats'
 ```
+
+`-e REDISCLI_AUTH` names the variable and takes its value from the
+environment of the command, so the password is not an argument of `docker`,
+where the process list of the host would show it.
 
 With the stack running,
 `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml python3
@@ -841,6 +846,17 @@ what it would have overwritten: each database with the archive it would be
 restored from, or the Redis volume with the snapshot. Neither script asks a
 question, so both still run from a script of your own.
 
+Give both scripts the same `--timestamp`, so that PostgreSQL and Redis come
+from the same backup run. `--latest` means the newest run: the files that
+carry the newest timestamp, read from their names. `restore_postgres.sh
+--latest` refuses when that run does not hold every database asked for (a
+run taken with `--databases`), and `restore_redis.sh --latest` refuses when
+it holds no Redis snapshot (a run taken with `SKIP_REDIS=true`): the newest
+archive of each would be data from different moments. The refusal names the
+newest run that is complete. To mix runs on purpose, run
+`restore_postgres.sh` once per database with `--databases` and
+`--timestamp`.
+
 `restore_postgres.sh` has two targets that need no flag: `--into-suffix
 _check` restores into `<db>_check` next to the live databases, and
 `--dry-run` only reads the archives. It looks up every archive before it
@@ -850,6 +866,26 @@ touches a database, so a missing one stops the run with nothing restored.
 because Redis runs with the append-only file enabled and then ignores a
 `dump.rdb` at start: copying the snapshot into the volume by hand gives an
 empty Redis.
+
+#### When a restore fails
+
+A restore that fails leaves the data that was there.
+
+`restore_postgres.sh` reads every archive before it touches a database, and
+restores each database in one transaction (`pg_restore --single-transaction`).
+If anything in it fails, PostgreSQL rolls that database back to what it was.
+The three databases are three transactions, because PostgreSQL has none that
+spans databases: if the second fails, the first is restored and the other two
+are unchanged. The script lists which is which, and the same command run
+again restores all three; restoring a database twice is safe.
+
+`restore_redis.sh` loads the snapshot in a scratch directory of the Redis
+volume. The temporary server has to answer and to hold as many keys as the
+snapshot, the append-only file it writes is read back, and only then is it
+swapped with the data in place. The volume needs room for both copies during
+the restore. The swap itself is two renames: if the script is killed between
+them, the previous data is in `.restore-previous` in the volume, and the next
+run puts it back before it does anything else.
 
 ---
 
