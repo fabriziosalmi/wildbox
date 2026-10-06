@@ -78,7 +78,7 @@ the claim against the current code; it is not a pass.
 
 ## History
 
-The November 2024 platform audit (its report, remediation checklist and
+The November 2025 platform audit (its report, remediation checklist and
 improvements summary) is no longer published: it described code that has since
 changed, and its findings are superseded by this page. The tools service
 audit of November 2025 is not published either, for the same reason; it is
