@@ -548,6 +548,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The sensor's `user_events.logon_events` osquery query, on Windows**
+  (#754). It was the one event-table query #745 left, for want of a
+  Windows host to try it on. osquery's specification of the table
+  settles it without one: `windows_events` is an event subscriber's
+  table, like the three removed then, and the query filtered on a
+  `channel` column the table does not have (it has `source`), so it
+  could only fail at every cycle. Logons are read from the `Security`
+  log by a log source of type `windows_event`, which keeps its
+  position. Not run on a Windows host.
 - **`ENABLE_METRICS` for identity in `docker-compose.prod.yml`, and
   `ENABLE_METRICS` and `METRICS_PORT` in `.env.example`** (#743). No
   code reads the first, and no Compose file passed the other two to a
@@ -730,6 +739,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The sensor no longer loses the event it had just taken when it
+  stops** (#754). Before it stops its pipeline the sensor waits for the
+  events already collected to reach the sender. It decided that nothing
+  was left by looking, every 20 ms, at the size of its two queues and at
+  a count the processor's workers kept. A worker took an event with
+  `asyncio.wait_for(queue.get())`, which on Python 3.11 (the image's)
+  runs the `get` in a task of its own: the event left the queue in one
+  turn of the event loop, and the worker had it, and counted it, two
+  turns later. A look in between found two empty queues and nothing in
+  hand, the pipeline was stopped, and the worker put the event on a
+  queue nobody read any more, with no count and no log line. An event
+  its collector can read again (a line of a log with a saved position,
+  a file change against a saved baseline) was sent after the next
+  start; any other was lost. A trace of a failing run shows the four
+  steps in consecutive turns. This is what made
+  `test_what_was_collected_just_before_the_stop_still_reaches_the_gateway`
+  fail about once in fifty runs. Each queue now counts an event from the
+  moment it is put there until its reader says it has finished with it
+  (`task_done()`), and the stop waits on those two counts (`join()`),
+  the collectors' queue first: there is no state in which an event is
+  in neither. The worker awaits the queue directly.
+- **Events the sensor's processor holds when the sensor stops are
+  counted, and its workers end** (#754). Stopping the processor set a
+  flag that its workers read when they next came round: a worker that
+  held an event at that moment (in a reverse DNS lookup, or waiting for
+  room behind a full buffer) finished it afterwards and put it where
+  nothing read it, after the sensor had logged how many events were
+  left. The workers are now stopped with the processor and waited for;
+  what they held is in that log line, `Stopped with N events still on
+  their way to the sender`, with what the queues held, and the events of
+  a log source among them are read again after the restart. An event
+  that raises in a worker is counted under `errors` and its log line's
+  position released; it used to keep the position of its file where it
+  was for as long as the sensor ran. `events_in_pipeline` in
+  `GET /api/v1/stats` includes the events in the workers' hands and the
+  one the sender holds while its buffer is full, so the counters add up
+  without the "give or take" the README allowed for.
+- **A sensor stopped while it writes its log positions writes them
+  again** (#754). The periodic write is made in a thread; the stop
+  cancelled the task waiting for it, which had already marked the
+  positions as written. When that write then failed, the stop wrote
+  nothing, and the lines accepted since the last write were sent a
+  second time after the restart. The file monitor's baseline already
+  handled this.
 - **agents and data report one version** (#743). Each passed one
   version literal to the application and a second to the middleware
   that writes the `X-API-Version` header of every response. Both now
@@ -1706,6 +1759,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   module needs the standard library only, so guardian's image installs
   the shared package with no extra, as before. The tools service answers
   as it did: its refusals, their wording and its setting are unchanged.
+- **The sensor asks osquery for the inventory once an hour, not every
+  ten seconds** (#754). Every query of every pack ran at every cycle
+  (`performance.query_interval`, 10 seconds), the seven of
+  `system_inventory` among them. Measured in the sensor's image, those
+  seven answers were 36.0 of the 36.9 kB one cycle produced, and six of
+  them were identical ten seconds later: about 7,000 copies a day of the
+  list of installed packages, sent and stored as events. They now run
+  when the sensor starts and every `performance.inventory_interval`
+  seconds after that (3600 by default, at most a week; 0 restores the
+  old pace), each counted from its own last answer, and one that fails
+  is asked again at the next cycle. The processes, sockets and users
+  packs still run at every cycle. `GET /api/v1/config` reports the
+  setting.
 - **Images install only the OS packages they name** (#726). agents,
   data, identity, sensor and the tools development image ran
   `apt-get install -y` and took every recommended package with it:
@@ -2063,6 +2129,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The sensor's stop test waits for its events, not for the clock**
+  (#754).
+  `test_what_was_collected_just_before_the_stop_still_reaches_the_gateway`
+  gives nine events 0.9 seconds of work and expected all of them within
+  the two seconds the sensor allows before it stops its pipeline. Those
+  are seconds of the clock: with the event loop held for 1.5 seconds,
+  as a host that does not schedule the process holds it, the ninth
+  event is left behind at the deadline, every time, and with the CPUs
+  taken the same wait was measured at 2.6 seconds. The test now sets
+  the deadline out of reach; what the deadline leaves behind has tests
+  of its own, which hold the events instead of timing them.
+- **The sensor's statistics tests measure a stand-in, not the test
+  process** (#754). `test_agent_stats.py` started the real resource
+  monitor, which measured pytest's own process, and expected no alert:
+  true for as long as the suite, its plugins and the coverage tracer
+  stayed under `performance.max_memory_mb` (128 MB) on whatever host ran
+  them, and the test that wanted an alert set the threshold to 1 MB to
+  get one. The monitor now reads a stand-in process whose memory and
+  CPU the tests set.
 - **Path-filtered workflows follow what they build and run** (#736).
   Docker Build Validation was triggered by `open-security-*/app/**`, the
   lock, the Dockerfile, `pyproject.toml` and `manage.py`: a change to
