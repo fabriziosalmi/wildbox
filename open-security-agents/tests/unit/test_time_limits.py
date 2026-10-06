@@ -199,7 +199,7 @@ def test_a_failure_is_recorded_and_counted_once_whoever_sees_it(redis):
 
     # The first record stands, and the task was counted once.
     assert redis.store[ERROR_KEY] == failures.TIMED_OUT
-    assert redis.store[f"task:{TASK_ID}:status"] == "failed"
+    assert f"task:{TASK_ID}:status" not in redis.store
     assert failed_today(redis) == 1
 
 
@@ -236,7 +236,7 @@ def test_a_task_killed_under_its_own_code_is_recorded_by_the_worker(redis, error
     celery_marks_failed(error)
 
     assert redis.store[ERROR_KEY] == code
-    assert redis.store[f"task:{TASK_ID}:status"] == "failed"
+    assert f"task:{TASK_ID}:status" not in redis.store
     assert failed_today(redis) == 1
 
 

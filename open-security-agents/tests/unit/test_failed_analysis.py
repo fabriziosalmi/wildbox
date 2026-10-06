@@ -158,10 +158,15 @@ def run_task(task_id=TASK_ID, caller=CALLER):
 
 
 def recorded(redis, task_id=TASK_ID):
-    return (
-        redis.store.get(f"task:{task_id}:status"),
-        redis.store.get(f"task:{task_id}:error"),
-    )
+    """The failure code the worker left for the API, or None.
+
+    The worker also wrote a ``task:<id>:status`` key ("running", "completed",
+    "failed") that nothing read: the API takes a task's status from Celery
+    and its failure from the ``error`` key (#665). No test may see that key
+    come back.
+    """
+    assert f"task:{task_id}:status" not in redis.store
+    return redis.store.get(f"task:{task_id}:error")
 
 
 # --- The worker: a failure raises, and is recorded ---------------------------
@@ -187,7 +192,7 @@ def test_an_error_in_the_analysis_fails_the_task_and_returns_no_report(
     with pytest.raises(type(error)):
         run_task()
 
-    assert recorded(redis) == ("failed", failures.INTERNAL)
+    assert recorded(redis) == failures.INTERNAL
     assert stats.read_today(redis, stats.FAILED) == 1
     assert stats.read_today(redis, stats.COMPLETED) == 0
 
@@ -203,7 +208,7 @@ def test_the_agents_own_failure_is_recorded_with_its_code(monkeypatch, redis, co
         run_task()
 
     assert failed.value.code == code
-    assert recorded(redis) == ("failed", code)
+    assert recorded(redis) == code
     assert stats.read_today(redis, stats.FAILED) == 1
     assert stats.read_today(redis, stats.COMPLETED) == 0
 
@@ -214,7 +219,7 @@ def test_the_soft_time_limit_is_recorded_as_a_timeout(monkeypatch, redis):
     with pytest.raises(SoftTimeLimitExceeded):
         run_task()
 
-    assert recorded(redis) == ("failed", failures.TIMED_OUT)
+    assert recorded(redis) == failures.TIMED_OUT
 
 
 def test_a_task_without_a_caller_is_recorded_as_such(monkeypatch, redis):
@@ -223,7 +228,7 @@ def test_a_task_without_a_caller_is_recorded_as_such(monkeypatch, redis):
     with pytest.raises(CallerIdentityUnavailable):
         run_task(caller=None)
 
-    assert recorded(redis) == ("failed", failures.NO_CALLER)
+    assert recorded(redis) == failures.NO_CALLER
     assert built == []
 
 
@@ -240,7 +245,7 @@ def test_without_a_model_key_the_task_fails_before_anything_runs(
         run_task()
 
     assert failed.value.code == failures.NOT_CONFIGURED
-    assert recorded(redis) == ("failed", failures.NOT_CONFIGURED)
+    assert recorded(redis) == failures.NOT_CONFIGURED
     assert built == [], "the agent was built without a model key"
     assert stats.read_today(redis, stats.COMPLETED) == 0
 
@@ -252,7 +257,7 @@ def test_an_analysis_that_runs_is_completed_as_before(monkeypatch, redis):
     result = run_task()
 
     assert result == {**report, "task_id": TASK_ID}
-    assert recorded(redis) == ("completed", None)
+    assert recorded(redis) is None
     assert stats.read_today(redis, stats.COMPLETED) == 1
     assert stats.read_today(redis, stats.FAILED) == 0
 
@@ -376,7 +381,7 @@ def test_through_the_task_a_failed_report_leaves_a_failed_task(monkeypatch, redi
     with pytest.raises(AnalysisFailed):
         run_task()
 
-    assert recorded(redis) == ("failed", failures.REPORT_FAILED)
+    assert recorded(redis) == failures.REPORT_FAILED
     assert stats.read_today(redis, stats.FAILED) == 1
     assert stats.read_today(redis, stats.COMPLETED) == 0
 

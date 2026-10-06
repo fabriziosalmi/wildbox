@@ -31,6 +31,7 @@ from app import main, worker  # noqa: E402
 from scripted_model import ScriptedModel  # noqa: E402
 from app.agents.threat_enrichment_agent import ThreatEnrichmentAgent  # noqa: E402
 from app.auth import get_current_user  # noqa: E402
+from app.failures import NO_CALLER  # noqa: E402
 from app.tools import wildbox_client as client_module  # noqa: E402
 from app.tools.langchain_tools import ALL_TOOLS  # noqa: E402
 from app.tools.wildbox_client import (  # noqa: E402
@@ -206,7 +207,7 @@ def test_a_task_without_a_complete_caller_never_sends_the_previous_identity(
     # request on the wire is A's.
     assert agent.calls == 1
     assert sent_user_ids(recorded) == [CALLER_A["user_id"]]
-    assert fake_redis.store["task:task-b:status"] == "failed"
+    assert fake_redis.store["task:task-b:error"] == NO_CALLER
     assert _caller_identity.get() is None
 
 

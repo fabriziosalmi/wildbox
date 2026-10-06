@@ -720,6 +720,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   locked requirements, a collector) instead of showing the Jaeger
   example, and the page on architectural patterns loses the section that
   described the module as written.
+- **agents: the `task:<id>:status` key in Redis** (#665). The worker
+  wrote `running`, `completed` or `failed` under it for every analysis,
+  and nothing read it: the API takes a task's status from Celery and
+  the reason of a failure from `task:<id>:error`. The three writes are
+  removed. A key already in Redis expires with its task, an hour after
+  it at the default.
 
 ### Fixed
 
