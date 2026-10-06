@@ -76,6 +76,8 @@ names): a Redis that refuses that password is unhealthy. `automations`,
 `COMPOSE_PROFILES` names their profile. The URLs live in one table,
 `scripts/lib/health_endpoints.sh`, which `scripts/wait-for-services.sh` uses
 too; a test keeps it equal to the column above and to `docker-compose.yml`.
+Both give an answer 5 seconds (`HEALTH_TIMEOUT` sets another wait for
+either).
 
 By hand:
 

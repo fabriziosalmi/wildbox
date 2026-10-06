@@ -218,9 +218,12 @@ def test_checks_that_answer_are_not_made_to_wait_for_the_deadline(world):
 @needs_checkout
 def test_the_deadline_is_inside_what_every_probe_waits():
     """`make health` gives the answer 5 seconds, the Compose health check
-    10. The deadline leaves a second of
-    them, and is longer than one Redis reply may take, so that a Redis that
-    does not answer is reported by its own check, with its cause logged."""
+    10, and scripts/wait-for-services.sh what `make health` does (it gave
+    it 3, a second less than the deadline: #788). The deadline leaves a
+    second of them, and is longer than one Redis reply may take, so that a
+    Redis that does not answer is reported by its own check, with its
+    cause logged."""
+    assert len(probe_waits()) == 3
     shortest = min(probe_waits())
 
     assert main.HEALTH_DEADLINE_SECONDS <= shortest - 1

@@ -816,7 +816,9 @@ The status code says what the body says, so a probe that reads only the code
   whenever Redis answers. It waits in a thread: the service answers other requests,
   `/health/live` included, in the meantime.
 - It answers within 4 seconds whatever Redis and the broker do, inside the 5
-  seconds `make health` waits and the 10 of the Compose health check. A check that
+  seconds `make health` and `scripts/wait-for-services.sh` wait and the 10 of the
+  Compose health check. (The script waited 3 seconds until 0.12.2, and read a
+  `degraded` answer that took the 4 as no answer.) A check that
   has not answered by then is `unhealthy` in `checks`: `503` for Redis, `degraded`
   for the workers.
 - A Redis that accepts the connection and never answers (a paused container, a host

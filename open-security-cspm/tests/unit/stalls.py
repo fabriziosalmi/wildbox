@@ -17,6 +17,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = SERVICE_ROOT.parent
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
 HEALTH_LIBRARY = REPO_ROOT / "scripts" / "lib" / "health_endpoints.sh"
+WAIT_SCRIPT = REPO_ROOT / "scripts" / "wait-for-services.sh"
 needs_checkout = pytest.mark.skipif(
     not COMPOSE_FILE.exists(), reason="needs the repository checkout"
 )
@@ -87,9 +88,20 @@ def timed(call):
 
 def probe_waits():
     """Seconds a probe gives /health, read from the files that say so:
-    (`make health`, the Compose health check)."""
+    (`make health`, the Compose health check, scripts/wait-for-services.sh).
+
+    The last one uses the probe of the first, with a wait of its own when
+    it sets one: it set 3 seconds, under the deadline of /health (#788).
+    """
     waits = re.search(r"\$\{HEALTH_TIMEOUT:-(\d+)\}", HEALTH_LIBRARY.read_text())
     healthcheck = yaml.safe_load(COMPOSE_FILE.read_text())["services"]["cspm"][
         "healthcheck"
     ]
-    return float(waits.group(1)), float(healthcheck["timeout"].rstrip("s"))
+    script = WAIT_SCRIPT.read_text()
+    assert "wb_http_status" in script, "the script no longer uses the shared probe"
+    own = re.search(r"HEALTH_TIMEOUT=(\d+)", script)
+    return (
+        float(waits.group(1)),
+        float(healthcheck["timeout"].rstrip("s")),
+        float((own or waits).group(1)),
+    )
