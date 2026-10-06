@@ -31,7 +31,7 @@ the main ones are:
 | `SENSOR_API_KEY` | Authenticates the sensor's local API |
 | `FLOWER_PASSWORD` | Celery Flower for the tools workers |
 | `N8N_ENCRYPTION_KEY` | The optional automations service |
-| `API_KEY` | Static key shared by the tools API, its workers and the services that call it |
+| `API_KEY` | Required by the tools API, its workers and Flower to start (at least 32 characters). Not a request credential: the tools service accepts only requests the gateway forwards |
 | `NEXTAUTH_SECRET` | Dashboard sessions |
 | `GRAFANA_ADMIN_PASSWORD` | Generated, but no service in `docker-compose.yml` uses it |
 

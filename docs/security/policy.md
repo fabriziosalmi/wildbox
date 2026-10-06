@@ -311,7 +311,7 @@ We value security researchers. Valid vulnerability reports receive:
 
 ## History of This Page
 
-The first versions of this page (October and November 2024) carried a list
+The first versions of this page (September and November 2025) carried a list
 of the fixes made at the time. Security changes since then are recorded
 release by release in
 [CHANGELOG.md](https://github.com/fabriziosalmi/wildbox/blob/main/CHANGELOG.md),
