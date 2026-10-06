@@ -23,11 +23,20 @@ This needs ``GUARDIAN_CONTACTS_SECRET`` on identity and guardian-worker
 (``scripts/generate_secrets.py`` writes it), and guardian-worker running.
 The route the worker asks is not one a client can reach: the last tests ask
 it through the gateway, and directly without the secret.
+
+The secret is optional: a deployment has it once its operator opts in to
+guardian's e-mail, and a stack upgraded from an earlier release does not
+until then. identity says so itself (503, naming the variable), and on such
+a stack the tests that need it are skipped with that reason, as the suite
+skips its other optional parts. They used to fail there (#779). Under
+``REQUIRE_ALL_SERVICES``, which the CI jobs set for a stack made by
+``generate_secrets.py``, a missing secret is a failure, not a skip.
 """
 
 import os
 import secrets
 import time
+import uuid
 
 import pytest
 import requests
@@ -137,12 +146,49 @@ def _outcome(row):
     return outcome
 
 
+def _contacts_not_configured():
+    """Why identity cannot name a team's contacts, or None when it can.
+
+    Asked without a secret: an identity that has ``GUARDIAN_CONTACTS_SECRET``
+    refuses (403), one that has not says that it is not configured (503).
+    """
+    answer = requests.post(
+        f"{IDENTITY_URL}/internal/team-contacts",
+        json={"team_id": str(uuid.uuid4()), "roles": ["owner"]},
+        timeout=TIMEOUT,
+    )
+    if answer.status_code == 503 and "GUARDIAN_CONTACTS_SECRET" in answer.text:
+        return (
+            "identity has no GUARDIAN_CONTACTS_SECRET, so guardian's worker "
+            "cannot ask it who to e-mail: set it in the stack's .env "
+            "(see .env.example) and recreate identity and guardian-worker"
+        )
+    return None
+
+
+@pytest.fixture(scope="module")
+def contacts_configured():
+    """Skip, or fail where the stack must have everything, without the secret."""
+    reason = _contacts_not_configured()
+    if reason is None:
+        return
+    if os.getenv("REQUIRE_ALL_SERVICES", "") in ("1", "true", "yes"):
+        pytest.fail(
+            f"{reason}. REQUIRE_ALL_SERVICES is set: the stack is expected "
+            "to have it, so these tests must not be skipped",
+            pytrace=False,
+        )
+    pytest.skip(reason)
+
+
 @pytest.fixture
 def owners():
     return _new_owner(), _new_owner()
 
 
-def test_a_notification_is_addressed_to_its_own_teams_owner(owners):
+def test_a_notification_is_addressed_to_its_own_teams_owner(
+    contacts_configured, owners
+):
     (address_a, a), (address_b, b) = owners
     rule_a, rule_b = _rule(a), _rule(b)
     try:
@@ -165,7 +211,7 @@ def test_a_notification_is_addressed_to_its_own_teams_owner(owners):
         requests.delete(f"{ALERTS}{rule_b}/", headers=b, timeout=TIMEOUT)
 
 
-def test_who_is_addressed_follows_identity(owners):
+def test_who_is_addressed_follows_identity(contacts_configured, owners):
     """An admin is addressed once made one, and no more once removed."""
     (address_a, a), _ = owners
     team_id = _team_of(a)
@@ -243,7 +289,9 @@ def test_the_contacts_route_is_not_served_through_the_gateway(owners, path):
         assert address_a not in response.text
 
 
-def test_the_contacts_route_refuses_whoever_does_not_hold_its_secret(owners):
+def test_the_contacts_route_refuses_whoever_does_not_hold_its_secret(
+    contacts_configured, owners
+):
     """Not a session, not the gateway's secret: identity names nobody."""
     (address_a, a), _ = owners
     question = {"team_id": _team_of(a), "roles": ["owner", "admin"]}
