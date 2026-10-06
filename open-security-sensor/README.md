@@ -434,7 +434,10 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
   still busy when the sensor has stopped (a name lookup the resolver has
   not answered, a scan in a file system that does not answer) is not
   waited for beyond those last 2 seconds: the sensor says which threads,
-  and the process ends. The compose files give the
+  and the process ends. Saying it has a limit too, 1 second: a log that
+  does not answer (a log file in a directory that hangs, a pipe nobody
+  reads) costs that line and does not hold the exit, which until 0.12.2
+  it did, for as long as the log took. The compose files give the
   sensor 30 seconds (`stop_grace_period`), and the sensor's tests fail if
   that stops being enough; give it at least as much wherever else you run
   it (`docker run --stop-timeout 30`, `terminationGracePeriodSeconds` in
@@ -533,9 +536,19 @@ Each source that is not a file reports, under `log_forwarder` in
 `GET /api/v1/components`, its `state` (`starting`, `running`, `restarting`,
 `failing` for an event log whose last query failed, `unavailable`, `skipped`
 on a platform that has no such log, `stopped`), `restarts`, `last_exit`,
-`last_error` and the counters `entries_forwarded`, `entries_truncated` and
-`entries_unparsed`; a `journald` source also its `accepted_cursor`, a
-`windows_event` source its `read_record_id` and `accepted_record_id`.
+`last_error` and the counters `entries_forwarded`, `entries_truncated`,
+`entries_unparsed` and `entries_failed`; a `journald` source also its
+`accepted_cursor`, a `windows_event` source its `read_record_id` and
+`accepted_record_id`.
+
+An entry, an event or a line of a file whose handling raises an error is
+counted (`entries_failed`, and `lines_failed` under `log_forwarder.stats`
+for the file sources) and passed over for good; the ones read with it are
+forwarded. The log says so once for each kind of error of a source, by the
+error's class: `Log source 'journal': an entry could not be handled
+(RuntimeError)`. Until 0.12.2 such an error ended the read it was in: the
+command was started again, the rest of a file's chunk was never forwarded,
+and the reader of a Windows event log ended.
 
 The `journald` reader was checked against the real `journalctl` (systemd
 257) in a container, on journal files written with `systemd-journal-remote`:
@@ -775,6 +788,16 @@ meanwhile is not reported. `baseline` in the monitor's status says which
 file is used, what became of the one found at start (`loaded`), when it was
 last written, why it could not be (`problem`), and how many changes are
 found and not delivered yet (`changes_not_delivered`).
+
+The first baseline of a path is written before the monitor says it has
+started, and that write gets 2 seconds, like the one at the stop. When the
+data directory does not answer in that time the monitor starts all the
+same, with a warning (`the first baseline was not written within 2 seconds
+of the monitor's start`): it reports changes against the baseline it holds
+in memory and tries the write again every 5 seconds. A sensor that is
+restarted before one succeeds takes what it finds under those paths as
+their baseline. Until 0.12.2 that write had no limit, and a data directory
+that hung at start kept the whole sensor from starting.
 
 Without `data_dir` the baseline is in memory only, as it always was: the
 status says so, and what changes while the sensor is stopped is not

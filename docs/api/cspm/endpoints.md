@@ -187,8 +187,14 @@ service has never had, gives `200` with
 `{"total_checks": 0, "checks": [], "providers": [], "categories": []}`, not an
 error.
 
-A category has one spelling, written with `and`: the catalog has 10, among them
-`Logging and Monitoring` and `Identity and Access Management`. Up to 0.12.0 each of
+A category has one spelling, written with `and`: the catalog has 9, among them
+`Logging and Monitoring` and `Identity and Access Management`. Until 0.12.2 there
+was a tenth, `Access Management`, with two of the five checks of the IAM service
+(`AWS_IAM_005`, `AWS_IAM_006`) while the other three were in
+`Identity and Access Management`: the five are in that one now, and
+`category=Access%20Management` still finds them, all five. `Access Control` is
+another category and is unchanged: a resource's own policy (a KMS key, an S3
+bucket, a Lambda function). Up to 0.12.0 each of
 those two was also spelled with `&` on some of its checks, so `categories` listed
 both spellings and the filter gave the checks of the one asked for. The `category`
 filter also takes `&` for `and` and any spacing: `category=Logging%20%26%20Monitoring`,
@@ -340,11 +346,16 @@ curl -s --cacert "$CA" -X POST "$BASE/batch/scans" \
   and cancelled by its own `scan_id`. `task_id` is the same value.
 - A batch that names a provider other than `aws` is refused whole with `400`; none
   of its scans is stored or queued.
-- The scans are queued one after the other. If the task queue stops taking them
-  partway, the answer is `503`: the scan that could not be queued is not recorded,
-  the ones after it are not tried, and the ones before it are queued and will run.
-  The `503` carries no `scan_id`: those scans count in the team's summaries, and
-  no route lists them.
+- A batch is queued whole or not at all. The scans are queued one after the other;
+  if one cannot be, the answer is the error (`503` when the task queue or the scan
+  store is away), the ones after it are not tried, and the ones before it are
+  withdrawn: their records and credentials are removed and their tasks revoked, so
+  none of them runs or counts in the team's summaries. Until 0.12.2 they stayed
+  queued and ran, and the `503` named none of them.
+- When those scans cannot be withdrawn, because the scan store does not answer the
+  removal either, the `503` lists them in `error.details.queued_scans`: they are
+  recorded under the team and run when Redis is back. `error.message` is the same
+  in both cases.
 - An empty `scans` list is accepted and answers `200` with `total_scans` 0.
 - The request also accepts `parallel_execution_limit` and `metadata`. Neither is
   used: every scan is queued at once, and the worker's concurrency decides how many
@@ -805,7 +816,9 @@ The status code says what the body says, so a probe that reads only the code
   whenever Redis answers. It waits in a thread: the service answers other requests,
   `/health/live` included, in the meantime.
 - It answers within 4 seconds whatever Redis and the broker do, inside the 5
-  seconds `make health` waits and the 10 of the Compose health check. A check that
+  seconds `make health` and `scripts/wait-for-services.sh` wait and the 10 of the
+  Compose health check. (The script waited 3 seconds until 0.12.2, and read a
+  `degraded` answer that took the 4 as no answer.) A check that
   has not answered by then is `unhealthy` in `checks`: `503` for Redis, `degraded`
   for the workers.
 - A Redis that accepts the connection and never answers (a paused container, a host
@@ -879,11 +892,24 @@ accepts the connection and then sends nothing is given a limited time by the API
   accepts and never answers in all three roles: every route and `/health` in 3
   seconds. With the store answering and the other two not: `POST /scans` in 6
   seconds, `GET` and `DELETE /scans/{scan_id}` in 3.
+- Requests wait side by side, each in a thread, and `/health/live`, `/providers`
+  and `/checks` answer meanwhile. Until 0.12.2 every route waited for Redis in the
+  event loop, so the requests went through one at a time and nothing else was
+  served: with five requests waiting, `/health/live` answered after 15 seconds. It
+  now answers in 16 milliseconds, and the five end together after 3 seconds.
 - `socket_timeout` and `socket_connect_timeout` in the query string of `REDIS_URL`
   (in seconds) replace the store's two limits, and in `CELERY_RESULT_BACKEND` the
   backend's. The broker's are not read from its URL.
-- The limits are the API's. The worker keeps Celery's own: it waits on its broker
-  connection for as long as no scan is queued.
+- The limits of the task queue are the API's. The worker keeps Celery's own: it
+  waits on its broker connection for as long as no scan is queued.
+- The worker's scan store client has the store's limits too, since 0.12.2. Until
+  then it had none, and a Redis that never answered held a scan's task without end.
+  The write that ends a scan (its report, or its failure) is made up to four
+  times, 1, 3 and 9 seconds apart, and each failed attempt is in the worker's log.
+  A scan whose report could not be stored in that time reads `failed`; when the
+  store stays away for the failure's four attempts as well, the scan keeps the
+  status it had, the worker's log names it, and its record expires with the
+  retention.
 
 ---
 

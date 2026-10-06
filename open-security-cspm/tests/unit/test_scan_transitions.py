@@ -348,3 +348,34 @@ def test_a_scan_whose_metadata_is_gone_still_ends_its_task_as_before(world):
     assert result.state == "SUCCESS"
     assert result.result["status"] == "completed"
     assert scan_store.load_report(world.redis, scan_id) is None
+
+
+# --- The result backend, on the Redis server --------------------------------------
+
+
+def test_the_result_backend_takes_its_subscription_up_again_after_a_lost_connection(
+    redis_server,
+):
+    """What Celery does when the connection it listens on for results is
+    lost while no task is subscribed to (#788).
+
+    With redis-py 5.0.1 it raised AttributeError: that release alone named
+    Connection.register_connect_callback with a leading underscore, and
+    Celery's ResultConsumer._reconnect_pubsub calls the public name. In the
+    API it showed in the log, as "Exception ignored in
+    AsyncResult.__del__". This test failed that way on the lock of 0.12.1,
+    on the Redis server of this module, and passes since the lock has
+    redis-py 5.0.8 (open-security-cspm/requirements.in says why).
+
+    Here because it needs a server that answers a new connection, which this
+    module has.
+    """
+    from celery import Celery
+
+    address = redis_server.connection_pool.connection_kwargs
+    url = f"redis://{address['host']}:{address['port']}/0"
+    app = Celery("cspm-test", broker="memory://", backend=url)
+
+    app.backend.result_consumer._reconnect_pubsub()
+
+    assert app.backend.result_consumer._pubsub.connection is not None

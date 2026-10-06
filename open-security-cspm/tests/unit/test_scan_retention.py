@@ -12,7 +12,6 @@ scans go through the function single scans use. The fake Redis in
 conftest.py expires keys on a clock these tests move.
 """
 
-import asyncio
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -134,9 +133,7 @@ def _scan_at(clock, team_id, account_id, days_ago, results=(("S3", "b", "failed"
     now = clock.now
     clock.now = now - days_ago * DAY
     started = datetime.utcnow() - timedelta(days=days_ago)
-    scan_id = asyncio.run(
-        main.start_scan(_request(account_id), None, _user(team_id))
-    ).scan_id
+    scan_id = main.start_scan(_request(account_id), None, _user(team_id)).scan_id
     # start_scan stamps the real time; put the scan back where it belongs.
     metadata = scan_store.load_metadata(main.redis_client, scan_id)
     metadata["started_at"] = started.isoformat()
@@ -153,17 +150,13 @@ def _scan_at(clock, team_id, account_id, days_ago, results=(("S3", "b", "failed"
 
 
 def _compliance(team_id, days=365):
-    return asyncio.run(
-        main.get_compliance_summary(
-            days=days, provider=None, current_user=_user(team_id)
-        )
+    return main.get_compliance_summary(
+        days=days, provider=None, current_user=_user(team_id)
     )
 
 
 def _dashboard(team_id, days=365):
-    return asyncio.run(
-        main.get_dashboard_summary(days=days, current_user=_user(team_id))
-    )
+    return main.get_dashboard_summary(days=days, current_user=_user(team_id))
 
 
 # --- retention ---------------------------------------------------------------
@@ -177,21 +170,19 @@ def test_a_report_older_than_a_day_is_still_aggregated(env, clock):
     assert summary["scans_considered"] == 1
     assert summary["non_compliant_resources"] == 1
 
-    findings = asyncio.run(
-        main.get_compliance_findings(
-            framework=None,
-            severity=None,
-            status_filter=None,
-            days=30,
-            provider=None,
-            limit=100,
-            offset=0,
-            current_user=_user(TEAM_A),
-        )
+    findings = main.get_compliance_findings(
+        framework=None,
+        severity=None,
+        status_filter=None,
+        days=30,
+        provider=None,
+        limit=100,
+        offset=0,
+        current_user=_user(TEAM_A),
     )
     assert findings["total_count"] == 1
 
-    report = asyncio.run(main.get_scan_report(scan_id, _user(TEAM_A)))
+    report = main.get_scan_report(scan_id, _user(TEAM_A))
     assert report.scan_id == scan_id
     assert len(report.results) == 1
 
@@ -238,9 +229,7 @@ def test_the_retention_is_the_configured_one(env, clock, monkeypatch):
 
 def test_report_metadata_and_index_entry_expire_together(env, clock, fake_redis):
     clock.now -= 2 * DAY
-    scan_id = asyncio.run(
-        main.start_scan(_request("acct"), None, _user(TEAM_A))
-    ).scan_id
+    scan_id = main.start_scan(_request("acct"), None, _user(TEAM_A)).scan_id
     clock.now += DAY
     # Completing a day later restarts the retention of all three records.
     scan_store.complete_scan(
@@ -325,15 +314,13 @@ def test_pre_upgrade_index_entries_are_still_read(env, clock, fake_redis):
 
 
 def _batch(team_id, *requests):
-    return asyncio.run(
-        main.start_batch_scans(
-            schemas.BatchScanRequest(scans=list(requests)), current_user=_user(team_id)
-        )
+    return main.start_batch_scans(
+        schemas.BatchScanRequest(scans=list(requests)), current_user=_user(team_id)
     )
 
 
 def test_batch_scans_are_recorded_like_single_scans(env, fake_redis):
-    single = asyncio.run(main.start_scan(_request("solo"), None, _user(TEAM_A))).scan_id
+    single = main.start_scan(_request("solo"), None, _user(TEAM_A)).scan_id
     batch = _batch(TEAM_A, _request("acct-1"), _request("acct-2"))
 
     single_meta = scan_store.load_metadata(fake_redis, single)
@@ -401,22 +388,20 @@ def test_a_batch_request_cannot_choose_its_team(env, fake_redis):
 def test_a_completed_scan_stays_completed_after_its_celery_result_expires(env, clock):
     scan_id = _scan_at(clock, TEAM_A, "acct", days_ago=2)
 
-    status = asyncio.run(main.get_scan_status(scan_id, _user(TEAM_A)))
+    status = main.get_scan_status(scan_id, _user(TEAM_A))
 
     assert status.status == "completed"
     assert status.completed_at is not None
 
 
 def test_report_of_a_scan_in_progress_is_refused(env):
-    scan_id = asyncio.run(
-        main.start_scan(_request("acct"), None, _user(TEAM_A))
-    ).scan_id
+    scan_id = main.start_scan(_request("acct"), None, _user(TEAM_A)).scan_id
 
     with pytest.raises(main.HTTPException) as refused:
-        asyncio.run(main.get_scan_report(scan_id, _user(TEAM_A)))
+        main.get_scan_report(scan_id, _user(TEAM_A))
     assert refused.value.status_code == 400
     with pytest.raises(main.HTTPException) as denied:
-        asyncio.run(main.get_scan_report(scan_id, _user(TEAM_B)))
+        main.get_scan_report(scan_id, _user(TEAM_B))
     assert denied.value.status_code == 403
 
 
@@ -436,9 +421,7 @@ def _queued_scan(monkeypatch, fake_redis):
     monkeypatch.setattr(main, "redis_client", fake_redis)
     queue = QueuedTasks()
     monkeypatch.setattr(main, "run_cspm_scan_task", queue)
-    scan_id = asyncio.run(
-        main.start_scan(_request("acct"), None, _user(TEAM_A))
-    ).scan_id
+    scan_id = main.start_scan(_request("acct"), None, _user(TEAM_A)).scan_id
     return scan_id, queue.calls[0][1]
 
 

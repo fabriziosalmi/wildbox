@@ -97,9 +97,33 @@ The scheduler runs every enabled source it can collect, whatever the
 `status` of its row, by one rule at start and at its reload of the sources
 every ten minutes. It used to leave a source in `error` out at start and
 add it at the first reload, so such a source was collected after a restart
-all the same, up to ten minutes later than the others. A source that fails
-is tried again at its own `collection_interval`, and is disabled when a
-collection raises or times out with ten errors counted.
+all the same, up to ten minutes later than the others.
+
+A source is disabled when ten of its collections in a row have failed,
+whichever way: its collector returned `failed` or `timeout`, the
+scheduler's time limit ended it, or it raised. A collection that completes
+sets the count (`error_count`) back to 0, and one that was rate limited
+leaves it as it is. A failure of the data service's own database (a
+connection it could not open, or lost) is not counted against the source.
+`manage.py sources enable` starts the count again. Until 0.12.2 there were
+two rules: a collection that raised or timed out was counted and disabled
+its source at ten, one whose collector returned `failed`, the usual way
+for a feed to fail, was counted and disabled nothing, and no success set
+the count back. A count left by such a release is corrected when the
+scheduler starts: when one of the source's last ten runs
+(`collection_runs`) completed, the count becomes the number of runs that
+failed after it.
+
+The scheduler outlives a database that is away. Until 0.12.2 its loop
+caught five builtin error classes, none of them a database error: run
+under a PostgreSQL that was stopped and started again, a collection that
+asked the database meanwhile failed without a line in the log, and the
+first reload of the sources ended the process with status 1 (Compose
+started it again). Now a collection that raises is logged once, by the
+class of its error and the code path, never its text (`Collection error
+for source <name>: OperationalError (OperationalError)`); a reload or a
+pass of the loop that fails is logged the same way and made again a minute
+later; and the collections go on when the database is back.
 
 `manage.py` has no other commands besides `init` and `reset`. Both use
 SQLAlchemy `create_all()` rather than Alembic, and `reset` drops every table;

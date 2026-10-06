@@ -95,6 +95,24 @@ def _hook(event, args):
 
 if _KIND:
     sys.addaudithook(_hook)
+
+# A log handler that does not return: the write of the first record that
+# says _LOG_HOLD waits, with the handler's lock, as a write to a log file
+# in a directory that does not answer would.
+_LOG_HOLD = os.environ.get("SENSOR_TEST_LOG_HOLD", "")
+if _LOG_HOLD:
+    import logging
+
+    _emit = logging.StreamHandler.emit
+
+    def _held(self, record):
+        if _LOG_HOLD in record.getMessage():
+            fd = os.open(os.environ["SENSOR_TEST_LOG_MARK"], os.O_WRONLY | os.O_CREAT)
+            os.close(fd)
+            time.sleep(_HOLD)
+        _emit(self, record)
+
+    logging.StreamHandler.emit = _held
 """
 
 # osqueryi, played by a shell script: its version, and one socket with an
@@ -152,6 +170,7 @@ def sensor(tmp_path):
         slow_osquery=None,
         stop_before_it_starts=False,
         settings=None,
+        log_hold="",
         **collection,
     ):
         enabled = dict.fromkeys(
@@ -190,6 +209,8 @@ def sensor(tmp_path):
             "SENSOR_TEST_STOP_AT": stop_at.replace("CONFIG", str(config)),
             "SENSOR_TEST_HOLD": str(hold),
             "SENSOR_TEST_MARK": str(mark),
+            "SENSOR_TEST_LOG_HOLD": log_hold,
+            "SENSOR_TEST_LOG_MARK": str(tmp_path / "log-held"),
         }
         if slow_osquery:
             env["OSQUERY_SLOW"] = str(slow_osquery)
@@ -445,6 +466,35 @@ def test_a_stop_while_the_data_directory_does_not_answer_is_not_held_by_it(
     assert run.seconds < GRACE_SECONDS
     # Nothing was written, and the sensor did not say that anything was.
     assert not (data_dir / "log-positions.json").exists()
+
+
+def test_the_exit_limit_is_not_held_by_a_log_handler_that_does_not_return(
+    sensor, tmp_path
+):
+    # A thread is left, as above, so the exit limit is what ends the
+    # process; and the limit's own line is one the log's handler never
+    # finishes writing. main logged from the thread that was to end the
+    # process, which then waited with the handler: the sensor was there
+    # until it was killed (#788).
+    watched = tmp_path / "etc"
+    watched.mkdir()
+    (watched / "hosts").write_text("127.0.0.1 localhost\n")
+
+    run = sensor(
+        f"scandir:{watched}",
+        hold=HOLD_SECONDS,
+        watched=watched,
+        file_monitoring=True,
+        log_hold="its process has not ended",
+    )
+
+    assert run.reached, run
+    assert run.code == 0, run  # main: -9, from the test, after a minute
+    assert "Security Sensor stopped" in run.output
+    # The handler was given the line, and has not written it.
+    assert (tmp_path / "log-held").exists()
+    assert "its process has not ended" not in run.output
+    assert run.seconds < GRACE_SECONDS
 
 
 def test_a_stop_of_a_sensor_that_has_started_ends_without_the_exit_limit(sensor):
@@ -759,6 +809,69 @@ def test_the_exit_limit_ends_the_process_with_the_sensors_status(monkeypatch, ca
     # One more thread to wait for would defeat it.
     assert timer.daemon is True
     assert "The process ends without waiting for them" in caplog.text
+
+
+@pytest.mark.parametrize("held", ["the log line", "the flush of the log"])
+def test_the_exit_limit_ends_the_process_while_its_last_line_is_still_being_written(
+    monkeypatch, held
+):
+    release = threading.Event()
+    reached = threading.Event()
+    left = threading.Event()
+    seen = []
+
+    def hold(*args, **kwargs):
+        reached.set()
+        release.wait(timeout=60)
+
+    def leave(code):
+        # What the process is doing when it is ended.
+        seen.append((code, reached.is_set(), release.is_set()))
+        left.set()
+
+    monkeypatch.setattr(sensor_main.os, "_exit", leave)
+    monkeypatch.setattr(sensor_main.logging, "shutdown", lambda: None)
+    if held == "the log line":
+        monkeypatch.setattr(sensor_main.logger, "warning", hold)
+    else:
+        monkeypatch.setattr(sensor_main.logging, "shutdown", hold)
+    monkeypatch.setattr(sensor_main, "EXIT_LOG_SECONDS", 0.05)
+
+    try:
+        sensor_main._leave_within(0.01, 3)
+        # main: never, the call that ends the process came after the log.
+        assert left.wait(timeout=10)
+    finally:
+        release.set()
+
+    assert seen == [(3, True, False)]
+
+
+def test_the_exit_limit_waits_for_its_last_line_when_the_log_answers(monkeypatch):
+    # The other way round: a log that answers is written and flushed
+    # before the process ends, not cut by it.
+    order = []
+    left = threading.Event()
+
+    def leave(code):
+        order.append("ended")
+        left.set()
+
+    def say(*args):
+        # A log that takes its time, well inside its limit: an end that
+        # did not wait for it would come first.
+        time.sleep(0.2)
+        order.append("said")
+
+    monkeypatch.setattr(sensor_main.os, "_exit", leave)
+    monkeypatch.setattr(sensor_main.logger, "warning", say)
+    monkeypatch.setattr(sensor_main.logging, "shutdown", lambda: order.append("flushed"))
+    assert sensor_main.EXIT_LOG_SECONDS >= 1
+
+    sensor_main._leave_within(0.01, 3)
+
+    assert left.wait(timeout=10)
+    assert order == ["said", "flushed", "ended"]
 
 
 @pytest.mark.asyncio

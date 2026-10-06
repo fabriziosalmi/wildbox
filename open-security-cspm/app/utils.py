@@ -109,8 +109,27 @@ def category_key(category: str) -> str:
     each now, with ``and``: the filter is a query parameter, where a bare
     ``&`` ends the value. The filter compares by this key, so a value in the
     spelling a client took from an earlier answer still matches.
+
+    And a category that was given another's name keeps its old one as a
+    key of the new (#788, FORMER_CATEGORIES).
     """
-    return " ".join(category.replace("&", " and ").casefold().split())
+    key = " ".join(category.replace("&", " and ").casefold().split())
+    return FORMER_CATEGORIES.get(key, key)
+
+
+# The key of a category the catalog no longer has -> the key of the category
+# its checks are in now. The ``category`` filter still finds them by the old
+# name, which a client may have kept from an earlier answer.
+#
+# ``Access Management`` was the category of two checks of the IAM service
+# (AWS_IAM_005, credentials not used for 90 days; AWS_IAM_006, inline
+# policies on users) beside ``Identity and Access Management``, the category
+# of the other three (AWS_IAM_001 to 003, among them access keys not used
+# for 90 days): one subject under two names, so either filter gave a part of
+# the IAM checks. ``Access Control`` is another subject and stays: who a
+# resource's own policy lets in (a KMS key, an S3 bucket, a Lambda
+# function), not the accounts and credentials of IAM.
+FORMER_CATEGORIES = {"access management": "identity and access management"}
 
 
 _VERDICTS = ("passed", "failed")

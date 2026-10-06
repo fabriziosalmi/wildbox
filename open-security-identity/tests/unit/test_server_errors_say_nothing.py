@@ -129,7 +129,15 @@ def identity(monkeypatch):
 
 
 def says_nothing(response, caplog):
-    """The canonical 500, with nothing of the cause; the cause in the log."""
+    """The canonical 500, with nothing of the cause; in the log, the class
+    of the error and where it was raised.
+
+    This asked for the text of the error in the log, and for its traceback,
+    which ends with the text again: what the shared handler logged until
+    #788. The text is what "names tables, columns, hosts and paths", and in
+    a route it is made from the request; the log has the class, the place
+    and the frames.
+    """
     assert response.status_code == 500, response.text
     assert response.json() == {
         "error": {
@@ -141,17 +149,23 @@ def says_nothing(response, caplog):
     }
     for fragment in ("billing_secrets", "db-7.internal", "Failed to", "ValueError"):
         assert fragment not in response.text, fragment
-    # Logged once by the shared handler, with the exception and the id that
-    # the client was given.
+    # Logged once by the shared handler, with the id that the client was
+    # given: the class of the error, the place it was raised at (the
+    # session's method, here) and the frames, without its text.
     logged = [
         record
         for record in caplog.records
         if record.name == "open_security_shared.errors" and record.levelname == "ERROR"
     ]
     assert len(logged) == 1
-    assert INTERNALS in logged[0].getMessage()
+    message = logged[0].getMessage()
+    assert message.startswith("Unhandled exception: ValueError raised at ")
+    first = message.splitlines()[0]
+    assert first.endswith((" in execute", " in commit")) and __file__ in first
+    for fragment in (INTERNALS, "billing_secrets", "db-7.internal"):
+        assert fragment not in message, fragment
     assert logged[0].request_id == REQUEST_ID
-    assert logged[0].exc_info is not None
+    assert logged[0].exc_info is None and logged[0].exc_text is None
 
 
 @pytest.mark.parametrize("path", ANALYTICS)

@@ -100,8 +100,12 @@ check_service() {
     echo -e "${BLUE}   Checking: ${url}${NC}"
   fi
   
-  # 2xx only, redirects not followed: the same probe `make health` uses.
-  HEALTH_TIMEOUT=3 wb_http_status "$url" >/dev/null
+  # 2xx only, redirects not followed: the same probe `make health` uses, and
+  # the same wait for the answer (HEALTH_TIMEOUT, 5 seconds unless the caller
+  # sets another). This script gave it 3: less than the 4 seconds cspm's
+  # /health may take to say that its workers have not answered, so a cspm
+  # that was up and slow read as one that was down (#788).
+  wb_http_status "$url" >/dev/null
 }
 
 wait_for_service() {

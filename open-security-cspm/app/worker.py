@@ -4,6 +4,7 @@ Celery worker for asynchronous CSPM scans
 
 import asyncio
 import logging
+import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
@@ -19,6 +20,7 @@ from .checks.runner import check_runner
 from .checks.framework import CloudProvider, ScanReport
 from . import schemas
 from . import scan_store
+from . import connections
 from open_security_shared.log_safety import quiet_http_client_loggers
 
 # Configure logging
@@ -88,7 +90,80 @@ celery_app.conf.task_routes = {
 
 # Redis holds the scan records (scan_store). from_url does not connect, so
 # importing this module needs no Redis.
-redis_client = redis_lib.from_url(settings.redis_url, decode_responses=True)
+#
+# With the limits the API's client has (app.connections): 2 seconds to open
+# a connection, 3 for each reply. The worker's had none, so a Redis that
+# accepts and never answers (a paused container, a host that stopped) held
+# the scan's task where it was, for ever: at its first read, or at its last
+# write with the account already scanned (#788). The worker's Celery clients
+# keep Celery's own waits: its broker connection is the one it waits on for
+# tasks.
+redis_client = connections.redis_client(settings.redis_url)
+
+# What the scan store's client raises when Redis cannot be reached or does
+# not answer in time. Not the builtins: both derive from RedisError.
+STORE_UNAVAILABLE = (
+    redis_lib.exceptions.ConnectionError,
+    redis_lib.exceptions.TimeoutError,
+)
+
+# A limit on the store's replies can fail the write that ends a scan: the
+# report of an account scanned for an hour, lost to a Redis that was slow for
+# three seconds, or restarting. So that write is made again, after each of
+# these pauses, in seconds: four attempts, the last one 13 seconds after the
+# first and, with a server that takes every reply to its limit, done within
+# 25. Bounded: a store that stays away ends the task, it does not hold the
+# worker.
+FINAL_WRITE_PAUSES = (1.0, 3.0, 9.0)
+
+
+class ScanReportNotStored(RuntimeError):
+    """The scan ran to its end and the store did not take its report.
+
+    No ``__init__`` of its own: Celery hands ``on_failure`` a copy made from
+    the error's arguments, and for a class it cannot make that way the copy
+    is of the nearest base class it can, a plain RuntimeError.
+    """
+
+
+REPORT_NOT_STORED_MESSAGE = (
+    "The scan ran and its report could not be stored: the scan store did not "
+    "answer."
+)
+
+
+def _pause(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def _write_the_end(write, scan_id: str, what: str):
+    """Make the write that ends a scan, again after a pause for as long as
+    the store does not answer and FINAL_WRITE_PAUSES has a pause left.
+
+    Each attempt that fails is logged; the last one's error is the caller's.
+    The write is scan_store's transaction on the scan's metadata, so one
+    that is made again does no harm: when the first reached Redis and only
+    its reply was lost, the second finds the scan already ended, and says
+    so.
+    """
+    attempts = len(FINAL_WRITE_PAUSES) + 1
+    for attempt, pause in enumerate((*FINAL_WRITE_PAUSES, None), start=1):
+        try:
+            return write()
+        except STORE_UNAVAILABLE as error:
+            if pause is None:
+                logger.error(
+                    "Scan %s: %s could not be written, attempt %d of %d (%s): "
+                    "given up",
+                    scan_id, what, attempt, attempts, type(error).__name__,
+                )
+                raise
+            logger.warning(
+                "Scan %s: %s could not be written, attempt %d of %d (%s): "
+                "trying again in %.0f seconds",
+                scan_id, what, attempt, attempts, type(error).__name__, pause,
+            )
+            _pause(pause)
 
 
 class ScanTask(Task):
@@ -97,11 +172,35 @@ class ScanTask(Task):
     The task's own except clause catches only some errors, and once the
     Celery result expires the stored status is the only record of the
     failure.
+
+    A scan whose report the store did not take (ScanReportNotStored) fails
+    with that reason in its metadata. Marking a scan failed is a last write
+    too, made again like the other. When the store stays away for all of
+    it, the scan's record still says that it is in progress: this says so,
+    by its id, and the record expires with the retention like any other.
     """
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
+        reason = (
+            scan_store.REPORT_NOT_STORED
+            if isinstance(exc, ScanReportNotStored)
+            else None
+        )
         try:
-            scan_store.fail_scan(redis_client, task_id, datetime.utcnow().isoformat())
+            _write_the_end(
+                lambda: scan_store.fail_scan(
+                    redis_client, task_id, datetime.utcnow().isoformat(), reason
+                ),
+                task_id,
+                "its failure",
+            )
+        except STORE_UNAVAILABLE as error:
+            logger.error(
+                "Scan %s failed and could not be marked failed (%s): its "
+                "record says it is in progress until it expires, "
+                "CSPM_REPORT_RETENTION_DAYS after it started",
+                task_id, type(error).__name__,
+            )
         except (redis_lib.RedisError, ValueError, TypeError) as error:
             logger.error(f"Could not mark scan {task_id} failed: {error}")
 
@@ -224,9 +323,19 @@ def run_cspm_scan_task(
         # and its team index entry have, and mark the scan completed (#591).
         # The report is no longer part of the task's result: the result
         # backend keeps results for hours, and nothing reads reports there.
-        stored = scan_store.complete_scan(
-            redis_worker, scan_id, report.model_dump(mode="json"), completed_at
-        )
+        report_data = report.model_dump(mode="json")
+        try:
+            stored = _write_the_end(
+                lambda: scan_store.complete_scan(
+                    redis_worker, scan_id, report_data, completed_at
+                ),
+                scan_id,
+                "its report",
+            )
+        except STORE_UNAVAILABLE:
+            # Not the store's error as it is: the task fails saying what
+            # was lost, and ScanTask.on_failure records it with the scan.
+            raise ScanReportNotStored(REPORT_NOT_STORED_MESSAGE) from None
         if not stored:
             # Cancelled while it ran, and the revocation did not stop this
             # process in time: the scan stays cancelled, as DELETE answered,

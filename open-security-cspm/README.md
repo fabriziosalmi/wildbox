@@ -301,9 +301,13 @@ concurrency decides how many run together.
 
 A scan the task queue does not take, single or in a batch, is answered 503
 and is not recorded: its credentials, its metadata and its index entry are
-removed, where it used to read `queued` until its retention ended. In a
-batch the scans queued before it stay queued and run, and the ones after it
-are not tried; the 503 carries no scan id.
+removed, where it used to read `queued` until its retention ended. A batch
+is queued whole or not at all: the scans after the one that failed are not
+tried, and the ones queued before it are withdrawn (records and credentials
+removed, tasks revoked), so none of them runs. Until 0.12.2 they stayed
+queued and ran, under ids the 503 did not give. If the store does not
+answer that removal either, the 503 lists the scans still queued in
+`error.details.queued_scans`.
 
 ### Supported providers
 
@@ -362,6 +366,11 @@ A category has one spelling in the catalog, written with `and`
 fails when two categories differ only by `&` for `and`, case or spacing.
 The `category` filter takes either: `Logging & Monitoring`, the spelling two
 of the three CloudTrail checks had up to 0.12.0, still finds all three.
+The five checks of the IAM service are one category,
+`Identity and Access Management`; until 0.12.2 two of them were in a
+category of their own, `Access Management`, a name the filter still takes
+and answers with all five. `Access Control` (the policy of a KMS key, an S3
+bucket or a Lambda function) is a different category and stays.
 
 ### Compliance report of one scan
 
@@ -481,7 +490,28 @@ server that accepts and never answers: every route and `/health` answer 503
 in 3 seconds; with the store answering and the queue not, `POST
 /api/v1/scans` in 6. `socket_timeout` and `socket_connect_timeout` in the
 query string of `REDIS_URL` or `CELERY_RESULT_BACKEND` replace the two
-limits of that client. The worker keeps Celery's own waits.
+limits of that client. The worker keeps Celery's own waits for its broker
+and its result backend.
+
+The worker's own scan store client has the same two limits (until 0.12.2 it
+had none: a Redis that never answered held a scan's task without end, at its
+first read or at its last write, with the account already scanned). A limit
+can fail the write that ends a scan, so that write is made up to four times,
+1, 3 and 9 seconds apart, and the worker logs each attempt that fails:
+`Scan <id>: its report could not be written, attempt 2 of 4 (TimeoutError):
+trying again in 3 seconds`. When the report cannot be stored the scan ends
+as `failed`, with `"failure_reason": "report_not_stored"` in its record. When
+Redis stays away for those four attempts as well (25 seconds at most for
+each write), the worker goes on to its next task and logs `Scan <id> failed
+and could not be marked failed`: the scan keeps the status it had, and its
+record expires with `CSPM_REPORT_RETENTION_DAYS` like any other.
+
+The routes that ask Redis or the queue are plain functions, which FastAPI
+runs in threads: requests that wait do so side by side, and `/health/live`,
+`GET /api/v1/providers` and `GET /api/v1/checks`, which ask nothing, answer
+from the event loop meanwhile. Until 0.12.2 every route made its Redis call
+in the event loop, so one waiting request held all the others: with five
+waiting, `/health/live` answered after 15 seconds instead of at once.
 
 ## Configuration
 

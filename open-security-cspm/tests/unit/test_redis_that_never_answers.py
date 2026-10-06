@@ -124,7 +124,7 @@ def test_the_worker_process_keeps_celerys_own_waits():
 def test_a_redis_that_never_answers_is_told_inside_what_every_probe_waits():
     """/health asks Redis first and stops there when it does not answer:
     one connection, or one reply, with a second to spare."""
-    assert probe_waits() == (5.0, 10.0)
+    assert probe_waits() == (5.0, 10.0, 5.0)
     shortest = min(probe_waits())
 
     assert connections.REDIS_READ_TIMEOUT_SECONDS <= shortest - 1

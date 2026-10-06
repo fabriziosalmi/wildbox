@@ -254,7 +254,10 @@ addresses. No address is written to identity's log.
 `/health` returns `status` (`healthy`, `degraded` or `unhealthy`), `service`,
 `timestamp` and `checks` for `database` and `redis`. Redis being down makes the
 service `degraded`: login keeps working, but revocation and lockout stop
-working until it is back.
+working until it is back. A database that cannot be asked is `unhealthy`,
+whatever the error: until 0.12.2 an error the check had not listed, such as
+a database host name that does not resolve, made `/health` answer `500` in
+the error body. The class of such an error is in the service's log.
 
 `/docs`, `/redoc` and `/openapi.json` are served only when `ENVIRONMENT` is
 `development`. A service started without the variable does not serve them.

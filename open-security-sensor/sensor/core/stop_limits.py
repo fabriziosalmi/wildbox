@@ -4,9 +4,11 @@ Whoever stops the sensor gives it a time to end in (Compose:
 ``stop_grace_period``, 30 seconds in the repository's files) and kills it
 after that. Every wait of the stop has a limit, and the limits add up to
 less: these four, and ``START_ABORT_SECONDS`` and ``EXIT_SECONDS`` in
-``main.py``, are 28 seconds, which leaves two for the last log lines and for
-Docker to notice the exit. ``tests/unit/test_stop_time_limits.py`` runs the
-worst case and holds the sum against every Compose file that runs the sensor.
+``main.py``, are 28 seconds. The line the exit limit logs has a limit too
+(``EXIT_LOG_SECONDS`` in ``main.py``, 1 second, #788): 29 with a log that
+does not answer, which leaves one for Docker to notice the exit.
+``tests/unit/test_stop_time_limits.py`` runs the worst case and holds the
+sum against every Compose file that runs the sensor.
 
 They used to be 15, 2 and 15 seconds, 32 against the 30 the sensor was given,
 and the last writes had no limit at all (#777): a write of the positions

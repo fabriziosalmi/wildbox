@@ -410,8 +410,29 @@ class FileMonitor:
                 return
             if self.baseline.persistent and self._baseline_dirty:
                 # The baseline of the paths that had none is on disk before
-                # the monitor says it has started.
-                await self._save()
+                # the monitor says it has started, when the disk answers:
+                # with the limit every other write of it has. Without one,
+                # a data directory that does not answer held the monitor's
+                # start, and the sensor's behind it, for as long as it did
+                # not (#788).
+                try:
+                    await asyncio.wait_for(self._save(), STATE_WRITE_SECONDS)
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "File integrity monitoring: the first baseline was "
+                        "not written within %.0f seconds of the monitor's "
+                        "start: a write to %s has not ended. The monitor "
+                        "starts, and reports changes against the baseline "
+                        "it holds in memory; the write is tried again every "
+                        "%.0f seconds. A sensor that is restarted before "
+                        "one succeeds has no saved baseline for the paths "
+                        "that had none: it takes what it finds under them "
+                        "then as their baseline, and what changed there in "
+                        "between is not reported",
+                        STATE_WRITE_SECONDS,
+                        self.baseline.directory,
+                        BASELINE_SAVE_INTERVAL,
+                    )
 
             # Start monitoring task
             self._tasks = [asyncio.create_task(self._monitor_files())]

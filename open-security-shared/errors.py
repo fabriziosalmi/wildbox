@@ -74,7 +74,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .log_safety import keep_requests_out_of_the_logs
+from .log_safety import describe_exception, keep_requests_out_of_the_logs
 
 logger = logging.getLogger(__name__)
 
@@ -302,12 +302,20 @@ async def pydantic_validation_exception_handler(
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Last resort. The message is deliberately generic; the detail is in the log."""
+    """Last resort. The message is deliberately generic; the detail is in the log.
+
+    The detail is the class of the error, where it was raised and the frames
+    it went through, for the error and for each one behind it: not their
+    text. This logged the text, and the traceback, which ends with it
+    again: the text of an error raised in a route is made from what the
+    request held (``invalid literal for int() with base 10: '...'``), and a
+    log is read by more people, and kept for longer, than the request
+    (#788, log_safety.describe_exception). The answer never had it (#735).
+    """
     request_id = get_request_id(request)
     logger.error(
         "Unhandled exception: %s",
-        exc,
-        exc_info=True,
+        describe_exception(exc),
         extra={"request_id": request_id, "path": str(request.url.path)},
     )
     return error_response(

@@ -273,7 +273,18 @@ async def health_check():
     except SQLAlchemyError:
         health_status["status"] = "degraded"
         health_status["checks"]["database"] = {"status": "degraded"}
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError):
+    except Exception as error:
+        # Whatever else asking the database can raise: the probe is told
+        # that the database is unhealthy, in this route's own body. Five
+        # builtin classes were listed here, and an error that was none of
+        # them left the route: a database host name that does not resolve
+        # raises socket.gaierror, an OSError the driver passes on as it
+        # is, and /health answered 500 in the error body, where it answers
+        # a database that refuses the connection with `unhealthy` (#788).
+        # The class is logged, for the operator; never the text.
+        logging.getLogger(__name__).warning(
+            "Health check: the database check raised %s", type(error).__name__
+        )
         health_status["status"] = "unhealthy"
         health_status["checks"]["database"] = {"status": "unhealthy"}
 
@@ -306,6 +317,12 @@ async def _redis_check() -> dict:
         redis = await get_redis()
         await asyncio.wait_for(redis.ping(), timeout=2)
     except (RedisError, OSError, asyncio.TimeoutError):
+        return {"status": "unhealthy"}
+    except Exception as error:
+        # As for the database: no error of the check is the route's (#788).
+        logging.getLogger(__name__).warning(
+            "Health check: the Redis check raised %s", type(error).__name__
+        )
         return {"status": "unhealthy"}
     return {
         "status": "healthy",

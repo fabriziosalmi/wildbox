@@ -177,6 +177,10 @@ def enable_source(source_name: str):
 
         source.enabled = True
         source.status = "active"
+        # Its failures in a row start again (#788): the scheduler disables
+        # a source at ten, and one enabled with its count still there was
+        # disabled again by its first failure.
+        source.error_count = 0
         db.commit()
         logger.info(f"Enabled source: {source_name}")
         return True

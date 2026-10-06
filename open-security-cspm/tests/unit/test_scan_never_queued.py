@@ -14,9 +14,9 @@ import logging
 
 import pytest
 import redis
-from app import main, scan_store
+from app import main, scan_store, worker
 from celery.exceptions import OperationalError
-from route_probes import HEADERS, TEAM, scan_request
+from route_probes import HEADERS, TEAM, run_worker, scan_request
 
 MARKER = "queue-3.internal:6379 said no"
 
@@ -114,40 +114,223 @@ def test_the_scan_was_recorded_while_it_was_being_queued(world, monkeypatch):
     assert seen["indexed"] is not None
 
 
-def test_a_batch_keeps_the_scans_it_queued_and_not_the_one_it_could_not(
-    world, monkeypatch
-):
-    before = _store(world)
-    broker = Refusing(OperationalError(MARKER), after=1)
-    monkeypatch.setattr(main, "run_cspm_scan_task", broker)
+# --- A batch: all of it, or none (#788) ------------------------------------------
+# This file held test_a_batch_keeps_the_scans_it_queued_and_not_the_one_it_
+# could_not, which asked for what the batch route did: the scans queued
+# before the error stayed, recorded and running, while the caller was
+# answered 503 and given none of their ids.
 
-    response = world.client.post(
+
+class StopsPartway:
+    """A broker that takes ``after`` tasks, as the suite's queue does, and
+    refuses the next one."""
+
+    def __init__(self, queue, error, after):
+        self.queue = queue
+        self.error = error
+        self.after = after
+        self.taken = []
+        self.refused = []
+
+    def apply_async(self, args, task_id):
+        if len(self.taken) < self.after:
+            self.taken.append(task_id)
+            return self.queue.apply_async(args, task_id)
+        self.refused.append(task_id)
+        raise self.error
+
+
+def _batch(world, accounts=("111111111111", "222222222222", "333333333333", "444")):
+    return world.client.post(
         "/api/v1/batch/scans",
-        json={
-            "scans": [
-                scan_request("111111111111"),
-                scan_request("222222222222"),
-                scan_request("333333333333"),
-            ]
-        },
+        json={"scans": [scan_request(account) for account in accounts]},
         headers=HEADERS,
     )
 
+
+@pytest.mark.parametrize(
+    "error, status",
+    [
+        (OperationalError(MARKER), 503),
+        (redis.exceptions.TimeoutError(MARKER), 503),
+        # Not unavailability: a 500, and no more of the batch for that.
+        (RuntimeError(MARKER), 500),
+        (KeyError(MARKER), 500),
+    ],
+    ids=lambda value: type(value).__name__ if isinstance(value, Exception) else "",
+)
+def test_a_batch_that_stops_partway_leaves_none_of_its_scans(
+    world, monkeypatch, error, status
+):
+    before = _store(world)
+    summary = _summary(world)
+    revoked_before = list(world.celery.control.revoked)
+    broker = StopsPartway(world.queue, error, after=2)
+    monkeypatch.setattr(main, "run_cspm_scan_task", broker)
+
+    response = _batch(world)
+
+    assert response.status_code == status, response.text
+    assert len(broker.taken) == 2 and len(broker.refused) == 1
+    # main: the two were recorded under the team, with their credentials
+    # waiting for a worker, and the answer named neither.
+    assert _store(world) == before
+    assert _summary(world) == summary
+    for scan_id in broker.taken + broker.refused:
+        assert scan_id not in response.text
+        read = world.client.get(f"/api/v1/scans/{scan_id}", headers=HEADERS)
+        assert read.status_code == 404, read.text
+    # Their tasks are revoked, for a worker that had taken one already.
+    assert world.celery.control.revoked[len(revoked_before) :] == [
+        (scan_id, True) for scan_id in broker.taken
+    ]
+    assert "details" not in response.json()["error"]
+
+
+def test_the_task_of_a_withdrawn_scan_scans_nothing(world, monkeypatch):
+    """The revocation is a broadcast: a worker that was not up for it takes
+    the task all the same, and finds no credentials."""
+    before = _store(world)
+    broker = StopsPartway(world.queue, OperationalError(MARKER), after=1)
+    monkeypatch.setattr(main, "run_cspm_scan_task", broker)
+    opened = []
+    monkeypatch.setattr(
+        worker, "_create_cloud_session", lambda *args: opened.append(args)
+    )
+    _batch(world)
+    (withdrawn,) = broker.taken
+
+    result = run_worker(world.queue, withdrawn)
+
+    assert result.state == "FAILURE"
+    assert opened == []
+    assert _store(world) == before
+
+
+def test_a_batch_whose_scans_cannot_be_withdrawn_says_which_were_queued(
+    world, monkeypatch, caplog
+):
+    """The store does not answer the removal either. The scans are queued,
+    recorded, and will run when it is back: the answer says so."""
+    broker = StopsPartway(world.queue, OperationalError(MARKER), after=2)
+    monkeypatch.setattr(main, "run_cspm_scan_task", broker)
+    asked = []
+
+    def failing_delete(*keys):
+        asked.append(keys)
+        raise redis.exceptions.TimeoutError("the store did not answer either")
+
+    monkeypatch.setattr(world.redis, "delete", failing_delete)
+
+    with caplog.at_level(logging.ERROR, logger=main.__name__):
+        response = _batch(world)
+
     assert response.status_code == 503, response.text
-    (queued,), (refused,) = broker.taken, broker.refused
-    # The first is with the workers: it is the team's, and will run.
-    metadata = scan_store.load_metadata(world.redis, queued)
-    assert metadata["status"] == "started" and metadata["account_id"] == "111111111111"
-    assert world.redis.get(scan_store.credentials_key(queued))
-    # The second was refused, the third never tried.
-    assert world.redis.get(scan_store.metadata_key(refused)) is None
-    assert world.redis.get(scan_store.credentials_key(refused)) is None
-    after = _store(world)
-    assert set(after["index"]) - set(before["index"]) == {queued}
-    assert set(after["values"]) - set(before["values"]) == {
-        scan_store.metadata_key(queued),
-        scan_store.credentials_key(queued),
+    error = response.json()["error"]
+    assert error["message"] == main.DEPENDENCY_UNAVAILABLE_MESSAGE
+    assert error["details"] == {
+        "message": main.DEPENDENCY_UNAVAILABLE_MESSAGE,
+        "queued_scans": broker.taken,
     }
+    assert MARKER not in response.text
+    # They are the team's scans, as the answer says.
+    for scan_id in broker.taken:
+        assert scan_store.load_metadata(world.redis, scan_id)["status"] == "started"
+    # A store that does not answer is asked once, not once for each scan.
+    assert len(asked) == 2  # the refused scan's own removal, and the first
+    assert (
+        "A batch failed after 2 of its scans were queued, and 2 of them could "
+        f"not be withdrawn (TimeoutError): {', '.join(broker.taken)}"
+    ) in [record.getMessage() for record in caplog.records]
+
+
+def test_a_scan_that_was_withdrawn_before_the_store_stopped_is_not_in_the_answer(
+    world, monkeypatch
+):
+    broker = StopsPartway(world.queue, OperationalError(MARKER), after=3)
+    monkeypatch.setattr(main, "run_cspm_scan_task", broker)
+    real = world.redis.delete
+    removals = []
+
+    def delete(*keys):
+        removals.append(keys)
+        # The refused scan's own removal, then the first of the batch.
+        if len(removals) > 2:
+            raise redis.exceptions.TimeoutError("the store stopped answering")
+        return real(*keys)
+
+    monkeypatch.setattr(world.redis, "delete", delete)
+
+    response = _batch(world)
+
+    assert response.status_code == 503, response.text
+    assert response.json()["error"]["details"]["queued_scans"] == broker.taken[1:]
+    assert scan_store.load_metadata(world.redis, broker.taken[0]) is None
+
+
+def test_a_revocation_that_cannot_be_sent_does_not_keep_the_scans(
+    world, monkeypatch, caplog
+):
+    """The broker is what stopped answering: the scans are withdrawn all
+    the same, and the answer is the plain 503."""
+    before = _store(world)
+    broker = StopsPartway(world.queue, OperationalError(MARKER), after=2)
+    monkeypatch.setattr(main, "run_cspm_scan_task", broker)
+
+    def revoke(task_id, terminate=False):
+        raise OperationalError(MARKER)
+
+    monkeypatch.setattr(world.celery.control, "revoke", revoke)
+
+    with caplog.at_level(logging.WARNING, logger=main.__name__):
+        response = _batch(world)
+
+    assert response.status_code == 503, response.text
+    assert "details" not in response.json()["error"]
+    assert _store(world) == before
+    warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == main.__name__ and record.levelno == logging.WARNING
+    ]
+    assert warnings == [
+        f"Scan {scan_id} of a batch that failed was withdrawn, and its task "
+        "could not be revoked (OperationalError): a worker that takes it finds "
+        "no credentials and scans nothing"
+        for scan_id in broker.taken
+    ]
+    assert MARKER not in " ".join(warnings)
+
+
+def test_a_batch_whose_first_scan_cannot_be_queued_has_nothing_to_withdraw(
+    world, monkeypatch
+):
+    before = _store(world)
+    revoked = list(world.celery.control.revoked)
+    broker = StopsPartway(world.queue, OperationalError(MARKER), after=0)
+    monkeypatch.setattr(main, "run_cspm_scan_task", broker)
+
+    response = _batch(world)
+
+    assert response.status_code == 503, response.text
+    assert _store(world) == before
+    assert world.celery.control.revoked == revoked
+
+
+def test_a_batch_that_is_queued_whole_is_answered_and_recorded_as_before(world):
+    revoked = list(world.celery.control.revoked)
+
+    response = _batch(world, accounts=("111111111111", "222222222222"))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total_scans"] == 2
+    for job in body["scans"]:
+        metadata = scan_store.load_metadata(world.redis, job["scan_id"])
+        assert metadata["status"] == "started"
+        assert metadata["batch_id"] == body["batch_id"]
+        assert world.redis.get(scan_store.credentials_key(job["scan_id"]))
+    assert world.celery.control.revoked == revoked
 
 
 def test_a_scan_whose_record_could_not_be_indexed_is_not_left_half_written(

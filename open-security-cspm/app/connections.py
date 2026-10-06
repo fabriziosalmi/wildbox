@@ -19,8 +19,12 @@ In the stack the three are the same server, in three roles; each can be set
 to another one. ``bound_task_queue_waits`` gives the two Celery clients the
 limits the first has.
 
-The limits are for the API. The worker keeps Celery's own: its connection to
-the broker is the one it waits on for tasks, for as long as none comes.
+The limits of the two Celery clients are for the API. The worker keeps
+Celery's own: its connection to the broker is the one it waits on for tasks,
+for as long as none comes. Its scan store client is made by ``redis_client``
+too, since #788: without a limit a Redis that never answers held a scan's
+task for ever, and the write that ends a scan, which a limit can fail, is
+made again by ``app.worker`` (``FINAL_WRITE_PAUSES``).
 """
 
 from typing import Any

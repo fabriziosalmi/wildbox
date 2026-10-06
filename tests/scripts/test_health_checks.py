@@ -24,6 +24,7 @@ import socket
 import stat
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -72,6 +73,8 @@ class Stub:
     def __init__(self, tmp_path):
         self.tmp = tmp_path
         self.answers = {}
+        # (port, path) -> seconds before the answer is sent.
+        self.delays = {}
         self.down = set(PROFILE_SERVICES)
         self.requests = []
         stub = self
@@ -81,6 +84,7 @@ class Stub:
                 host = self.headers.get("Host", "")
                 port = int(host.rsplit(":", 1)[1]) if ":" in host else 80
                 stub.requests.append((port, self.path))
+                time.sleep(stub.delays.get((port, self.path), 0))
                 status, headers = stub.answers.get((port, self.path), (None, {}))
                 if status is None:
                     healthy = any(
@@ -116,6 +120,9 @@ class Stub:
 
     def answer(self, service, status, path=None, **headers):
         self.answers[(PORT[service], path or PATH_OF[service])] = (status, headers)
+
+    def answer_after(self, service, seconds):
+        self.delays[(PORT[service], PATH_OF[service])] = seconds
 
     def stub_docker(self):
         docker = self.bin / "docker"
@@ -430,6 +437,73 @@ def test_wait_for_services_still_takes_its_list_from_the_environment(stub):
     )
     assert result.returncode == 0, result.stdout
     assert sorted(set(stub.requests)) == [(80, "/health"), (8002, "/health")]
+
+
+def _cspm_health_deadline():
+    """Seconds cspm's /health takes at most, as its own source says."""
+    source = (REPO_ROOT / "open-security-cspm" / "app" / "main.py").read_text()
+    (seconds,) = re.findall(r"^HEALTH_DEADLINE_SECONDS = ([\d.]+)$", source, re.M)
+    return float(seconds)
+
+
+def _probe_wait():
+    """Seconds the shared probe waits for an answer unless told otherwise."""
+    (seconds,) = re.findall(r"\$\{HEALTH_TIMEOUT:-(\d+)\}", TABLE.read_text())
+    return float(seconds)
+
+
+def test_wait_for_services_waits_for_an_answer_as_long_as_make_health_does(stub):
+    """It gave the answer 3 seconds, `make health` 5. cspm's /health answers
+    at its deadline, 4 seconds, when its workers have not replied: 200, and
+    `degraded` in the body. `make health` read that cspm as up and this
+    script as down (#788)."""
+    deadline = _cspm_health_deadline()
+    assert 3 < deadline < _probe_wait()
+    stub.answer_after("cspm", deadline)
+    started = time.monotonic()
+
+    # One attempt, so that it is the wait for the answer that decides.
+    result = stub.run(
+        "bash",
+        str(WAIT),
+        MAX_WAIT="1",
+        POLL_INTERVAL="1",
+        SERVICES=f"cspm:localhost:{PORT['cspm']}:{PATH_OF['cspm']}",
+        OPTIONAL_SERVICES="",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "cspm\x1b[0m is healthy (attempt 1/1)" in result.stdout
+    assert time.monotonic() - started >= deadline
+
+
+def test_wait_for_services_has_no_shorter_wait_of_its_own():
+    """The script's wait is the probe's: a number of its own is what let
+    the two drift apart. A caller's HEALTH_TIMEOUT still applies."""
+    script = WAIT.read_text()
+
+    assert "wb_http_status" in script
+    assert not re.search(r"HEALTH_TIMEOUT=", script)
+    assert not re.search(r"--max-time|--connect-timeout|\btimeout \d", script)
+    # And the probe leaves a second beyond the slowest health route.
+    assert _probe_wait() >= _cspm_health_deadline() + 1
+
+
+def test_a_caller_can_still_shorten_the_wait(stub):
+    stub.answer_after("cspm", 2)
+
+    result = stub.run(
+        "bash",
+        str(WAIT),
+        MAX_WAIT="1",
+        POLL_INTERVAL="1",
+        HEALTH_TIMEOUT="1",
+        SERVICES=f"cspm:localhost:{PORT['cspm']}:{PATH_OF['cspm']}",
+        OPTIONAL_SERVICES="",
+    )
+
+    assert result.returncode == 1, result.stdout
+    assert "cspm\x1b[0m failed to become healthy" in result.stdout
 
 
 # --- the table is the stack --------------------------------------------------

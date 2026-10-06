@@ -27,7 +27,7 @@ class CheckUnusedUserCredentials(BaseCheck):
                        "Unused credentials increase security risk and should be removed or disabled.",
             provider=CloudProvider.AWS,
             service="IAM",
-            category="Access Management",
+            category="Identity and Access Management",
             severity=CheckSeverity.MEDIUM,
             compliance_frameworks=[
                 "CIS AWS Foundations Benchmark v1.4.0 - 1.3",

@@ -314,7 +314,14 @@ def test_an_error_that_is_not_the_databases_still_goes_to_the_shared_handler(
     assert response.status_code == 500
     (record,) = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert record.name == "open_security_shared.errors"
-    assert record.exc_info is not None
+    # The shared handler's own record: the class of the error and where it
+    # was raised, not its text. (This asked for the record's traceback,
+    # which ended with the text, until #788.)
+    assert record.getMessage().startswith(
+        "Unhandled exception: ValueError raised at "
+    )
+    assert "not a database error" not in record.getMessage()
+    assert record.exc_info is None
 
 
 # --- The collector ----------------------------------------------------------------------------

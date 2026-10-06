@@ -235,7 +235,7 @@ def _submit_scan(
         #
         # Nothing to remove when the first write is what failed, and a
         # store that does not answer is not asked again: the removal would
-        # wait as long as the write did, with the event loop.
+        # wait as long as the write did, and the caller with it.
         if written:
             _forget_scan_never_queued(scan_id, current_user["team_id"])
         raise
@@ -256,6 +256,49 @@ def _forget_scan_never_queued(scan_id: str, team_id: str) -> None:
             "Scan %s could not be queued, and its record could not be removed: %s: %s",
             scan_id, type(error).__name__, error,
         )
+
+
+def _withdraw_scans(scan_ids: List[str], team_id: str) -> List[str]:
+    """Take back the scans a batch had queued before one of its scans could
+    not be; the ids of those that could not be taken back (#788).
+
+    The batch is answered an error, so its caller learns none of its ids:
+    the scans queued before the error ran all the same, recorded under the
+    team, for a request that had failed.
+
+    A scan is taken back by removing its credentials and its record
+    (scan_store.forget_scan): the worker that takes its task finds no
+    credentials and ends without opening a session. The task is then
+    revoked as well, for the worker that had taken it already; that is a
+    broadcast to the workers, and when it cannot be sent the scan is still
+    one no worker can start.
+
+    A store that does not answer is not asked again for the next scan: each
+    removal would wait as long as the first did. The scans from that one on
+    are the answer, and the caller is told their ids.
+    """
+    for position, scan_id in enumerate(scan_ids):
+        try:
+            scan_store.forget_scan(redis_client, scan_id, team_id)
+        except Exception as error:
+            left = scan_ids[position:]
+            logger.error(
+                "A batch failed after %d of its scans were queued, and %d of "
+                "them could not be withdrawn (%s): %s",
+                len(scan_ids), len(left), type(error).__name__, ", ".join(left),
+            )
+            return left
+        try:
+            celery_app.control.revoke(scan_id, terminate=True)
+        except Exception as error:
+            logger.warning(
+                "Scan %s of a batch that failed was withdrawn, and its task "
+                "could not be revoked (%s): a worker that takes it finds no "
+                "credentials and scans nothing",
+                scan_id, type(error).__name__,
+            )
+    return []
+
 
 # Application state
 app_start_time = datetime.utcnow()
@@ -306,11 +349,36 @@ async def get_current_user(
     }
 
 
+# --- Which routes are coroutines ------------------------------------------------
+# The Redis client and the Celery client are synchronous: a call waits on a
+# socket, in whatever thread makes it. Every route was `async def` and made
+# those calls in its body, so in the event loop: while one request waited
+# for Redis the process served nothing else, liveness probe included. The
+# limits of #778 made that three seconds for each request, one after the
+# other, instead of for ever (#788).
+#
+# FastAPI runs a route that is a plain `def` in a thread of its pool. So:
+#
+# - a route that asks Redis or the task queue is a plain `def`. A request
+#   that waits holds one thread of the pool, and nothing else;
+# - a route that asks nothing stays `async def` (/health/live, the provider
+#   and check lists): it answers from the loop, also when every thread of
+#   the pool is waiting for Redis;
+# - /health stays `async def` too: it runs its checks in threads itself, to
+#   give the answer up at its own deadline (_checked_off_the_loop).
+#
+# tests/unit/test_routes_off_the_loop.py holds the list of the second and
+# third kind: a route added as a coroutine fails there until it is listed.
+
+
 @app.get("/health/live")
 async def liveness():
     """Liveness probe: the HTTP process is up. Unlike /health (readiness) it
     does NOT require Redis or an active Celery worker, so orchestration can
-    distinguish "process alive" from "dependencies ready"."""
+    distinguish "process alive" from "dependencies ready".
+
+    A coroutine, deliberately: it must not wait for a thread of the pool,
+    which the requests waiting for Redis may all be holding."""
     return {"status": "alive"}
 
 
@@ -454,7 +522,7 @@ async def health_check(response: Response):
     response_model=schemas.ScanResponse,
     status_code=status.HTTP_202_ACCEPTED
 )
-async def start_scan(
+def start_scan(
     scan_request: schemas.ScanRequest,
     background_tasks: BackgroundTasks,
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -496,7 +564,7 @@ async def start_scan(
 
 
 @app.get("/api/v1/scans/{scan_id}", response_model=schemas.ScanStatusResponse)
-async def get_scan_status(
+def get_scan_status(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -591,7 +659,7 @@ async def get_scan_status(
 
 
 @app.get("/api/v1/scans/{scan_id}/report", response_model=schemas.ScanReportSchema)
-async def get_scan_report(
+def get_scan_report(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -703,7 +771,7 @@ async def list_checks(
 
 
 @app.get("/api/v1/scans/{scan_id}/compliance", response_model=schemas.ComplianceReportResponse)
-async def get_compliance_report(
+def get_compliance_report(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     framework: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -711,7 +779,7 @@ async def get_compliance_report(
     """Get compliance-focused report for a scan."""
     try:
         # Get scan report first
-        scan_report = await get_scan_report(scan_id, current_user)
+        scan_report = get_scan_report(scan_id, current_user)
         
         # Generate compliance report
         frameworks_summary = []
@@ -777,7 +845,7 @@ async def get_compliance_report(
 
 
 @app.delete("/api/v1/scans/{scan_id}", response_model=schemas.ScanCancelResponse)
-async def cancel_scan(
+def cancel_scan(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -851,7 +919,7 @@ async def cancel_scan(
 # Dashboard and metrics endpoints
 
 @app.get("/api/v1/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
-async def get_dashboard_summary(
+def get_dashboard_summary(
     days: int = Query(30, ge=1, le=365),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -899,7 +967,7 @@ async def get_dashboard_summary(
 
 
 @app.post("/api/v1/batch/scans", response_model=schemas.BatchScanResponse)
-async def start_batch_scans(
+def start_batch_scans(
     batch_request: schemas.BatchScanRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -909,25 +977,46 @@ async def start_batch_scans(
     has the same metadata, team index entry and stored report. A batch that
     names a provider cspm cannot scan is refused whole, with 400, before any
     of its scans is stored or queued.
+
+    All of the batch or none of it (#788). When one of its scans cannot be
+    queued the answer is the error (503 with Redis or the broker away), and
+    the scans queued before it are withdrawn: no record, no credentials, no
+    scan. They used to run, under ids the answer did not give. When they
+    cannot be withdrawn, because the store does not answer the removal
+    either, the 503 says which they are (``error.details.queued_scans``).
     """
     _refuse_unsupported_providers(batch_request.scans)
     try:
         batch_id = str(uuid.uuid4())
         scan_jobs = []
 
-        for scan_config in batch_request.scans:
-            scan_id = _submit_scan(
-                scan_config, current_user, extra_metadata={"batch_id": batch_id}
+        try:
+            for scan_config in batch_request.scans:
+                scan_id = _submit_scan(
+                    scan_config, current_user, extra_metadata={"batch_id": batch_id}
+                )
+                scan_jobs.append({
+                    "scan_id": scan_id,
+                    "provider": scan_config.provider.value,
+                    "account_id": scan_config.account_id,
+                    # The task id is the scan id.
+                    "task_id": scan_id,
+                    "status": "started"
+                })
+        except Exception:
+            left = _withdraw_scans(
+                [job["scan_id"] for job in scan_jobs], current_user["team_id"]
             )
-            scan_jobs.append({
-                "scan_id": scan_id,
-                "provider": scan_config.provider.value,
-                "account_id": scan_config.account_id,
-                # The task id is the scan id.
-                "task_id": scan_id,
-                "status": "started"
-            })
-            
+            if left:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "message": DEPENDENCY_UNAVAILABLE_MESSAGE,
+                        "queued_scans": left,
+                    },
+                ) from None
+            raise
+
         logger.info(f"Started batch scan {batch_id} with {len(scan_jobs)} individual scans")
         
         return schemas.BatchScanResponse(
@@ -979,7 +1068,7 @@ def _team_compliance_reports(
 
 
 @app.get("/api/v1/compliance/summary", response_model=schemas.ComplianceSummaryResponse)
-async def get_compliance_summary(
+def get_compliance_summary(
     days: int = Query(30, ge=1, le=365),
     provider: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -1006,7 +1095,7 @@ async def get_compliance_summary(
 
 
 @app.get("/api/v1/compliance/findings", response_model=schemas.ComplianceFindingsResponse)
-async def get_compliance_findings(
+def get_compliance_findings(
     framework: Optional[str] = None,
     severity: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
