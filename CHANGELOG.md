@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-10-06
+
+A second patch for 0.12.0, which closes what the first one listed as found
+and not fixed (#788) and the tools service's follow-ups (#774). A tool that
+fails is called once: outside strict mode it was called a second time, and
+an asynchronous task three times (#774). A refusal of the tools service no
+longer repeats the target it refuses. cspm's routes no longer wait for
+Redis in the event loop, a batch that fails partway leaves no scan queued,
+and its worker's last write has a limit and is made again. The data
+scheduler outlives a restart of its database and has one rule for the
+source that keeps failing. The gateway's redirects keep the client's port
+on every route. guardian's `import_vulnerabilities`, which failed on the
+first row of any file, imports. An unhandled error in the FastAPI services
+is logged by its class and the place it was raised at, not by its text.
+Six service images no longer carry their test tools, and cspm and guardian
+run a redis-py with which Celery can reconnect.
+
+From 0.12.1 nothing is required beyond rebuilding the images:
+[Upgrading to 0.12.2](UPGRADING.md#upgrading-to-0122) lists what an
+operator or a client may notice.
+
+The patch was run before the release on the Linux host that holds the
+stack at 0.12.1, with data created under 0.10.0, applied as an operator
+applies it (check out, rebuild, `up -d`): all eighteen services healthy
+and no migration to apply; the six images without `pytest`, where they had
+it; redis-py 5.0.8 in cspm and guardian; a path without its trailing slash
+redirected with a `Location` that is a path; the API checks of the earlier
+tests and `make health` passing; and the integration suite against that
+stack with nothing failing (240 passed, 16 skipped).
+
+
 ### Security
 
 - **tools calls a tool that fails once** (#774). Two layers called it
@@ -79,6 +110,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   URL, and with it the key. It stores and logs the class, with the HTTP
   status when the error has one, as the collectors have done for their
   own errors since 0.12.0.
+- **guardian's log of a discovery that could not be queued names the
+  error, not its text** (#788). When the broker did not take a network's
+  scan, the rule's result said so in guardian's own words (#775), and the
+  line in `guardian-worker`'s log beside it held the exception's text,
+  which names the broker and its address and may hold the URL it was
+  given. The line now names the network and the class of the error.
 
 ### Fixed
 
@@ -95,12 +132,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error and would have refused every body that holds a URL; the
   application never added it. It is removed with the three `sanitize_*`
   methods and the pattern list only it used.
-- **guardian's log of a discovery that could not be queued names the
-  error, not its text** (#788). When the broker did not take a network's
-  scan, the rule's result said so in guardian's own words (#775), and the
-  line in `guardian-worker`'s log beside it held the exception's text,
-  which names the broker and its address and may hold the URL it was
-  given. The line now names the network and the class of the error.
 - **Every redirect the gateway writes keeps the client on the port it
   called** (#788). 0.12.1 fixed this for guardian's location (#776).
   The `301` nginx writes for the eight other proxied prefixes asked
@@ -6785,7 +6816,8 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 - Docker Compose orchestration
 - Dashboard UI with Next.js
 
-[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/fabriziosalmi/wildbox/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/fabriziosalmi/wildbox/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.1...v0.11.2

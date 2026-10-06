@@ -4,6 +4,77 @@ This file records changes that an **existing deployment** has to act on. A fresh
 install needs none of it: `make generate-secrets` and the
 [Quick Start](https://www.wildbox.io/guides/quickstart/) cover everything here.
 
+## Upgrading to 0.12.2
+
+From 0.12.1 nothing is required: rebuild the images and recreate the
+containers.
+
+```bash
+git fetch --tags && git checkout v0.12.2
+docker compose build
+docker compose up -d
+```
+
+Use the same `-f` files, or `COMPOSE_FILE`, you start the stack with. No
+setting is added or removed, and no service has a schema change. Coming
+from 0.12.0, this is all there is to do as well; coming from 0.11.2 or
+earlier, follow [Upgrading to 0.12.0](#upgrading-to-0120) with `v0.12.2`
+checked out in its step 2.
+
+What you may notice:
+
+- **Logs of the FastAPI services.** An unhandled error is logged with its
+  class, the place it was raised at and its frames, without its text, in
+  the service's own record and in uvicorn's: the text can hold what a
+  caller sent. Look an error up by class and place.
+- **tools: an asynchronous task whose tool raises is not retried.** It
+  used to read `retrying` and then `failed`, in state `FAILURE`, after the
+  tool had been called three times; it now reads `failed`, in state
+  `SUCCESS`, after one call, with `error` `Tool execution failed
+  (<class>)`. A tool that failed on its first call and succeeded on a
+  retry now fails.
+- **tools: the text of a refused target** no longer holds the target. A
+  client that matched on the text should read
+  `error.details.errors[0].type`, which is new on that `400`
+  (`target_internal`, `target_too_large`, `target_invalid`,
+  `url_refused`). The statuses are the same. A target written with an
+  IPv6 zone id answers `400` in `dns_servers`, `ip_range` and `network`.
+- **gateway.** A redirect the HTTPS listener writes carries a path in
+  `Location` (`/api/v1/data/`), where it carried
+  `https://<host>/api/v1/data/` without the port the client had called.
+  `http://wildbox.local/...` and `http://<name>.wildbox.local/...` are
+  redirected to HTTPS on that same name; any other `Host` goes to the
+  first configured name, as before.
+- **guardian.** `manage.py import_vulnerabilities --source json` and
+  `--source csv`, which always failed, import; `--source nist`, `nessus`
+  and `openvas` end with an error and a status that is not 0, where they
+  printed "not yet implemented" and ended with 0. An IPv6 host a discovery
+  finds from now on, without a reverse DNS name, is named
+  `host-2606-2800-...`, with hyphens; no stored name changes. The worker's
+  line for a network that could not be queued reads
+  `Failed to queue the scan of network '<range>': <ErrorClass>`.
+- **cspm.** `Access Management` is no longer among the categories of
+  `GET /api/v1/cspm/checks`: its two checks are in `Identity and Access
+  Management`, and the old name still works as a filter. A batch that
+  fails partway leaves no scan queued; when it cannot withdraw them, the
+  `503` lists them in `error.details.queued_scans`.
+- **data.** A source's `error_count` counts failures in a row and is reset
+  by a success. A feed whose collector returns `failed` ten times in a row
+  is disabled, where it was collected without end; `manage.py sources
+  enable` brings it back with its count at 0. `last_error` holds the class
+  of the error and the HTTP status, not its text.
+- **sensor.** The last line of a stop may count more events than before
+  (it counted too few), and the status has two new counters,
+  `entries_failed` and `lines_failed`. A stop takes at most 29 seconds,
+  still inside the 30 the Compose files give.
+- **Images.** guardian, data, identity, agents, tools and responder no
+  longer contain `pytest` or the linters, and data and tools no longer
+  contain `httpx`: `docker compose exec identity pytest` now answers "not
+  found". To run a service's unit tests, install `pytest==9.1.1
+  pytest-cov==7.1.0 pytest-asyncio==1.4.0` after its `requirements.txt`,
+  with `pytest-django==4.5.2` for guardian and `httpx==0.28.1` for data
+  and tools. cspm and guardian run redis-py 5.0.8.
+
 ## Upgrading to 0.12.1
 
 From 0.12.0 nothing is required: rebuild the images and recreate the
