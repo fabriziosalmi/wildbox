@@ -18,6 +18,7 @@ nothing but the local API. It is never printed.
 """
 
 import http.client
+import ipaddress
 import json
 import re
 import urllib.error
@@ -65,10 +66,14 @@ def _address(config: SensorConfig) -> str:
     """Where the local API of this configuration listens, as a client
     reaches it."""
     host = config.network.bind_address
-    if host in ("0.0.0.0", ""):
-        host = "127.0.0.1"
-    elif host == "::":
-        host = "::1"
+    # An API bound to the unspecified address (every interface, IPv4 or
+    # IPv6) is reached here on loopback: this is a client, it binds nothing.
+    try:
+        unspecified = ipaddress.ip_address(host).is_unspecified
+    except ValueError:
+        unspecified = host == ""
+    if unspecified:
+        host = "::1" if ":" in host else "127.0.0.1"
     if ":" in host:
         host = f"[{host}]"
     return f"http://{host}:{config.network.bind_port}"
