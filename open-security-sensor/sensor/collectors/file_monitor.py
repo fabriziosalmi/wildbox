@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from sensor.collectors.baseline_store import BaselineStore, under
 from sensor.core.config import SensorConfig
+from sensor.core.stop_limits import STATE_WRITE_SECONDS
 from sensor.pipeline.delivery import DELIVERY_KEY, Delivery
 
 logger = logging.getLogger(__name__)
@@ -456,8 +457,19 @@ class FileMonitor:
                     "next start takes what it finds as its baseline"
                 ),
             )
-        if self.baseline.persistent and self._baseline_dirty:
-            await self._save()
+        # Not for longer than a collector may take: the write waits, in
+        # its worker thread, for one that is stuck in another (a data
+        # directory that does not answer), and this waited with it for as
+        # long as the agent let it (#777).
+        try:
+            await asyncio.wait_for(self.write_baseline(), STATE_WRITE_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "The file monitor's baseline was not written within %.0f "
+                "seconds of the monitor's stop: a write to %s has not ended",
+                STATE_WRITE_SECONDS,
+                self.baseline.directory,
+            )
 
     async def _initial_scan(self):
         """Perform the first scan"""
@@ -721,7 +733,11 @@ class FileMonitor:
         )
 
     def save_baseline(self) -> bool:
-        """Write the baseline now, if it has moved since the last write."""
+        """Write the baseline now, if it has moved since the last write.
+
+        In the calling thread, which waits for a write in progress: not for
+        the event loop, whose writes are ``write_baseline()``.
+        """
         if not self.baseline.persistent or not self._baseline_dirty:
             return False
         if self.baseline.save(*self._picture()):
@@ -729,18 +745,35 @@ class FileMonitor:
         self._baseline_dirty = True  # tried again at the next interval
         return False
 
-    async def _save(self):
-        """Write the baseline off the event loop."""
+    async def write_baseline(self) -> Optional[str]:
+        """Write the baseline now, if it has moved since the last write, in
+        a worker thread: the event loop never waits for the disk, nor for a
+        write that is waiting for it.
+
+        Why it could not be written, or None: it is written, or had not
+        moved. It has no time limit of its own; a caller that has one gives
+        it up (``asyncio.wait_for``), and the write is then left to its
+        thread.
+        """
+        if not self.baseline.persistent or not self._baseline_dirty:
+            return None
+        return await self._save()
+
+    async def _save(self) -> Optional[str]:
+        """Write the baseline off the event loop; why it could not be."""
         picture = self._picture()
         loop = asyncio.get_running_loop()
         try:
             saved = await loop.run_in_executor(None, self.baseline.save, *picture)
         except asyncio.CancelledError:
-            # Stopped meanwhile: stop writes it once more, to be sure of it.
+            # Given up meanwhile: how the write ends is not known here, so
+            # the next one is made whatever became of it.
             self._baseline_dirty = True
             raise
-        if not saved:
-            self._baseline_dirty = True
+        if saved:
+            return None
+        self._baseline_dirty = True
+        return self.baseline.problem or "the write failed"
 
     async def _save_periodically(self):
         """Write the baseline while it moves."""

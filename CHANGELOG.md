@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **The sensor's start-up log line no longer names the account it runs
+  under.** `Platform: {...}` logged, at INFO, the user's name, the home
+  directory and the first entries of `PATH`, and on Linux every field of
+  `/etc/os-release`. It now reads `Platform: Linux 6.8.0 (x86_64), Python
+  3.11.9`: the system, its release, the architecture and the Python
+  version (#777).
+- **The sensor's local API allows no origin.** Its CORS layer allowed one,
+  the API's own bind address and port (`http://127.0.0.1:8004`, or
+  `http://0.0.0.0:8004` in the container), with credentials. A page the
+  API serves itself needs no such permission, and any other page with that
+  origin is served by something else on the browser's own machine. The API
+  now sends no `Access-Control-*` header and answers no preflight
+  (`OPTIONS` gets `405`); requests that are not made by a browser page of
+  another origin are answered as before (#777).
+
 ### Fixed
 
 - **A restore over a live database removes the tables made after the
@@ -53,6 +70,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with no scheme, host or port, and the client resolves it against the
   URL it called. No host is written at all, so the one a client sends
   in `Host` is no longer echoed in the header either (#776).
+- **A data directory that stops answering no longer holds the sensor's
+  stop.** The log positions and the file monitor's baseline were written
+  one last time by a call in the event loop, which waited for a lock that
+  a periodic write stuck in its worker thread never released: no limit of
+  the stop could end, the one that ends the process was armed only
+  afterwards, and the sensor was killed when its grace period ran out,
+  having said nothing. Every write is now made in a worker thread and
+  waited for 2 seconds at most, the limit that ends the process is armed
+  before the last writes begin, and the last log lines say what was not
+  written and what follows from it after the restart. The stop's limits
+  now add up to 28 seconds, inside the 30 the Compose files give (#777).
+- **What a sensor's collector waits for when it stops fits in the time the
+  collectors have.** A killed `osqueryi` was given 10 seconds, a command
+  that follows a log (`journalctl`, `log stream`) 5 seconds to end, no
+  limit once killed and 5 more for its output, and a request in flight to
+  the local API 60 seconds and then 60 more, against the 8 seconds the
+  agent waits for all of them: the agent's limit cut the collector short,
+  with a command still running or a pipe still open. Each of those waits
+  is now 2 seconds, a quarter of the collectors' limit and computed from
+  it. A command that ignores the request to end is killed and waited for
+  while its unread output is discarded, and a stop that comes while a
+  command is ending by itself no longer leaves it running (#777).
+- **The sensor's last log lines count the journal and unified-log entries
+  it had read and not queued.** `journalctl` and `log stream` are read a
+  chunk at a time; a reader stopped while it waited for room on a full
+  queue held the rest of its chunk, which no count included. They are now
+  in `Stopped with N events still on their way to the sender`: as read
+  again for the journal when its cursor is saved, as dropped otherwise
+  (#777).
 
 ### Removed
 
@@ -73,6 +119,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `limit_conn_zone ... zone=addr:10m`, and no `limit_conn` named it: it
   limited nothing and held 10 MB of shared memory. The gateway does not
   limit connections per address, and did not before (#776).
+- **The sensor image no longer contains its test tools.** `pytest`,
+  `pytest-asyncio`, `pytest-cov`, `black`, `flake8` and `mypy` were in the
+  lock the image installs and in the package's `install_requires`; they
+  are gone from both, with the fourteen packages only they needed, and so
+  is `aiohttp-cors`. The lock went from 36 packages to 15. The unit-test
+  job already installed its own test runner on top of the lock; to run
+  the sensor's tests by hand, install `pytest==9.1.1 pytest-cov==7.1.0
+  pytest-asyncio==1.4.0` after `requirements.txt` (#777).
 
 ### Documentation
 

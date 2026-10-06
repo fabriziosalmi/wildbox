@@ -16,9 +16,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from aiohttp import web, web_request
-import aiohttp_cors
 
 from sensor.core.config import SensorConfig
+from sensor.core.stop_limits import API_SHUTDOWN_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -44,35 +44,30 @@ class LocalAPI:
         try:
             # Create aiohttp application
             self.app = web.Application()
-            
-            # Setup CORS - restricted to localhost only
-            #
-            # CorsConfig, and not aiohttp_cors.setup(): setup() is this
-            # line and one more, which keeps the configuration in the
-            # application under the name "aiohttp_cors". aiohttp warns
-            # about every such name that is not a web.AppKey
-            # (NotAppKeyWarning), at every start of the sensor (#765), and
-            # the only reader of that entry is aiohttp_cors' mixin for
-            # class-based views, of which this API has none.
-            allowed_origin = f"http://{self.config.network.bind_address}:{self.config.network.bind_port}"
-            cors = aiohttp_cors.CorsConfig(self.app, defaults={
-                allowed_origin: aiohttp_cors.ResourceOptions(
-                    allow_credentials=True,
-                    expose_headers="*",
-                    allow_headers="*",
-                    allow_methods="*"
-                )
-            })
-            
+
+            # No CORS (#777): the API says nothing about origins, so a
+            # browser lets no page of another origin read its answers, and
+            # does not send a request that needs a preflight. The one
+            # origin the API used to name was its own bind address and port
+            # ("http://127.0.0.1:8004"; in the container, where it binds
+            # every address, "http://0.0.0.0:8004"). A page the API serves
+            # itself has that origin and needs no permission. The only other
+            # page that has it is whatever else answers on that address of
+            # the browser's own machine, and that page was allowed to read
+            # this API's answers, with credentials.
+
             # Setup routes
             self._setup_routes()
-            
-            # Add CORS to all routes
-            for route in list(self.app.router.routes()):
-                cors.add(route)
-            
-            # Create runner
-            self.runner = web.AppRunner(self.app)
+
+            # Create runner. A request still in flight when the sensor
+            # stops is given API_SHUTDOWN_SECONDS to finish, then cancelled
+            # and given as many to end. aiohttp's own limit is 60 seconds,
+            # spent twice: one slow request (a query osqueryi does not
+            # answer) made the local API use all the time the collectors
+            # have to stop (#777).
+            self.runner = web.AppRunner(
+                self.app, shutdown_timeout=API_SHUTDOWN_SECONDS
+            )
             await self.runner.setup()
             
             # Start server

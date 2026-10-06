@@ -44,14 +44,25 @@ def get_platform_info() -> Dict[str, Any]:
     elif platform.system() == 'Darwin':  # macOS
         info['mac_version'] = platform.mac_ver()
     
-    # Environment information
-    info['environment'] = {
-        'user': os.environ.get('USER') or os.environ.get('USERNAME'),
-        'home': os.environ.get('HOME') or os.environ.get('USERPROFILE'),
-        'path': os.environ.get('PATH', '').split(os.pathsep)[:5]  # First 5 PATH entries
-    }
-    
+    # Nothing of the account or of the environment (#777). This used to
+    # hold the user's name, the home directory and the first entries of
+    # PATH, which nothing read except the start-up log line.
     return info
+
+
+def describe_platform() -> str:
+    """What the sensor runs on, for its start-up log line: the system, its
+    release, the architecture and the Python version.
+
+    The line used to be the whole of ``get_platform_info()``, at INFO: with
+    it the user's name, the home directory and ``PATH``, and on Linux every
+    field of ``/etc/os-release``. A log that is shipped or pasted into a
+    ticket carried them (#777).
+    """
+    return (
+        f"{platform.system()} {platform.release()} ({platform.machine()}), "
+        f"Python {platform.python_version()}"
+    )
 
 def is_windows() -> bool:
     """Check if running on Windows"""

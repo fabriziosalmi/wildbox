@@ -15,6 +15,13 @@ fill a real agent from the gateway backwards (the sender's buffer and its
 hand, the processed queue, the worker, the collectors' queue) until the real
 collector waits in ``put()``, and stop it there. Nothing is timed: each test
 waits for the state it needs.
+
+Behind that event there were more (#777). ``journalctl`` and ``log stream``
+are read a chunk at a time, and a chunk is many entries: the reader that
+waits in ``put()`` with one of them holds the rest of its chunk, which are
+not events yet and were counted by nobody. The forwarder counts them now,
+and the agent's last lines include them: every entry the command wrote and
+the sensor read is at the sender, on its way, in ``put()`` or behind it.
 """
 
 import asyncio
@@ -55,6 +62,10 @@ API_KEY = "wsk_t3st.0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab
 AT_THE_SENDER = 3
 ON_THEIR_WAY = 3
 IN_PUT = 1
+# The entries a command writes at once in the tests below, which the reader
+# gets in one read, and how many of them are then behind the one in put().
+WRITTEN_AT_ONCE = 10
+BEHIND_IT = WRITTEN_AT_ONCE - AT_THE_SENDER - ON_THEIR_WAY - IN_PUT
 
 
 class Gateway:
@@ -322,20 +333,7 @@ async def test_an_entry_of_a_source_that_cannot_be_read_again_is_counted_as_drop
     # The macOS unified log: `log stream` cannot be asked for an entry
     # again, with or without data_dir, so its events carry no Delivery. The
     # command is played by a script, as in test_log_system_sources.py.
-    script = tmp_path / "log.py"
-    script.write_text(textwrap.dedent("""
-            import json, sys, time
-            for index in range(10):
-                sys.stdout.write(json.dumps({"eventMessage": "entry %d" % index}) + "\\n")
-            sys.stdout.flush()
-            time.sleep(60)
-            """))
-    monkeypatch.setattr(log_forwarder, "is_macos", lambda: True)
-    monkeypatch.setattr(
-        log_forwarder.LogForwarder,
-        "_unified_log_command",
-        staticmethod(lambda: [sys.executable, str(script)]),
-    )
+    _plays(monkeypatch, tmp_path, "unified_log")
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     source = LogSourceConfig(name="unified", type="unified_log", format="json")
@@ -345,8 +343,113 @@ async def test_an_entry_of_a_source_that_cannot_be_read_again_is_counted_as_drop
     await _full_to_the_collector(agent)
     said = await _stop(agent, caplog)
 
-    assert _line(dropped=ON_THEIR_WAY + IN_PUT, returned=0) in said
+    # This test asked for ON_THEIR_WAY + IN_PUT, four, when the command had
+    # written ten and three were at the sender: the three entries behind
+    # the one in put() were in no count (#777).
+    assert _line(dropped=ON_THEIR_WAY + IN_PUT + BEHIND_IT, returned=0) in said
     assert agent.data_forwarder.stats["events_dropped_shutdown"] == AT_THE_SENDER
+    # Every entry the command wrote is in one count or the other.
+    assert AT_THE_SENDER + ON_THEIR_WAY + IN_PUT + BEHIND_IT == WRITTEN_AT_ONCE
+    # Counted once: a second stop has nothing left to say.
+    assert agent.log_forwarder.interrupted == []
+
+
+def _plays(monkeypatch, tmp_path, kind, junk=False):
+    """journalctl or log, played by a script that writes WRITTEN_AT_ONCE
+    entries at once, which is one read, and stays. ``junk``: with lines
+    between them that are no entries."""
+    script = tmp_path / "command.py"
+    script.write_text(
+        textwrap.dedent(
+            """
+            import json, sys, time
+            lines = []
+            for index in range(%d):
+                lines.append(json.dumps(
+                    {"__CURSOR": "s=1;i=%%d" %% index, "MESSAGE": "entry %%d" %% index}
+                ))
+                if %r:
+                    lines.extend(["", "not an entry", "[1, 2]"])
+            sys.stdout.write("\\n".join(lines) + "\\n")
+            sys.stdout.flush()
+            time.sleep(60)
+            """
+            % (WRITTEN_AT_ONCE, junk)
+        )
+    )
+    argv = [sys.executable, str(script)]
+    if kind == "journald":
+        monkeypatch.setattr(log_forwarder, "is_linux", lambda: True)
+        monkeypatch.setattr(
+            log_forwarder.LogForwarder, "_journal_command", lambda self, runtime: argv
+        )
+    else:
+        monkeypatch.setattr(log_forwarder, "is_macos", lambda: True)
+        monkeypatch.setattr(
+            log_forwarder.LogForwarder,
+            "_unified_log_command",
+            staticmethod(lambda: argv),
+        )
+
+
+@pytest.mark.parametrize("junk", [False, True])
+@pytest.mark.asyncio
+async def test_the_journal_entries_behind_the_one_in_put_are_counted_and_read_again(
+    tmp_path, gateway, caplog, monkeypatch, junk
+):
+    # The journal is read again from the saved cursor, which is that of the
+    # last entry accepted: before all of these.
+    _plays(monkeypatch, tmp_path, "journald", junk)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    source = LogSourceConfig(name="journal", type="journald", format="json")
+    agent = _agent(data_dir, [source])
+
+    await agent.start()
+    await _full_to_the_collector(agent)
+    said = await _stop(agent, caplog)
+
+    # main: 4 of them. A line that is no entry (blank, not JSON, not an
+    # object) is no event either way, and is not counted as one.
+    assert _line(dropped=0, returned=ON_THEIR_WAY + IN_PUT + BEHIND_IT) in said
+    assert agent.data_forwarder.stats["events_returned_to_source"] == AT_THE_SENDER
+    assert agent.log_forwarder.interrupted == []
+
+
+@pytest.mark.asyncio
+async def test_without_a_saved_cursor_the_journal_entries_behind_it_are_dropped(
+    tmp_path, gateway, caplog, monkeypatch
+):
+    _plays(monkeypatch, tmp_path, "journald")
+    source = LogSourceConfig(name="journal", type="journald", format="json")
+    agent = _agent(None, [source])
+
+    await agent.start()
+    await _full_to_the_collector(agent)
+    said = await _stop(agent, caplog)
+
+    # Nothing keeps the cursor: the journal is followed from the restart on.
+    assert _line(dropped=ON_THEIR_WAY + IN_PUT + BEHIND_IT, returned=0) in said
+
+
+@pytest.mark.asyncio
+async def test_a_reader_stopped_while_it_waits_for_the_command_holds_nothing(
+    tmp_path, gateway, caplog, monkeypatch
+):
+    # Every entry was handled: the reader is waiting for the command's next
+    # output, not in put().
+    _plays(monkeypatch, tmp_path, "journald")
+    source = LogSourceConfig(name="journal", type="journald", format="json")
+    agent = _agent(None, [source], tight=False)
+    gateway.answer = SENT
+
+    await agent.start()
+    await _until(lambda: len(gateway.accepted) == WRITTEN_AT_ONCE)
+    forwarder = agent.log_forwarder
+    said = await _stop(agent, caplog)
+
+    assert forwarder.interrupted == []
+    assert [line for line in said if line.startswith("Stopped with")] == []
 
 
 @pytest.mark.asyncio
