@@ -68,9 +68,11 @@ API_KEY = "wsk_t3st.0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab
 LOCAL_KEY = "local-api-key-0123456789abcdef"
 
 # Seconds the time the sensor is given must leave beyond its limits, for what
-# has none: the last lines are logged, Docker notices the exit. It was four
-# seconds, of which the last writes took what they took.
-ROOM_FOR_THE_LAST_LINES = 2.0
+# has none: Docker notices the exit. It was four seconds, of which the last
+# writes took what they took, and then two, of which the exit limit's last
+# log line took what it took: that line has a limit of its own now
+# (main.EXIT_LOG_SECONDS, #788).
+ROOM_FOR_THE_EXIT = 1.0
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="the event loop used here is the selector's"
@@ -305,8 +307,10 @@ def test_every_compose_file_gives_the_sensor_the_time_its_stop_can_take(
 ):
     _, _, ended = _worst_stop(leaping, tmp_path, monkeypatch)
     # What the stop itself can take, as measured, and then the process's
-    # own end, which has its limit too.
-    needed = ended + sensor_main.EXIT_SECONDS + ROOM_FOR_THE_LAST_LINES
+    # own end, which has its limit too, and the last line of that limit,
+    # which has one as well.
+    limits = ended + sensor_main.EXIT_SECONDS + sensor_main.EXIT_LOG_SECONDS
+    needed = limits + ROOM_FOR_THE_EXIT
 
     checked = 0
     for path, sensor in _compose_files():
@@ -327,8 +331,8 @@ def test_every_compose_file_gives_the_sensor_the_time_its_stop_can_take(
         # #765: 32 seconds of limits against the 30 of both files.
         assert _seconds(grace) >= needed, (
             f"{name} gives the sensor {grace} to stop; its limits add up to "
-            f"{ended + sensor_main.EXIT_SECONDS:.0f} seconds and the last "
-            f"lines need {ROOM_FOR_THE_LAST_LINES:.0f} more"
+            f"{limits:.0f} seconds and its exit needs "
+            f"{ROOM_FOR_THE_EXIT:.0f} more to be noticed"
         )
     assert checked >= 2
 

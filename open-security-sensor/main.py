@@ -109,6 +109,15 @@ START_ABORT_SECONDS = 2.0
 # only then, after the writes, and a write that never returned was never
 # followed by it.
 EXIT_SECONDS = 2.0
+# Seconds the exit limit's own last line, and the flush of the log after it,
+# get before the process is ended whatever they do. The line is written by
+# the log's handlers, and a handler can wait as long as a worker thread can:
+# for a log file in a directory that does not answer, for a pipe nobody
+# reads, for its own lock, held by a thread that is waiting for one of
+# those. The limit used to log and flush in its own thread and end the
+# process after that, so a handler that did not return held the one thing
+# that was there to end the process (#788).
+EXIT_LOG_SECONDS = 1.0
 
 
 class SensorDaemon:
@@ -328,9 +337,19 @@ def _leave_within(seconds: float, code: int, stopped: bool = True) -> threading.
     is left is the event loop's and the interpreter's own tidying up, which
     waits for worker threads for as long as they take. And called before
     that, when the sensor begins to write what it writes last.
+
+    Nothing that can wait stands between the limit and the end of the
+    process: why it ends is said, and the log flushed, in a thread of their
+    own, which gets ``EXIT_LOG_SECONDS`` and is then left where it is.
     """
 
     def leave():
+        said = threading.Thread(target=say, name="sensor-exit-log", daemon=True)
+        said.start()
+        said.join(EXIT_LOG_SECONDS)
+        os._exit(code)
+
+    def say():
         busy = [
             thread.name
             for thread in threading.enumerate()
@@ -355,7 +374,6 @@ def _leave_within(seconds: float, code: int, stopped: bool = True) -> threading.
                 stream.flush()
             except (OSError, ValueError):
                 pass
-        os._exit(code)
 
     timer = threading.Timer(seconds, leave)
     # It must not itself be one more thread to wait for.

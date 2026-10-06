@@ -434,7 +434,10 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
   still busy when the sensor has stopped (a name lookup the resolver has
   not answered, a scan in a file system that does not answer) is not
   waited for beyond those last 2 seconds: the sensor says which threads,
-  and the process ends. The compose files give the
+  and the process ends. Saying it has a limit too, 1 second: a log that
+  does not answer (a log file in a directory that hangs, a pipe nobody
+  reads) costs that line and does not hold the exit, which until 0.12.2
+  it did, for as long as the log took. The compose files give the
   sensor 30 seconds (`stop_grace_period`), and the sensor's tests fail if
   that stops being enough; give it at least as much wherever else you run
   it (`docker run --stop-timeout 30`, `terminationGracePeriodSeconds` in
