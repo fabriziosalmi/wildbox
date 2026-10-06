@@ -297,12 +297,16 @@ async def test_a_line_that_is_not_an_entry_is_counted_and_passed_over(tmp_path):
 async def test_an_error_while_reading_starts_the_command_again(
     tmp_path, monkeypatch, caplog
 ):
+    # The error is of the read itself. This test raised it from the handling
+    # of an entry, and asked that the command be started again for it: an
+    # entry whose handling raises is now passed over and its read goes on
+    # (#788, test_log_handling_errors.py).
     argv = _script(
         tmp_path,
         """
         if "--lines=0" in sys.argv:
             entry("one", "s=1")
-            entry("the reader fails on this one", "s=2")
+            time.sleep(60)
         entry("three", "s=3")
         time.sleep(60)
         """,
@@ -310,19 +314,21 @@ async def test_an_error_while_reading_starts_the_command_again(
     forwarder = _forwarder(JOURNAL)
     arguments = []
     _plays(forwarder, argv, seen=arguments)
-    real = forwarder._journal_entry
-    failed = []
+    real = forwarder._read_entries
+    reads = []
 
-    async def fails_once(runtime, raw, cut):
-        if b"fails on this one" in raw and not failed:
-            failed.append(raw)
+    async def fails_once(stream, handle, left=None, failed=None):
+        reads.append(stream)
+        if len(reads) == 1:
+            line = await stream.readline()
+            await handle(line.rstrip(b"\n"), False)
             raise OSError("a pipe broke")
-        await real(runtime, raw, cut)
+        await real(stream, handle, left, failed)
 
     async def no_wait(seconds):
         pass
 
-    forwarder._journal_entry = fails_once
+    forwarder._read_entries = fails_once
     monkeypatch.setattr(forwarder, "_restart_pause", no_wait)
     with caplog.at_level(logging.ERROR, logger=log_forwarder.__name__):
         await forwarder.start()
@@ -1014,6 +1020,7 @@ async def test_a_source_this_platform_does_not_have_is_reported_as_skipped(
         "entries_forwarded": 0,
         "entries_truncated": 0,
         "entries_unparsed": 0,
+        "entries_failed": 0,
         "accepted_cursor": None,
     }
     assert _status(forwarder)["state"] == "skipped"

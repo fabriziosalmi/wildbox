@@ -223,7 +223,11 @@ async def test_a_very_long_line_is_sent_once_truncated_and_the_next_is_whole(
     assert long_event["metadata"]["truncated"] is True
     assert short_event["data"]["raw_message"] == "short"
     assert "truncated" not in short_event["metadata"]
-    assert forwarder.stats == {"lines_forwarded": 2, "lines_truncated": 1}
+    assert forwarder.stats == {
+        "lines_forwarded": 2,
+        "lines_truncated": 1,
+        "lines_failed": 0,
+    }
 
 
 @pytest.mark.asyncio

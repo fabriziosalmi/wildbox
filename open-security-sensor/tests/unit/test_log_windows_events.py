@@ -594,6 +594,7 @@ async def test_the_status_reports_the_log_and_both_record_ids(monkeypatch):
         "entries_forwarded": 1,
         "entries_truncated": 0,
         "entries_unparsed": 0,
+        "entries_failed": 0,
         "log_name": "Security",
         "read_record_id": 9,
         "accepted_record_id": 8,

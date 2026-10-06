@@ -533,9 +533,19 @@ Each source that is not a file reports, under `log_forwarder` in
 `GET /api/v1/components`, its `state` (`starting`, `running`, `restarting`,
 `failing` for an event log whose last query failed, `unavailable`, `skipped`
 on a platform that has no such log, `stopped`), `restarts`, `last_exit`,
-`last_error` and the counters `entries_forwarded`, `entries_truncated` and
-`entries_unparsed`; a `journald` source also its `accepted_cursor`, a
-`windows_event` source its `read_record_id` and `accepted_record_id`.
+`last_error` and the counters `entries_forwarded`, `entries_truncated`,
+`entries_unparsed` and `entries_failed`; a `journald` source also its
+`accepted_cursor`, a `windows_event` source its `read_record_id` and
+`accepted_record_id`.
+
+An entry, an event or a line of a file whose handling raises an error is
+counted (`entries_failed`, and `lines_failed` under `log_forwarder.stats`
+for the file sources) and passed over for good; the ones read with it are
+forwarded. The log says so once for each kind of error of a source, by the
+error's class: `Log source 'journal': an entry could not be handled
+(RuntimeError)`. Until 0.12.2 such an error ended the read it was in: the
+command was started again, the rest of a file's chunk was never forwarded,
+and the reader of a Windows event log ended.
 
 The `journald` reader was checked against the real `journalctl` (systemd
 257) in a container, on journal files written with `systemd-journal-remote`:
