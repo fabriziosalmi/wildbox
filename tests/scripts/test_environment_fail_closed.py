@@ -34,6 +34,34 @@ PRODUCTION = "docker-compose.prod.yml"
 DEVELOPMENT = "docker-compose.dev.yml"
 
 REQUIRED = re.compile(r"^\$\{ENVIRONMENT:\?[^}]+\}$")
+# The services whose code reads ENVIRONMENT, and so the ones that are given
+# it. The base file gave it to eighteen: the gateway (#756), the dashboard,
+# PostgreSQL, n8n and guardian's three containers read none and no longer
+# get it (#665). guardian's development mode is DEBUG, which is false unless
+# set. test_compose_variables_are_read.py is what refuses a service that is
+# given a variable it does not read.
+READS_ENVIRONMENT = {
+    "identity",
+    "api",
+    "tools-worker",
+    "tools-flower",
+    "data",
+    "data-scheduler",
+    "responder",
+    "cspm",
+    "cspm-worker",
+    "agents",
+    "sensor",
+}
+READS_NONE = {
+    "gateway",
+    "dashboard",
+    "postgres",
+    "automations",
+    "guardian",
+    "guardian-worker",
+    "guardian-beat",
+}
 DEFAULTED = re.compile(r"\$\{ENVIRONMENT:?-")
 
 
@@ -95,10 +123,8 @@ def _load(relative: str, name: str):
 
 def test_the_base_file_requires_the_variable_of_every_service_it_gives_it_to():
     values = environments(BASE)
-    # Eighteen until #756: the gateway was given the variable and read it
-    # nowhere, so it is no longer passed to it, here or in the overlay.
-    assert len(values) == 17, sorted(values)
-    assert "gateway" not in values
+    assert set(values) == READS_ENVIRONMENT, sorted(values)
+    assert not READS_NONE & set(values), sorted(values)
     for service, value in values.items():
         assert REQUIRED.match(value), (service, value)
 
@@ -224,7 +250,8 @@ def test_the_rendered_production_stack_is_production_whatever_the_env_file_says(
         for name, service in services.items()
         if "ENVIRONMENT" in (service.get("environment") or {})
     }
-    assert len(rendered) == 17, sorted(rendered)
+    assert set(rendered) == READS_ENVIRONMENT, sorted(rendered)
+    assert not READS_NONE & set(rendered), sorted(rendered)
     assert set(rendered.values()) == {"production"}, rendered
 
 

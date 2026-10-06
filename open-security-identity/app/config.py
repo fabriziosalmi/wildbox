@@ -8,7 +8,7 @@ from typing import Annotated, Any, Optional
 
 from open_security_shared.environment import production_checks_apply
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, NoDecode
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # API_KEY_HASH_SECRET strength. generate_secrets.py writes 64 hex characters;
 # an upgraded deployment seeds it from JWT_SECRET_KEY, which identity already
@@ -242,13 +242,14 @@ class Settings(BaseSettings):
             )
         return self
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
         # A validation error otherwise prints input_value: the settings
         # being validated, secrets included, into the start-up traceback
         # and so into the container log.
-        hide_input_in_errors = True
+        hide_input_in_errors=True,
+    )
 
 
 # Global settings instance

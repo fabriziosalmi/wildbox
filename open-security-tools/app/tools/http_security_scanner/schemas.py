@@ -1,6 +1,6 @@
 """Pydantic schemas for the HTTP Security Headers Scanner."""
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, ConfigDict
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from ...utils.tls import VERIFY_SSL_DESCRIPTION
 from typing import Dict, Any, List, Optional
@@ -13,7 +13,7 @@ class HttpSecurityScannerInput(BaseToolInput):
     url: str = Field(
         ...,
         description="Target URL to scan for security headers",
-        example="https://example.com"
+        json_schema_extra={"example": "https://example.com"}
     )
     follow_redirects: bool = Field(
         default=True,
@@ -61,7 +61,8 @@ class HttpSecurityScannerOutput(BaseToolOutput):
     security_score: int = Field(..., description="Security score out of 100")
     findings: Dict[str, Any] = Field(..., description="Detailed scan findings")
     
-    class Config:
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             datetime: lambda v: v.isoformat()
-        }
+        },
+    )

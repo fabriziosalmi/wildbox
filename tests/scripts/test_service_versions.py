@@ -13,6 +13,7 @@ installed.
 """
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -111,3 +112,125 @@ def test_the_name_is_assigned_one_literal(service):
                 assigned.append((source.name, node.targets[0].id, node.value.value))
 
     assert len(assigned) == 1, assigned
+
+
+# --- one literal per service, wherever it is written (#665) ---------------------
+#
+# The tests above follow the two arguments of the FastAPI services. They did
+# not see a version written a second time under another form:
+#
+# * cspm: ``__version__`` in ``app/__init__.py`` and ``app_version: str =
+#   "0.1.6"``, an annotated field of its settings;
+# * responder: ``__version__`` in ``app/__init__.py`` and ``SERVICE_VERSION``
+#   in ``app/main.py``;
+# * guardian, which is Django and in no list above: ``__version__ = "1.0.0"``
+#   in ``guardian/__init__.py`` and ``'VERSION': '0.1.6'`` in the dictionary
+#   its API schema is built from.
+#
+# So, for every service: one version literal in its code, under any name that
+# says version, as an assignment, an annotated assignment or a dictionary
+# entry.
+
+# Where each service's own code is. A tool or a cloud check has a version of
+# its own, and a migration records a column named version.
+PACKAGES = {
+    "identity": ["open-security-identity/app"],
+    "tools": ["open-security-tools/app"],
+    "data": ["open-security-data/app"],
+    "responder": ["open-security-responder/app"],
+    "agents": ["open-security-agents/app"],
+    "cspm": ["open-security-cspm/app"],
+    "guardian": ["open-security-guardian/guardian", "open-security-guardian/apps"],
+    "sensor": ["open-security-sensor/sensor"],
+}
+NOT_THE_SERVICE = {"tools", "checks", "migrations", "tests", "__pycache__"}
+VERSION_NAME = re.compile(r"(__version__|(^|_)version)$", re.I)
+VERSION_VALUE = re.compile(r"\d+\.\d+\.\d+$")
+
+
+def _is_version(node):
+    return (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and bool(VERSION_VALUE.match(node.value))
+    )
+
+
+def version_literals_in(tree):
+    """[(name, value)] for each version literal one parsed module states."""
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and _is_version(node.value):
+            targets = [getattr(target, "id", "") for target in node.targets]
+        elif isinstance(node, ast.AnnAssign) and _is_version(node.value):
+            targets = [getattr(node.target, "id", "")]
+        elif isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values):
+                name = getattr(key, "value", None)
+                if isinstance(name, str) and VERSION_NAME.search(name):
+                    if _is_version(value):
+                        found.append((name, value.value))
+            continue
+        else:
+            continue
+        for name in targets:
+            if VERSION_NAME.search(name):
+                found.append((name, node.value.value))
+    return found
+
+
+def version_literals(service):
+    found = []
+    for package in PACKAGES[service]:
+        base = ROOT / package
+        for path in sorted(base.rglob("*.py")):
+            relative = path.relative_to(base)
+            if NOT_THE_SERVICE & set(relative.parts[:-1]):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for name, value in version_literals_in(tree):
+                found.append((path.relative_to(ROOT).as_posix(), name, value))
+    return found
+
+
+def test_every_python_service_is_listed():
+    services = {
+        path.name.removeprefix("open-security-")
+        for path in ROOT.glob("open-security-*")
+        if (path / "requirements.txt").exists()
+    }
+
+    assert services == set(PACKAGES)
+    for packages in PACKAGES.values():
+        for package in packages:
+            assert (ROOT / package).is_dir(), package
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ('__version__ = "0.1.6"\n', [("__version__", "0.1.6")]),
+        ('SERVICE_VERSION = "0.1.6"\n', [("SERVICE_VERSION", "0.1.6")]),
+        # An annotated field of a settings class.
+        (
+            'class Settings:\n    app_version: str = "0.1.6"\n',
+            [("app_version", "0.1.6")],
+        ),
+        # An entry of a settings dictionary.
+        ("SPECTACULAR = {'TITLE': 'x', 'VERSION': '0.1.6'}\n", [("VERSION", "0.1.6")]),
+        # Not a version of the service: another name, or not a version.
+        ('MIN_TLS = "1.2.0"\n', []),
+        ("STATE_VERSION = 2\n", []),
+        ('app_version: str = __version__\n', []),
+        ("SPECTACULAR = {'VERSION': GUARDIAN_VERSION}\n", []),
+    ],
+)
+def test_a_version_literal_is_seen_under_each_form(source, expected):
+    assert version_literals_in(ast.parse(source)) == expected
+
+
+@pytest.mark.parametrize("service", sorted(PACKAGES))
+def test_a_service_states_its_version_once(service):
+    literals = version_literals(service)
+
+    assert len(literals) == 1, literals

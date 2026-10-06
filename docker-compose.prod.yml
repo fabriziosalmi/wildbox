@@ -73,11 +73,12 @@ services:
   # PostgreSQL - Production Settings
   postgres:
     restart: always
-    environment:
-      - ENVIRONMENT=production
-      # Production connection limits
-      - POSTGRES_MAX_CONNECTIONS=200
-      - POSTGRES_SHARED_BUFFERS=256MB
+    # No `environment` here. POSTGRES_MAX_CONNECTIONS=200 and
+    # POSTGRES_SHARED_BUFFERS=256MB used to be set, and the postgres image
+    # reads neither: the server has always run with its defaults, 100
+    # connections and 128MB (#665). To change them, pass the settings to
+    # the server itself in an override file:
+    #   command: postgres -c max_connections=200 -c shared_buffers=256MB
     networks: !override
       - data
     deploy:
@@ -128,7 +129,8 @@ services:
       - data
     environment:
       - ENVIRONMENT=production
-      - LOG_LEVEL=INFO
+      # No LOG_LEVEL and no REDIS_PASSWORD: identity has no log-level
+      # setting, and reads Redis's password from REDIS_URL (#665).
       - DEBUG=false
       # Comma-separated, like the other services; identity also accepts a
       # JSON list. It used to read JSON only and crash-looped on this value
@@ -137,7 +139,6 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS}
       # No ENABLE_METRICS: nothing read it, here as on the tools api (#743).
       # /metrics is always served.
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
       # Required in production: identity refuses to start without it (#648).
       # Repeated from the base file so the overlay states it on its own.
       - API_KEY_HASH_SECRET=${API_KEY_HASH_SECRET:?API_KEY_HASH_SECRET is required; see UPGRADING.md before setting it on an existing deployment}
@@ -201,7 +202,6 @@ services:
       - backend
       - data
     environment:
-      - ENVIRONMENT=production
       # No DJANGO_SETTINGS_MODULE: this used to name
       # config.settings.production, a module that does not exist, so gunicorn
       # failed to import the app. guardian.settings reads every production
@@ -240,7 +240,9 @@ services:
       - LOG_LEVEL=INFO
       - DEBUG=false
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - WORKER_CONCURRENCY=4
+      # No WORKER_CONCURRENCY: nothing read it. The responder starts one
+      # uvicorn process and Dramatiq with its own defaults
+      # (scripts/entrypoint.sh, #665).
     deploy:
       resources:
         limits:
@@ -271,10 +273,10 @@ services:
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
-      - DEBUG=false
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - WORKER_CONCURRENCY=4
-      - CELERY_WORKER_PREFETCH_MULTIPLIER=2
+      # No WORKER_CONCURRENCY or CELERY_WORKER_PREFETCH_MULTIPLIER: nothing
+      # read them. The worker's concurrency is set in scripts/entrypoint.sh
+      # and its prefetch in app/worker.py (#665).
       # Off unless the operator opts in (#652): no team-data tool is given
       # to the model, so no team data is sent to the model provider.
       # Repeated from the base file so the overlay states it on its own.
@@ -356,7 +358,6 @@ services:
         - NEXT_PUBLIC_USE_GATEWAY=${NEXT_PUBLIC_USE_GATEWAY:-true}
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
     environment:
-      - ENVIRONMENT=production
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
     deploy:
@@ -431,7 +432,6 @@ services:
       - data
       - egress
     environment:
-      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -448,7 +448,6 @@ services:
     networks: !override
       - data
     environment:
-      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -537,8 +536,6 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-    environment:
-      - ENVIRONMENT=production
 
   backup:
     networks: !override

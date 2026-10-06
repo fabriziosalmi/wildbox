@@ -30,7 +30,6 @@ services:
       # - REDIS_URL=redis://wildbox-redis:6379/3
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set (min 32 chars)}
       - LOG_LEVEL=INFO
-      - PROMETHEUS_PORT=9090
     depends_on:
       redis:
         condition: service_healthy

@@ -30,7 +30,6 @@ SERVICE_URL_SETTINGS = (
     "wildbox_data_url",
     "wildbox_guardian_url",
     "wildbox_agents_url",
-    "wildbox_sensor_url",
     "redis_url",
 )
 

@@ -212,10 +212,10 @@ Settings are read from environment variables in `app/config.py`;
 - `GATEWAY_INTERNAL_SECRET`: shared with the gateway.
 - `ENVIRONMENT`, `DEBUG`, `LOG_LEVEL`, `CORS_ORIGINS`.
 
-Collection settings such as `COLLECTION_INTERVAL`, `MAX_CONCURRENT_COLLECTORS`
-and `COLLECTION_TIMEOUT` have defaults in `app/config.py`. Each source's own
-`collection_interval` decides when the scheduler runs it. `REDIS_URL` is
-configurable but the service does not use Redis.
+`MAX_CONCURRENT_COLLECTORS` (default 10) is how many sources the scheduler
+collects at the same time. Each source's own `collection_interval` decides
+when the scheduler runs it. The service uses no Redis and reads no
+`REDIS_URL`. `.env.example` lists every variable `app/config.py` reads.
 
 ## Development
 

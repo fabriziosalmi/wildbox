@@ -30,7 +30,6 @@ REQUIRED_SECRETS = [
     "GATEWAY_INTERNAL_SECRET",
     "API_KEY",
     "INITIAL_ADMIN_PASSWORD",
-    "NEXTAUTH_SECRET",
     # Required since the audit remediation: without it CSPM refuses to run a
     # scan rather than writing cloud credentials to Redis in plaintext.
     "CSPM_CREDENTIAL_KEY",
@@ -50,9 +49,6 @@ REQUIRED_SECRETS = [
 
 # Optional secrets (warn if missing, but don't fail)
 OPTIONAL_SECRETS = [
-    "STRIPE_SECRET_KEY",
-    "STRIPE_PUBLISHABLE_KEY",
-    "GRAFANA_ADMIN_PASSWORD",
     # What guardian-worker presents to identity to learn who may be e-mailed
     # about a team (#705). Without it guardian e-mails only the addresses
     # typed into an alert rule or a report schedule.

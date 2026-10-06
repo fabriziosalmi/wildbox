@@ -10,7 +10,11 @@ SearchEngine = CaseInsensitiveChoice("google", "bing", "duckduckgo")
 
 
 class EmailHarvesterInput(BaseToolInput):
-    domain: str = Field(..., description="Target domain to harvest emails from", example="example.com")
+    domain: str = Field(
+        ...,
+        description="Target domain to harvest emails from",
+        json_schema_extra={"example": "example.com"},
+    )
     # The engines main.py implements; anything else was skipped silently, and
     # null crashed the loop over them (#611).
     search_engines: List[SearchEngine] = Field(

@@ -26,7 +26,6 @@ if [ ! -f .env ]; then
     echo ""
     echo "Then update with secure values:"
     echo "  JWT_SECRET_KEY: openssl rand -hex 32"
-    echo "  NEXTAUTH_SECRET: openssl rand -base64 32"
     echo "  POSTGRES_PASSWORD: openssl rand -base64 32"
     exit 1
 fi
@@ -48,12 +47,6 @@ INSECURE_PATTERNS=(
     "JWT_SECRET_KEY=your-super-secret"
     "JWT_SECRET_KEY=change-this"
     "JWT_SECRET_KEY=test"
-    
-    # Insecure NEXTAUTH secrets
-    "NEXTAUTH_SECRET=wildbox-dashboard-secret"
-    "NEXTAUTH_SECRET=wildbox-dev-secret"
-    "NEXTAUTH_SECRET=secret"
-    "NEXTAUTH_SECRET=test"
     
     # Placeholder patterns
     "generate-a-secure"
@@ -88,7 +81,6 @@ done
 # Check for required environment variables
 REQUIRED_VARS=(
     "JWT_SECRET_KEY"
-    "NEXTAUTH_SECRET"
     "POSTGRES_PASSWORD"
     "GATEWAY_INTERNAL_SECRET"
 )
@@ -122,13 +114,6 @@ if [ -n "$JWT_SECRET" ] && [ ${#JWT_SECRET} -lt 32 ]; then
     WARNINGS+=("JWT_SECRET_KEY should be at least 32 characters")
 fi
 
-# NEXTAUTH_SECRET should be at least 32 characters
-NEXTAUTH_SECRET=$(grep "^NEXTAUTH_SECRET=" .env | cut -d'=' -f2- || echo "")
-if [ -n "$NEXTAUTH_SECRET" ] && [ ${#NEXTAUTH_SECRET} -lt 32 ]; then
-    echo -e "${YELLOW}⚠ WARNING: NEXTAUTH_SECRET is too short (${#NEXTAUTH_SECRET} chars, minimum 32)${NC}"
-    WARNINGS+=("NEXTAUTH_SECRET should be at least 32 characters")
-fi
-
 # POSTGRES_PASSWORD should be at least 16 characters
 POSTGRES_PASSWORD=$(grep "^POSTGRES_PASSWORD=" .env | cut -d'=' -f2- || echo "")
 if [ -n "$POSTGRES_PASSWORD" ] && [ ${#POSTGRES_PASSWORD} -lt 16 ]; then
@@ -155,7 +140,6 @@ if [ "$VALIDATION_FAILED" = true ]; then
     echo ""
     echo "1. Generate secure secrets:"
     echo "   JWT_SECRET_KEY=\$(openssl rand -hex 32)"
-    echo "   NEXTAUTH_SECRET=\$(openssl rand -base64 32)"
     echo "   POSTGRES_PASSWORD=\$(openssl rand -base64 32)"
     echo "   GATEWAY_INTERNAL_SECRET=\$(openssl rand -hex 32)"
     echo ""

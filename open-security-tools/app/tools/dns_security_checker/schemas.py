@@ -12,7 +12,7 @@ class DNSSecurityInput(BaseToolInput):
     """Input schema for DNS security checking"""
     domain: str = Field(
         description="Domain name to check for DNS security issues",
-        example="example.com"
+        json_schema_extra={"example": "example.com"}
     )
     check_dnssec: bool = Field(
         default=True,

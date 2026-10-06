@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class WHOISLookupInput(BaseToolInput):
-    domain: str = Field(..., description="Domain to lookup", example="example.com")
+    domain: str = Field(..., description="Domain to lookup", json_schema_extra={"example": "example.com"})
     include_raw: bool = Field(default=False, description="Include raw WHOIS data")
     timeout: int = Field(default=30, description="Timeout in seconds", ge=5, le=120)
 

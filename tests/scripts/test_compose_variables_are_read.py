@@ -7,8 +7,10 @@ for the tools containers. This is the same rule for every service that is
 built from this repository, read from the Compose files and the sources,
 with nothing installed.
 
-A name counts as read when the service's own code, or the shared package,
-has it
+A name counts as read when the service's own code, or a module of the shared
+package that this code imports (#665: any module of the package used to
+count, so guardian, which imports ``scopes`` only, passed for reading
+``ENVIRONMENT`` because ``security_middleware`` does), has it
 
 * as a field of a pydantic ``BaseSettings`` class (the field's name in upper
   case, with the class's ``env_prefix``), or
@@ -26,6 +28,7 @@ documentation, not in this tree.
 
 import ast
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -53,44 +56,12 @@ READ_BY_THE_RUNTIME = {
     "TZ": "the C library",
 }
 
-# Found by this test and not fixed here: variables a Compose file passes that
-# the service's code does not read. They are left for the cross-service
-# cleanup (#665). An entry that no longer applies fails the test, so the
-# list cannot outlive what it lists; a new unread variable fails it too.
-KNOWN_UNREAD = {
-    "docker-compose.yml": {
-        "dashboard": {
-            "ENVIRONMENT",
-            "NEXT_PUBLIC_DEBUG",
-            "NEXTAUTH_SECRET",
-            "NEXTAUTH_URL",
-        },
-        "guardian": {"LOG_FILE"},
-        "sensor": {"LOG_LEVEL"},
-    },
-    "docker-compose.prod.yml": {
-        # The overlay sets production on every service the base file gives
-        # the variable to (#736); the dashboard is one, and reads none.
-        "dashboard": {"ENVIRONMENT"},
-        # The origins guardian allows are a list written in its settings: the
-        # overlay's value changes nothing.
-        "guardian": {"CORS_ALLOWED_ORIGINS"},
-        "identity": {"LOG_LEVEL", "REDIS_PASSWORD"},
-        "responder": {"WORKER_CONCURRENCY"},
-        "agents": {"WORKER_CONCURRENCY", "CELERY_WORKER_PREFETCH_MULTIPLIER"},
-    },
-    "docker-compose.dev.yml": {
-        "dashboard": {
-            "NEXT_PUBLIC_API_BASE_URL",
-            "NEXT_PUBLIC_IDENTITY_API_URL",
-            "NEXT_PUBLIC_GUARDIAN_API_URL",
-            "NEXT_PUBLIC_RESPONDER_API_URL",
-            "NEXT_PUBLIC_AGENTS_API_URL",
-            "NEXTAUTH_SECRET",
-            "NEXTAUTH_URL",
-        },
-    },
-}
+# Variables a Compose file passes that the service's code does not read. None
+# is left: the cross-service cleanup removed the ones this test first listed
+# (#665), and #756 the gateway's. A new unread variable fails the test; it is
+# removed from the Compose file, or the code is made to read it, and nothing
+# is added here without the reason beside it.
+KNOWN_UNREAD = {}
 
 SKIPPED_DIRECTORIES = {
     "node_modules",
@@ -200,34 +171,94 @@ def settings_fields(tree):
     return names
 
 
+PACKAGE = "open_security_shared"
+
+
+def python_names(tree):
+    """The environment names one parsed Python module reads."""
+    names = settings_fields(tree)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and ENVIRONMENT_NAME.match(node.value)
+        ):
+            names.add(node.value)
+    return names
+
+
+def shared_exports():
+    """{name: module} of what ``from open_security_shared import name`` loads."""
+    tree = ast.parse((SHARED / "__init__.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and node.targets[0].id == "_EXPORTS":
+            return ast.literal_eval(node.value)
+    raise AssertionError("open-security-shared/__init__.py has no _EXPORTS")
+
+
+def shared_modules_imported(tree, exports):
+    """The modules of the shared package one parsed Python module imports."""
+    modules = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            dotted = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            dotted = [node.module]
+            if node.module == PACKAGE:
+                # A name the package exports lazily, or a module of it.
+                modules |= {exports.get(a.name, a.name) for a in node.names}
+        else:
+            continue
+        for name in dotted:
+            parts = name.split(".")
+            if parts[0] == PACKAGE and len(parts) > 1:
+                modules.add(parts[1])
+    return modules
+
+
+def shared_names(modules):
+    """What the given modules of the shared package read, and what the
+    modules they import from the package read."""
+    names, seen, todo = set(), set(), set(modules)
+    while todo:
+        module = todo.pop()
+        path = SHARED / f"{module}.py"
+        if module in seen or not path.exists():
+            continue
+        seen.add(module)
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        names |= python_names(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 1:
+                if node.module:
+                    todo.add(node.module.split(".")[0])
+                else:
+                    todo |= {alias.name for alias in node.names}
+        todo |= shared_modules_imported(tree, {})
+    return names
+
+
 def names_read_in(directory):
     """Every environment name the sources under ``directory`` read.
 
     Returns the names read in Python, the text of the other sources, and
-    whether the Python code imports the shared package.
+    the modules of the shared package the Python code imports.
     """
     names = set()
     other = []
-    uses_shared = False
+    shared = set()
+    exports = shared_exports()
     for path in source_files(directory):
         if path.suffix == ".py":
-            text = path.read_text(encoding="utf-8")
-            uses_shared = uses_shared or "open_security_shared" in text
             try:
-                tree = ast.parse(text)
+                tree = ast.parse(path.read_text(encoding="utf-8"))
             except SyntaxError:
                 continue
-            names |= settings_fields(tree)
-            for node in ast.walk(tree):
-                if (
-                    isinstance(node, ast.Constant)
-                    and isinstance(node.value, str)
-                    and ENVIRONMENT_NAME.match(node.value)
-                ):
-                    names.add(node.value)
+            names |= python_names(tree)
+            shared |= shared_modules_imported(tree, exports)
         elif path.suffix in OTHER_SOURCES or path.name.startswith("Dockerfile"):
             other.append(path.read_text(encoding="utf-8", errors="ignore"))
-    return names, "\n".join(other), uses_shared
+    return names, "\n".join(other), shared
 
 
 _READ = {}
@@ -235,10 +266,10 @@ _READ = {}
 
 def is_read(name, directory):
     if directory not in _READ:
-        names, text, uses_shared = names_read_in(directory)
-        if uses_shared:
-            # What the shared package reads, it reads in this container too.
-            names |= names_read_in(SHARED)[0]
+        names, text, shared = names_read_in(directory)
+        # What a module of the shared package reads, it reads in the
+        # container of a service that imports it.
+        names |= shared_names(shared)
         _READ[directory] = (names, text)
     names, text = _READ[directory]
     if name in names:
@@ -379,3 +410,122 @@ def test_the_example_env_file_does_not_offer_them():
 
     assert "DATABASE_URL" in assigned  # the file was read
     assert not {"ENABLE_METRICS", "METRICS_PORT", "WORKERS"} & set(assigned)
+
+
+# --- what the rule above cannot see (#665) ---------------------------------------
+
+
+def test_a_shared_module_a_service_does_not_import_reads_nothing_for_it(
+    tmp_path, monkeypatch
+):
+    """guardian imported ``open_security_shared.scopes`` and passed for reading
+    ``ENVIRONMENT`` because another module of the package, one it does not
+    import, reads it. A package of two modules, and a service that imports
+    one: the service reads what that module reads, and what the modules it
+    imports from the package read, and nothing of the other."""
+    module = sys.modules[__name__]
+    shared = tmp_path / "open-security-shared"
+    shared.mkdir()
+    (shared / "__init__.py").write_text(
+        '_EXPORTS = {"install": "errors"}\n', encoding="utf-8"
+    )
+    (shared / "scopes.py").write_text(
+        "from .headers import NAME\n"
+        "import os\n"
+        'SECRET = os.getenv("GATEWAY_INTERNAL_SECRET")\n',
+        encoding="utf-8",
+    )
+    (shared / "headers.py").write_text(
+        'import os\nNAME = os.getenv("AUTH_HEADER")\n', encoding="utf-8"
+    )
+    (shared / "middleware.py").write_text(
+        'import os\nMODE = os.getenv("ENVIRONMENT")\n', encoding="utf-8"
+    )
+    (shared / "errors.py").write_text(
+        'import os\nLEVEL = os.getenv("ERROR_DETAIL")\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(module, "SHARED", shared)
+    service = tmp_path / "open-security-example"
+    service.mkdir()
+    (service / "auth.py").write_text(
+        "from open_security_shared.scopes import SECRET\n", encoding="utf-8"
+    )
+
+    _, _, imported = names_read_in(service)
+
+    assert imported == {"scopes"}
+    assert is_read("GATEWAY_INTERNAL_SECRET", service)
+    # Through the module that scopes imports from the package.
+    assert is_read("AUTH_HEADER", service)
+    # Read by a module of the package this service does not import.
+    assert "ENVIRONMENT" in shared_names({"middleware"})
+    assert not is_read("ENVIRONMENT", service)
+    assert not is_read("ERROR_DETAIL", service)
+
+    # A name the package exports lazily loads the module that defines it.
+    lazy = tmp_path / "open-security-lazy"
+    lazy.mkdir()
+    (lazy / "main.py").write_text(
+        "from open_security_shared import install\n", encoding="utf-8"
+    )
+    assert is_read("ERROR_DETAIL", lazy)
+    assert not is_read("ENVIRONMENT", lazy)
+
+
+def test_guardian_is_not_given_what_only_another_service_reads():
+    """The case this was found in, on the tree: guardian's code reads no
+    ENVIRONMENT, and no Compose file gives it one."""
+    contexts = build_contexts()
+
+    assert not is_read("ENVIRONMENT", contexts["guardian"])
+    assert is_read("ENVIRONMENT", contexts["identity"])
+    for file in COMPOSE_FILES:
+        services = compose(file).get("services") or {}
+        for service in ("guardian", "guardian-worker", "guardian-beat"):
+            assert "ENVIRONMENT" not in environment_names(services.get(service))
+
+
+def test_a_lazy_export_of_the_shared_package_names_its_module():
+    exports = shared_exports()
+    tree = ast.parse("from open_security_shared import install_error_handlers\n")
+
+    assert exports["install_error_handlers"] == "errors"
+    assert shared_modules_imported(tree, exports) == {"errors"}
+
+
+# The variables the postgres image reads, from its documentation. Its
+# entrypoint ignores every other one: the production overlay set
+# POSTGRES_MAX_CONNECTIONS=200 and POSTGRES_SHARED_BUFFERS=256MB, and the
+# server ran with 100 connections and 128MB.
+POSTGRES_IMAGE_VARIABLES = {
+    "POSTGRES_PASSWORD",
+    "POSTGRES_USER",
+    "POSTGRES_DB",
+    "POSTGRES_INITDB_ARGS",
+    "POSTGRES_INITDB_WALDIR",
+    "POSTGRES_HOST_AUTH_METHOD",
+    "PGDATA",
+}
+
+
+def test_postgres_is_given_only_what_its_image_reads():
+    seen = set()
+    for file in COMPOSE_FILES:
+        spec = (compose(file).get("services") or {}).get("postgres")
+        names = environment_names(spec)
+        seen |= names
+        assert names <= POSTGRES_IMAGE_VARIABLES, (file, names)
+
+    assert "POSTGRES_PASSWORD" in seen  # the service was read
+
+
+def test_the_sensor_is_given_its_own_variables():
+    """``DEBUG`` and ``LOG_LEVEL`` were passed to the sensor, which reads
+    ``SENSOR_LOGGING_LEVEL``. ``"DEBUG"`` is a string in its code, one of its
+    log levels, so the rule above took the variable for read."""
+    for file in COMPOSE_FILES:
+        names = environment_names((compose(file).get("services") or {}).get("sensor"))
+        assert not {"DEBUG", "LOG_LEVEL"} & names, file
+
+    base = environment_names(compose("docker-compose.yml")["services"]["sensor"])
+    assert "SENSOR_LOGGING_LEVEL" in base

@@ -21,11 +21,15 @@ class NetworkScannerInput(BaseToolInput):
         # A value the default target policy accepts: the dashboard shows it
         # as the field's placeholder. It was 192.168.1.0/24, which the
         # service refuses (#646).
-        example="8.8.8.8",
+        json_schema_extra={"example": "8.8.8.8"},
     )
     # main.py implements ping and tcp; "comprehensive" and any other value
     # ran a ping scan (#611).
-    scan_type: ScanType = Field(default="ping", description="Scan type: ping or tcp", example="ping")
+    scan_type: ScanType = Field(
+        default="ping",
+        description="Scan type: ping or tcp",
+        json_schema_extra={"example": "ping"},
+    )
     timeout: int = Field(default=3, description="Timeout in seconds for each host", ge=1, le=30)
     max_threads: int = Field(default=50, description="Maximum concurrent probes (pings and TCP connects)", ge=1, le=100)
 
