@@ -10,6 +10,7 @@ import logging
 
 from open_security_shared.target_policy import METADATA_HOSTNAMES, is_blocked_address
 
+from .log_safety import error_site
 from .url_guard import is_local_hostname, parse_target_url
 
 logger = logging.getLogger(__name__)
@@ -398,7 +399,7 @@ async def validate_request_input(request: Request, call_next):
                             detail="Invalid JSON format"
                         )
                     except ValueError as e:
-                        logger.warning(f"Input validation failed: {e}")
+                        logger.warning(f"Input validation failed: {error_site(e)}")
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Input validation failed: {str(e)}"
@@ -411,7 +412,7 @@ async def validate_request_input(request: Request, call_next):
     except HTTPException:
         raise
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Input validation middleware error: {e}")
+        logger.error(f"Input validation middleware error: {error_site(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during input validation"

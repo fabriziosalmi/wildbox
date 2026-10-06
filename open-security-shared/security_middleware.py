@@ -88,16 +88,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware to log all requests and responses for security auditing."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        # Log request details (excluding sensitive headers)
-        sensitive_headers = {"authorization", "x-api-key", "cookie"}
-        safe_headers = {
-            k: v
-            for k, v in request.headers.items()
-            if k.lower() not in sensitive_headers
-        }
+        # Which headers the request has, by name: never their values. This
+        # logged every value but those of Authorization, X-API-Key and
+        # Cookie, which left X-Gateway-Secret, the proof every service
+        # trusts the gateway by, and the caller's identity headers (#755).
         logger.debug(
-            "request headers (sensitive omitted)",
-            extra={"headers": safe_headers, "path": str(request.url.path)},
+            "request headers (names only)",
+            extra={
+                "header_names": sorted(request.headers.keys()),
+                "path": str(request.url.path),
+            },
         )
 
         # Process request

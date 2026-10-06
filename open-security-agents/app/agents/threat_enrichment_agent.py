@@ -232,7 +232,7 @@ Begin your investigation by thinking through your approach, then systematically 
         # Sanitize IOC value to prevent prompt injection
         ioc_type = re.sub(r'[^a-zA-Z0-9_-]', '', str(ioc['type']))[:50]
         ioc_value = re.sub(r'[^\w.:\-/@\[\]%]', '', str(ioc['value']))[:500]
-        logger.info(f"Starting analysis of {ioc_type} IOC: {ioc_value}")
+        logger.info(f"Starting analysis of an IOC of type {ioc_type}")
 
         # Prepare input for the agent
         input_text = f"Please investigate this {ioc_type} IOC: {ioc_value}"
@@ -282,7 +282,7 @@ Begin your investigation by thinking through your approach, then systematically 
             ioc, agent_output, raw_tool_data, tools_used, duration
         )
 
-        logger.info(f"Completed analysis of {ioc['value']} in {duration:.1f}s")
+        logger.info(f"Completed analysis of an IOC of type {ioc_type} in {duration:.1f}s")
         return structured_result
 
     async def _generate_structured_report(

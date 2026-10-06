@@ -26,6 +26,9 @@ class WorkflowStep(BaseModel):
     end_time: Optional[datetime]
     output: Optional[Dict[str, Any]]
     error_message: Optional[str]
+    # Why the step failed, as one of the codes of main.py, for a client to
+    # branch on; null for a step that did not fail (#755).
+    error_code: Optional[str] = None
 
 class WorkflowExecution(BaseModel):
     execution_id: str

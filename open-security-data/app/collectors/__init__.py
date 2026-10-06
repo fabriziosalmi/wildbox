@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.config import get_config
 from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun
 from app.utils.database import get_db_session
+from app.utils.log_safety import describe_error, host_of
 from app.utils.rate_limiter import RateLimiter
 from app.utils.validators import validate_indicator
 from app.utils.normalizers import normalize_indicator
@@ -179,9 +180,18 @@ class BaseCollector(ABC):
             # with a completed_at timestamp and no error message (WILDBO-ERR-01).
             # sqlalchemy.exc errors from the indicator writes escaped the same way.
             result.status = CollectionStatus.FAILED
-            result.error_message = str(e)
+            # What failed, not the text of the error: for an HTTP error the
+            # text ends with the URL, and a feed's URL can hold its key. It
+            # was stored with the run and the source, and logged with the
+            # traceback, which repeats it (#755). An HTTP client's error has
+            # no traceback worth more than its class and status; any other
+            # error keeps its traceback, for the operator.
+            result.error_message = describe_error(e)
             result.error_details = {"exception_type": type(e).__name__}
-            logger.error(f"Collection failed for source {self.source.name}: {e}", exc_info=True)
+            logger.error(
+                f"Collection failed for source {self.source.name}: {describe_error(e)}",
+                exc_info=not isinstance(e, aiohttp.ClientError),
+            )
         
         finally:
             # A run that reaches this block has stopped, so it must not be
@@ -384,7 +394,9 @@ class HTTPCollector(BaseCollector):
                     logger.warning(f"Unsupported content type: {content_type}")
                     
         except aiohttp.ClientError as e:
-            logger.error(f"HTTP error collecting from {url}: {e}")
+            logger.error(
+                f"HTTP error collecting from {host_of(url)}: {describe_error(e)}"
+            )
             raise
     
     def _process_json_data(self, data: Union[Dict, List]):
@@ -455,7 +467,9 @@ class RSSCollector(BaseCollector):
                     }
                     
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error collecting RSS from {url}: {e}")
+            logger.error(
+                f"Error collecting RSS from {host_of(url)}: {describe_error(e)}"
+            )
             raise
 
 class NoCollector(ValueError):

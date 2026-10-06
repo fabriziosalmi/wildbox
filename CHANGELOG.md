@@ -556,6 +556,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists the internal ranges the
   operator allows; it is empty by default (see Changed).
 
+- **The tools service no longer records the input of a run** (#755). The
+  record "Executing tool" carried the whole validated input of every run:
+  a password to grade, a token to decode, a key to test. The service's own
+  formatter read a field no record has and so wrote none of a record's
+  fields, the request id included; the input was in the record for any
+  other handler, and would have reached the log the day the formatter was
+  mended. It is mended now, and writes the fields named in `LOGGED_FIELDS`
+  and no other. A run is logged with the tool, the caller's user and team
+  ids, the request id and the names of the fields the caller set, for the
+  synchronous route and for a submission alike. A request is logged by its
+  path, without its query string. An error a tool raises over its input is
+  logged by class and line, a refused target as a refusal without the
+  target, and an authorization by the host of its target. The module no
+  longer logs the broker URL, which holds the Redis password.
+- **A task's message describes its arguments without the input, and a
+  failed task does not store what its tool raised** (#755). Celery sends,
+  beside a task's arguments, a text of them for worker logs,
+  `celery inspect` and Flower, which shows it: the first 1024 characters of
+  the tool's input. The text now says how many fields the input has, for a
+  retry's message too. The result of a task whose tool raised stored the
+  text of the error for an hour, and the caller read it back; it says
+  `Tool execution failed (<class>)` now. The input itself is still the
+  body of the message, which the tool needs to run:
+  `open-security-tools/README.md` says how long Redis holds it.
+- **A workflow step that fails in its tool answers a reason code, not the
+  tool's error** (#755). The orchestrator answered a step whose tool raised
+  a `ValueError`, `KeyError` or `TypeError` with the text of the error, and
+  stored `str(e)` of anything else that reached the step. Every failed step
+  now has an `error_code`, and the four codes of a failure inside the
+  service have one fixed sentence each; what was raised is logged by class
+  and line.
+- **The tools do not log the URLs they are given** (#755). Some eighty
+  log lines of the tools named their target by its whole URL, user,
+  password, path and query included, and ended with the text of the HTTP
+  client's error, which repeats it. Three tools printed the text of a
+  failed lookup's error to the container's output. A target is named by
+  its host and an error by its class. httpx, which logs the URL of every request at INFO, is held to
+  warnings in the API and in the worker.
+- **No service logs the query string of a request** (#755). uvicorn's
+  access log wrote the request line of every request to each of the six
+  FastAPI services, and the gateway's access log `$request` and
+  `$http_referer`: every search term, indicator and filter, and any token
+  a client put in a query string. Both now log the method, the path and
+  the status. The shared package does it for the services where they
+  install their error handlers, and also holds httpx, urllib3 and botocore
+  to warnings and errors whatever `LOG_LEVEL` is: botocore, at DEBUG, logs
+  the request it signs with the session token of the account cspm scans.
+- **What else held a request, or a secret, in a log** (#755): the shared
+  error handler put the `detail` of every HTTP error in its record; the
+  shared request-logging middleware every header but `Authorization`,
+  `X-API-Key` and `Cookie`, which left `X-Gateway-Secret`; responder every
+  parameter of every connector action but those of six key names; agents
+  the indicator under analysis, and the URL of a failed search with the
+  indicator in it; identity the address typed into the login form of a
+  locked account, and with `DEBUG` every SQL statement with its
+  parameters; data the URL of a feed that failed, key included, which it
+  also stored as the run's error and the source's `last_error`; the
+  gateway the body of an unexpected answer from identity; the sensor the
+  value of a variable it could not read as an integer. Each now logs a
+  name, a count, a host, an id or a class.
+  `tests/scripts/test_no_request_values_in_logs.py` reads every logging
+  call of every service, and the gateway's log formats and Lua, and fails
+  when one is handed a request, a part of one or a credential.
+- **cspm's health answer no longer names the exception a check raised**
+  (#755). `GET /health`, which needs no credential, answered
+  `"error": "ValueError"`. It answers the status and `Health check
+  failed`; the cause is logged with its traceback.
+
 ### Removed
 
 - **gateway: five variables Compose passed it and nothing read** (#756).

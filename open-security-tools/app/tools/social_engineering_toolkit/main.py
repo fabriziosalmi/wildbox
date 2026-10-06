@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import json
 
+from ...log_safety import host_of
 from .schemas import SocialEngineeringToolkitInput, SocialEngineeringToolkitOutput
 
 logger = logging.getLogger(__name__)
@@ -384,7 +385,7 @@ def generate_recommendations(risk_score: int, email_analysis: Optional[Dict],
 async def execute_tool(request: SocialEngineeringToolkitInput) -> SocialEngineeringToolkitOutput:
     """Execute social engineering toolkit analysis."""
     try:
-        logger.info(f"Starting social engineering analysis for target: {request.target}")
+        logger.info(f"Starting social engineering analysis for target: {host_of(request.target)}")
         
         email_analysis = None
         phone_analysis = None
@@ -441,7 +442,7 @@ async def execute_tool(request: SocialEngineeringToolkitInput) -> SocialEngineer
         )
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error in social engineering toolkit: {str(e)}")
+        logger.error(f"Error in social engineering toolkit: {type(e).__name__}")
         return SocialEngineeringToolkitOutput(
             target=request.target,
             analysis_type=request.analysis_type,

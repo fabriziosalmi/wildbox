@@ -27,7 +27,7 @@ def validate_cloud_provider(provider: str) -> str:
     cleaned_provider = provider.lower().strip()
     
     if cleaned_provider not in supported_providers:
-        logger.warning(f"Unknown cloud provider requested: {provider}")
+        logger.warning("Unknown cloud provider requested")
         return "unknown"
     
     return cleaned_provider

@@ -35,7 +35,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             extra={
                 "request_id": request_id,
                 "method": request.method,
-                "url": str(request.url),
+                # The path, not the URL: a query string is the caller's
+                # input (#755).
+                "path": request.url.path,
                 "client_ip": request.client.host if request.client else "unknown",
                 "user_agent": request.headers.get("user-agent", "unknown")
             }
@@ -65,14 +67,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             duration = time.time() - start_time
-            # The class and traceback go in the record: the formatter drops
-            # ``extra``, so this logged only "HTTP request failed", and a 500
-            # on the async task routes could not be traced from CI logs (#619).
+            # The class and traceback go in the record, so that a 500 can be
+            # traced from the log (#619): this is a fault of the service, and
+            # its cause is the operator's to read.
             logger.exception(
                 f"HTTP request failed: {type(e).__name__}",
                 extra={
                     "request_id": request_id,
-                    "error": str(e),
+                    "error_type": type(e).__name__,
                     "duration": f"{duration:.3f}s"
                 }
             )

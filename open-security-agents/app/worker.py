@@ -29,10 +29,16 @@ from .failures import (
     AnalysisFailed,
 )
 from .stats import COMPLETED, FAILED, count_today
+from open_security_shared.log_safety import quiet_http_client_loggers
 from .tools.wildbox_client import CallerIdentityUnavailable, caller_identity
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+# httpx logs the URL of each request at INFO, and the worker's calls to the
+# data service are searches with the indicator in the query string. The API
+# process is told through its error handlers; a worker makes no application
+# and says so itself (#755).
+quiet_http_client_loggers()
 logger = logging.getLogger(__name__)
 
 # Create Celery app

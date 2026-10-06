@@ -266,7 +266,7 @@ async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
             *(scanner.scan_host(ip, tcp=scan_type == "tcp") for ip in ip_list)
         )
     except RUN_ERRORS as e:
-        logger.error("Network scan failed: %s", e, exc_info=True)
+        logger.error("Network scan failed: %s", type(e).__name__)
         return failed(f"Scan failed: {type(e).__name__}: {e}")
 
     alive = sum(1 for host in hosts if host.status == "alive")

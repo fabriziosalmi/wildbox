@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.auth import require_tools_execute, verify_api_key
 from app.execution_manager import execution_manager
+from app.log_safety import error_site, field_names
 from app.logging_config import get_logger
 from app.prerun import PRE_RUN_REFUSALS, check_tool_input, http_error, refusal_log
 from app.security.rate_limit import UNAVAILABLE_MESSAGE, RateLimitUnavailable
@@ -161,9 +162,15 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
             raise http_error(e)
         validated_input = checked.validated_input
 
+        # Who runs which tool, and which fields they sent: never what the
+        # fields hold. This record carried the whole validated input of
+        # every run, and a tool's input is a password to grade, a token to
+        # decode, a key to test (#755).
         logger.info(f"Executing tool: {tool_name}", extra={
             "tool": tool_name,
-            "input": validated_input.model_dump(),
+            "user_id": str(caller.user_id),
+            "team_id": str(caller.team_id),
+            "input_fields": field_names(validated_input),
             "request_id": getattr(request.state, 'request_id', 'unknown')
         })
         
@@ -235,9 +242,11 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                 detail=UNAVAILABLE_MESSAGE,
             )
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+            # The class and the line, not the text: an exception raised
+            # over a caller's input can quote it (#755).
             logger.error(f"Tool execution failed: {tool_name}", extra={
                 "tool": tool_name,
-                "error": str(e),
+                "error_type": error_site(e),
                 "request_id": getattr(request.state, 'request_id', 'unknown')
             })
             raise HTTPException(
