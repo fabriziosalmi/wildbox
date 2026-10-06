@@ -203,7 +203,6 @@ def main():
         "GATEWAY_INTERNAL_SECRET": generate_hex(32),
         "API_KEY": generate_api_key("prod"),
         "INITIAL_ADMIN_PASSWORD": generate_password(24),
-        "N8N_ENCRYPTION_KEY": generate_hex(32),
         # Encrypts cloud credentials before CSPM writes them to Redis
         # (WILDBO-SEC-02). Required; the service refuses to scan without it.
         "CSPM_CREDENTIAL_KEY": generate_base64(32),

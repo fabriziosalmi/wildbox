@@ -30,7 +30,6 @@ the main ones are:
 | `CSPM_CREDENTIAL_KEY` | Encrypts cloud credentials stored by CSPM (cloud security posture management) |
 | `SENSOR_API_KEY` | Authenticates the sensor's local API |
 | `FLOWER_PASSWORD` | Celery Flower for the tools workers |
-| `N8N_ENCRYPTION_KEY` | The optional automations service |
 | `API_KEY` | Static key shared by the tools API, its workers and the services that call it |
 
 Values in `.env` are placeholders in this documentation, for example

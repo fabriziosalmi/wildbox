@@ -136,6 +136,9 @@ def test_every_secret_the_validator_requires_is_generated():
         "MAX_LOGIN_ATTEMPTS",
         "LOCKOUT_DURATION",
         "STRIPE_SECRET_KEY",
+        # Generated and documented, and passed to n8n by no Compose file:
+        # n8n keeps its own key in its data directory.
+        "N8N_ENCRYPTION_KEY",
     ],
 )
 def test_what_nothing_read_is_gone(name):
