@@ -22,6 +22,11 @@ waits in ``put()`` with one of them holds the rest of its chunk, which are
 not events yet and were counted by nobody. The forwarder counts them now,
 and the agent's last lines include them: every entry the command wrote and
 the sensor read is at the sender, on its way, in ``put()`` or behind it.
+
+A file and a Windows event log are read the same way, a chunk of lines and
+an answer of events at a time, and theirs were left out of that count (#788):
+the two tests of a file source below asked for four lines when the sensor had
+read ten, and now ask for seven.
 """
 
 import asyncio
@@ -263,35 +268,47 @@ async def test_a_put_cancelled_as_room_is_made_is_in_exactly_one_place(
 # -- the collectors ----------------------------------------------------------
 
 
-def _log(tmp_path, lines=10):
+def _log(tmp_path, lines=WRITTEN_AT_ONCE, junk=False, unfinished=b""):
+    """A log of ``lines`` lines, which the forwarder gets in one read.
+    ``junk``: with lines between them that are none. ``unfinished``: what
+    the file ends with, after its last newline."""
     log = tmp_path / "app.log"
-    log.write_text("".join(f"line {index}\n" for index in range(lines)))
+    between = "\n   \n\t\n" if junk else "\n"
+    text = "".join(f"line {index}{between}" for index in range(lines))
+    log.write_bytes(text.encode() + unfinished)
+    assert log.stat().st_size <= log_forwarder.READ_CHUNK
     source = LogSourceConfig(
         name="app", path=str(log), format="raw", read_from="beginning"
     )
     return log, source
 
 
+@pytest.mark.parametrize("junk", [False, True])
 @pytest.mark.asyncio
 async def test_a_log_line_waiting_for_room_is_counted_and_read_again(
-    tmp_path, gateway, caplog
+    tmp_path, gateway, caplog, junk
 ):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
-    _, source = _log(tmp_path)
+    _, source = _log(tmp_path, junk=junk)
     agent = _agent(data_dir, [source])
 
     await agent.start()
     await _full_to_the_collector(agent)
     said = await _stop(agent, caplog)
 
-    # main: 3, the line in put() was in no count.
-    assert _line(dropped=0, returned=ON_THEIR_WAY + IN_PUT) in said
+    # Before #765: 3, the line in put() was in no count. Before #788: 4, the
+    # three lines read with it and behind it were in none, and this test
+    # asked for four. A line that is blank is no event, and is not counted.
+    assert _line(dropped=0, returned=ON_THEIR_WAY + IN_PUT + BEHIND_IT) in said
     stats = agent.data_forwarder.stats
     assert stats["events_received"] == AT_THE_SENDER
     assert stats["events_returned_to_source"] == AT_THE_SENDER
+    # Every line the sensor read is in one count or the other.
+    assert AT_THE_SENDER + ON_THEIR_WAY + IN_PUT + BEHIND_IT == WRITTEN_AT_ONCE
     # Counted once: a second stop has nothing left to say.
     assert agent.event_queue.turned_away == []
+    assert agent.log_forwarder.interrupted == []
     assert agent.event_queue.empty() and agent.processed_queue.empty()
 
     # Returned to its collector: no line was accepted, so the position is
@@ -321,9 +338,136 @@ async def test_without_a_saved_position_the_line_in_put_is_counted_as_dropped(
     said = await _stop(agent, caplog)
 
     # Nothing keeps the position: the lines are not read again, and the
-    # sensor says so for all four. main said three.
-    assert _line(dropped=ON_THEIR_WAY + IN_PUT, returned=0) in said
+    # sensor says so for all seven. It said three before #765 and four
+    # before #788, which is what this test asked for.
+    assert _line(dropped=ON_THEIR_WAY + IN_PUT + BEHIND_IT, returned=0) in said
     assert agent.data_forwarder.stats["events_dropped_shutdown"] == AT_THE_SENDER
+
+
+@pytest.mark.asyncio
+async def test_a_long_line_without_its_newline_behind_the_one_in_put_is_counted(
+    tmp_path, gateway, caplog
+):
+    # What the read ends with is forwarded at once, cut, when it is longer
+    # than a line may be: it is an event of this read too.
+    unfinished = b"x" * (log_forwarder.MAX_LINE_BYTES + 1)
+    _, source = _log(tmp_path, unfinished=unfinished)
+    agent = _agent(None, [source])
+
+    await agent.start()
+    await _full_to_the_collector(agent)
+    said = await _stop(agent, caplog)
+
+    assert _line(dropped=ON_THEIR_WAY + IN_PUT + BEHIND_IT + 1, returned=0) in said
+
+
+@pytest.mark.asyncio
+async def test_the_beginning_of_a_line_behind_the_one_in_put_is_not_counted(
+    tmp_path, gateway, caplog
+):
+    # No newline yet and not too long: it is no line until its newline is
+    # written, and the sensor has made nothing of it.
+    _, source = _log(tmp_path, unfinished=b"the beginning of a line")
+    agent = _agent(None, [source])
+
+    await agent.start()
+    await _full_to_the_collector(agent)
+    said = await _stop(agent, caplog)
+
+    assert _line(dropped=ON_THEIR_WAY + IN_PUT + BEHIND_IT, returned=0) in said
+
+
+@pytest.mark.asyncio
+async def test_a_file_reader_stopped_at_the_end_of_its_file_holds_nothing(
+    tmp_path, gateway, caplog
+):
+    _, source = _log(tmp_path)
+    agent = _agent(None, [source], tight=False)
+    gateway.answer = SENT
+
+    await agent.start()
+    await _until(lambda: len(gateway.accepted) == WRITTEN_AT_ONCE)
+    forwarder = agent.log_forwarder
+    said = await _stop(agent, caplog)
+
+    assert forwarder.interrupted == []
+    assert [line for line in said if line.startswith("Stopped with")] == []
+
+
+def _event_log(monkeypatch):
+    """A Windows event log that is empty when the sensor first looks at it
+    and has WRITTEN_AT_ONCE events at the next look, which is one answer.
+    The query is a stand-in, as in test_log_windows_events.py."""
+    asked = []
+
+    def query(argv):
+        after = int(argv[-1].split("EventRecordID > ")[1].split("]")[0])
+        asked.append(after)
+        events = [
+            {"RecordId": record, "Id": 4624, "Message": f"event {record}"}
+            for record in range(1, WRITTEN_AT_ONCE + 1)
+            if len(asked) > 1 and record > after
+        ]
+        newest = WRITTEN_AT_ONCE if len(asked) > 1 else 0
+        return json.dumps({"newest": newest, "events": events})
+
+    monkeypatch.setattr(log_forwarder, "is_windows", lambda: True)
+    monkeypatch.setattr(log_forwarder, "WINDOWS_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        log_forwarder.LogForwarder, "_run_windows_query", staticmethod(query)
+    )
+    return LogSourceConfig(
+        name="security",
+        type="windows_event",
+        log_name="Security",
+        format="windows_event",
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_windows_events_behind_the_one_in_put_are_counted_and_read_again(
+    tmp_path, gateway, caplog, monkeypatch
+):
+    # The saved record id is that of the last event accepted, which is
+    # before all of these: the log is asked for them again.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    agent = _agent(data_dir, [_event_log(monkeypatch)])
+
+    await agent.start()
+    await _full_to_the_collector(agent)
+    said = await _stop(agent, caplog)
+
+    # main: 4 of them.
+    assert _line(dropped=0, returned=ON_THEIR_WAY + IN_PUT + BEHIND_IT) in said
+    assert agent.data_forwarder.stats["events_returned_to_source"] == AT_THE_SENDER
+    assert agent.log_forwarder.interrupted == []
+
+    gateway.answer = SENT
+    again = _agent(data_dir, [_event_log(monkeypatch)], tight=False)
+    await again.start()
+    try:
+        await _until(lambda: len(gateway.accepted) >= WRITTEN_AT_ONCE)
+        await asyncio.sleep(0.1)
+    finally:
+        await asyncio.wait_for(again.stop(), timeout=30)
+    assert [event["data"]["RecordId"] for event in gateway.accepted] == list(
+        range(1, WRITTEN_AT_ONCE + 1)
+    )
+
+
+@pytest.mark.asyncio
+async def test_without_a_saved_record_id_the_windows_events_behind_it_are_dropped(
+    tmp_path, gateway, caplog, monkeypatch
+):
+    agent = _agent(None, [_event_log(monkeypatch)])
+
+    await agent.start()
+    await _full_to_the_collector(agent)
+    said = await _stop(agent, caplog)
+
+    # Nothing keeps the record id: the log is followed from the restart on.
+    assert _line(dropped=ON_THEIR_WAY + IN_PUT + BEHIND_IT, returned=0) in said
 
 
 @pytest.mark.asyncio

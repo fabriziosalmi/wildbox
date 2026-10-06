@@ -61,7 +61,9 @@ follows them (``journalctl --follow``, ``log stream``):
 * The entries of a read of the command's output that are not events yet
   when the forwarder stops are counted (``interrupted``), as the events
   still in the sensor are: the journal's are read again from the saved
-  cursor, the unified log's are lost.
+  cursor, the unified log's are lost. The lines of a read of a file and
+  the events of an answer of a Windows event log are counted the same way
+  (#788): read again when positions are saved, lost when they are not.
 * The journal is followed from the cursor of the last entry read, so a
   restart of the command neither skips nor repeats; the cursor of the last
   entry the data service accepted is saved with the file positions, and a
@@ -457,12 +459,13 @@ class LogForwarder:
         self._own_log = os.path.realpath(own_log) if own_log else None
 
         self.stats = {"lines_forwarded": 0, "lines_truncated": 0}
-        # What the forwarder had read from a command and made no event of
-        # yet when it was stopped (#777): one item for each such entry, a
-        # Delivery that is never settled when the entry will be read again
-        # (the journal, with a saved cursor), None when it is lost. The
-        # agent counts them at the stop with what its queues held, as it
-        # does the processor's ``interrupted``.
+        # What the forwarder had read from a source and made no event of
+        # yet when it was stopped (#777, #788): one item for each such
+        # line, entry or event, a Delivery that is never settled when it
+        # will be read again (a file, the journal or an event log, with a
+        # saved position), None when it is lost. The agent counts them at
+        # the stop with what its queues held, as it does the processor's
+        # ``interrupted``.
         self.interrupted: List[Optional[Delivery]] = []
 
     def _initialize_log_sources(self) -> List[LogSourceConfig]:
@@ -1127,13 +1130,23 @@ class LogForwarder:
         end = base - len(tail.partial)
         tail.partial = lines.pop()
 
-        for line in lines:
+        for index, line in enumerate(lines):
             end += len(line) + 1
             if tail.discarding:
                 # The end of a line whose beginning was not forwarded as one.
                 tail.discarding = False
                 continue
-            await self._forward_line(source, tail, line, end, window(end))
+            try:
+                await self._forward_line(source, tail, line, end, window(end))
+            except asyncio.CancelledError:
+                # Stopped while this line waited for room on the queue,
+                # which answers for it (``CountingQueue.turned_away``). The
+                # lines read with it, behind it, were nobody's (#788).
+                left = lines[index + 1 :]
+                if len(tail.partial) > MAX_LINE_BYTES:
+                    left.append(tail.partial)  # it was to be forwarded cut
+                self._lines_not_handled(source, left)
+                raise
 
         if len(tail.partial) > MAX_LINE_BYTES:
             # Still no newline: forward what fits, once, and drop the rest of
@@ -1143,6 +1156,47 @@ class LogForwarder:
                 await self._forward_line(source, tail, tail.partial, end, window(end))
                 tail.discarding = True
             tail.partial = b""
+
+    def _lines_not_handled(self, source: LogSourceConfig, lines: List[bytes]):
+        """The reader of a file was stopped with ``lines`` read and not
+        handled: keep one item of ``interrupted`` for each that is a line
+        to forward.
+
+        With saved positions they are read again after the restart: the
+        saved offset is that of the last line accepted, which is before all
+        of these. Without ``data_dir`` nothing keeps the offset.
+        """
+        for raw in lines:
+            text, _ = self._line_text(raw)
+            if not text:
+                continue
+            try:
+                if not self._parse_log_line(text, source.format):
+                    continue
+            except Exception:
+                continue  # no event either way: see _process_log_line
+            self._not_queued()
+
+    def _not_queued(self, count: int = 1):
+        """``count`` lines or events of a source that keeps a position were
+        read and are no events yet at the stop."""
+        again = self.positions.persistent
+        self.interrupted.extend(
+            Delivery(_nothing_to_settle, replayable=True) if again else None
+            for _ in range(count)
+        )
+
+    @staticmethod
+    def _line_text(raw: bytes) -> Tuple[str, bool]:
+        """A line as it is forwarded, and whether it was cut to
+        ``MAX_LINE_BYTES``. Empty: the line is no event."""
+        truncated = len(raw) > MAX_LINE_BYTES
+        if truncated:
+            raw = raw[:MAX_LINE_BYTES]
+        # A log is not always UTF-8, and a truncated file leaves NUL bytes:
+        # neither may stop the line, or the batch it travels in.
+        line = raw.decode("utf-8", errors="replace").replace("\x00", REPLACEMENT)
+        return line.strip(), truncated
 
     async def _forward_line(
         self,
@@ -1157,13 +1211,7 @@ class LogForwarder:
         ``end`` is the offset the line ends at (for a line sent cut, where
         the reading had got to) and ``window`` the bytes before it.
         """
-        truncated = len(raw) > MAX_LINE_BYTES
-        if truncated:
-            raw = raw[:MAX_LINE_BYTES]
-        # A log is not always UTF-8, and a truncated file leaves NUL bytes:
-        # neither may stop the line, or the batch it travels in.
-        line = raw.decode("utf-8", errors="replace").replace("\x00", REPLACEMENT)
-        line = line.strip()
+        line, truncated = self._line_text(raw)
         if not line:
             # No event: a later line's offset covers it.
             return
@@ -1736,8 +1784,14 @@ class LogForwarder:
                     self._positions_dirty = True
                     more = True  # asked again at once, from record 0
                 else:
-                    for event in events:
-                        await self._windows_event(runtime, event)
+                    for index, event in enumerate(events):
+                        try:
+                            await self._windows_event(runtime, event)
+                        except asyncio.CancelledError:
+                            # The events of this answer behind the one that
+                            # waited for room on the queue (#788).
+                            self._not_queued(len(events) - index - 1)
+                            raise
                     more = len(events) >= WINDOWS_MAX_EVENTS
             await self._windows_pause(0 if more else WINDOWS_POLL_INTERVAL)
 
