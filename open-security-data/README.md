@@ -207,6 +207,11 @@ Settings are read from environment variables in `app/config.py`;
 `.env.example` lists them. In the root compose file the service receives:
 
 - `DATABASE_URL`: from `DATA_DATABASE_URL`, falling back to `DATABASE_URL`.
+  A PostgreSQL URL (`postgresql://...`): the tables use PostgreSQL types and
+  the migrations are written for it. A URL of another database is refused
+  when the engine is first asked for, by the name of its backend
+  (`DATABASE_URL names a sqlite database; the data service needs
+  PostgreSQL`).
 - `SECRET_KEY`: from `DATA_SECRET_KEY`, which Compose requires in every
   environment, as it does `ENVIRONMENT`. The service itself refuses to start
   without `SECRET_KEY` and `DATABASE_URL`, or with `DEBUG=true`, unless

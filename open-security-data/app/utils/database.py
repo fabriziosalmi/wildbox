@@ -5,8 +5,8 @@ Database utilities and session management
 import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
 
 from app.config import get_config
 
@@ -29,7 +29,20 @@ def _init_engine():
             raise RuntimeError(
                 "DATABASE_URL is not set — configure it before accessing the database."
             )
-        is_sqlite = "sqlite" in url
+        # PostgreSQL, and nothing else: the tables use its types (UUID, INET,
+        # CIDR in app/models.py) and the migrations are written for it. A
+        # branch here used to give a SQLite URL a StaticPool together with
+        # the pool options below, which StaticPool does not take, so the
+        # engine could not be created; and no schema of this service can be
+        # created on SQLite either. The URL is refused for what it is, by
+        # the name of its backend: a URL carries a password (#778).
+        backend = make_url(url).get_backend_name()
+        if backend != "postgresql":
+            raise RuntimeError(
+                f"DATABASE_URL names a {backend} database; the data service "
+                "needs PostgreSQL (postgresql://...): its tables and its "
+                "migrations use PostgreSQL types."
+            )
         _engine = create_engine(
             url,
             pool_size=config.database.pool_size,
@@ -42,8 +55,6 @@ def _init_engine():
             # service logs. The parameters are the events a sensor sent and
             # the indicators a team searched for (#755).
             hide_parameters=True,
-            poolclass=StaticPool if is_sqlite else None,
-            connect_args={"check_same_thread": False} if is_sqlite else {},
         )
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
     return _engine

@@ -93,6 +93,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   case or spacing. The filter compares the same way, so a value in the
   old spelling still finds its checks, all three of them. Reports and
   findings do not carry a check's category: nothing stored changes.
+- **The data service refuses a database that is not PostgreSQL by
+  saying so** (#778). `app/utils/database.py` had a branch for a SQLite
+  `DATABASE_URL` that gave the engine a `StaticPool` together with
+  `pool_size`, `max_overflow` and `pool_timeout`, which that pool does
+  not take: with such a URL the engine could not be created, and the
+  error was a `TypeError` about pool arguments. Nothing reached the
+  branch. The stack and the documentation give the service PostgreSQL,
+  its tables use PostgreSQL types and its migrations are written for it,
+  and the unit tests that use SQLite build their own engine. The branch
+  is removed, and a URL of another database is refused when the engine
+  is first asked for, by the name of its backend and without the URL,
+  which carries a password.
 
 ## [0.12.0] - 2026-10-06
 
