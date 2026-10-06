@@ -194,8 +194,10 @@ Settings are read from environment variables in `app/config.py`;
 `.env.example` lists them. In the root compose file the service receives:
 
 - `DATABASE_URL`: from `DATA_DATABASE_URL`, falling back to `DATABASE_URL`.
-- `SECRET_KEY`: from `DATA_SECRET_KEY`; required unless `ENVIRONMENT` is
-  `development`, as are `DATABASE_URL` and `DEBUG=false`.
+- `SECRET_KEY`: from `DATA_SECRET_KEY`, which Compose requires in every
+  environment, as it does `ENVIRONMENT`. The service itself refuses to start
+  without `SECRET_KEY` and `DATABASE_URL`, or with `DEBUG=true`, unless
+  `ENVIRONMENT` is `development`.
 - `GATEWAY_INTERNAL_SECRET`: shared with the gateway.
 - `ENVIRONMENT`, `DEBUG`, `LOG_LEVEL`, `CORS_ORIGINS`.
 
@@ -223,9 +225,12 @@ open-security-data/
 └── tests/unit/
 ```
 
-Run the unit tests from this directory:
+Run the unit tests from this directory, with the shared package installed as
+CI does:
 
 ```bash
+pip install ../open-security-shared
+pip install -r requirements.txt
 pytest
 ```
 

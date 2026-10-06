@@ -18,15 +18,14 @@ The Open Security Data Service is a FastAPI-based security data lake providing t
 
 - **Threat Intelligence Collection**: Automated collection from 50+ public sources
 - **Data Aggregation**: Centralized repository for security indicators
-- **Analysis & Enrichment**: Geographic, ASN, and contextual data enrichment
+- **Per-type fields**: the IP version, a domain's TLD, apex domain and subdomain, and a hash's algorithm, derived from the value; no geographic, ASN or WHOIS lookup is made
 - **Real-time Feeds**: Live threat intelligence streaming
 - **Telemetry Ingestion**: Security sensor event processing
 
 **Service Details:**
 
-- Framework: FastAPI 1.0.0
+- Framework: FastAPI (service version 0.1.6)
 - Database: PostgreSQL with SQLAlchemy ORM
-- Caching: Redis support
 - API Port: 8002 (default)
 - Base Path: `/api/v1`
 
@@ -45,11 +44,13 @@ The Open Security Data Service is a FastAPI-based security data lake providing t
 - **Proof of origin**: the gateway forwards the caller as
   `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role` with the
   `X-Gateway-Secret` header. Every `/api/v1` route depends on
-  `get_current_user` (`app/auth.py`, which is
-  `open_security_shared.gateway_auth.get_user_from_gateway_headers`); it
-  answers 403 to a request without those headers or with a wrong secret, and
-  503 when `GATEWAY_INTERNAL_SECRET` is not set. The service's own `/health`
-  is the only route without that dependency.
+  `get_current_user`, or `get_ingest_user` for `POST /api/v1/ingest`
+  (`app/auth.py`): `open_security_shared.gateway_auth.require_scope` over
+  `get_user_from_gateway_headers`. It answers 403 to a request without the
+  user and team headers, with a wrong secret or without
+  `X-Wildbox-Auth-Type`, and 503 when `GATEWAY_INTERNAL_SECRET` is not set.
+  `/health` and `/metrics` have no such dependency, nor do `/docs`, `/redoc`
+  and `/openapi.json`, which exist only when `ENVIRONMENT` is `development`.
 - **No service API key**: `API_KEY_REQUIRED` and `API_KEY_HEADER` were
   removed from `app/config.py` because nothing read them.
 - **Team scope**: indicators and sources are filtered to the caller's team
@@ -57,7 +58,7 @@ The Open Security Data Service is a FastAPI-based security data lake providing t
   belong to the team of the credential they were ingested with and are
   filtered to the caller's team only, with no global rows; rows stored
   before telemetry had a team (`team_id IS NULL`) are visible to no team.
-- **API key scopes** (checked by the gateway): `read` for `GET`, `write` for
+- **API key scopes** (checked by the gateway, and again by the service): `read` for `GET`, `write` for
   `POST`. `POST /api/v1/data/ingest` takes `data:ingest`, `data:write` or
   `write`; `data:ingest` allows that route only, and is the scope of the key
   a sensor sends telemetry with.
@@ -81,7 +82,7 @@ MAX_BATCH_SIZE=1000                      # Max items in batch operations
 
 - Input validation for all indicator types (IP, domain, hash, etc.)
 - Normalized value storage for deduplication
-- JSON schema validation for complex objects
+- Request bodies and query parameters are validated by the Pydantic schemas in `app/schemas/api.py` and the `Query` bounds of each route
 
 ---
 
@@ -174,7 +175,7 @@ Response: IndicatorSearchResponse
 
 | Parameter | Type | Description | Default |
 | ----------- | ------ | ------------- | --------- |
-| q | string | Search query (full-text) | None |
+| q | string | Case-insensitive substring of the value, the normalized value or the description | None |
 | indicator_type | string | Filter by type (ip_address, domain, file_hash, etc.) | None |
 | threat_types | string[] | Filter by threat types | None |
 | confidence | string | Filter by confidence (low, medium, high, verified) | None |
@@ -229,7 +230,7 @@ Path Parameters:
   - indicator_id (string, required): UUID of indicator
 ```
 
-Returns detailed indicator information with enrichment data based on type (IP geolocation, domain WHOIS, hash analysis, etc.).
+Returns the indicator with the per-type row stored for it (see the enrichment fields of each lookup below).
 
 **Response Includes:**
 
@@ -312,6 +313,11 @@ Path Parameters:
 - `city` (string): City location
 - `coordinates` (object): Latitude/longitude if available
 
+The service fills what it can derive from the value alone: `ip_version` for an
+IP address; `tld`, `subdomain` and `apex_domain` for a domain; `hash_type` for a
+file hash. Nothing in the service looks up or writes the other fields, so they
+are empty on every indicator it collects.
+
 `ip_version` is in the enrichment of `GET /api/v1/indicators/{indicator_id}`,
 not in this one.
 
@@ -363,6 +369,11 @@ Path Parameters:
 - `mx_records` (string[]): Mail exchange records
 - `ns_records` (string[]): Nameserver records
 
+The service fills what it can derive from the value alone: `ip_version` for an
+IP address; `tld`, `subdomain` and `apex_domain` for a domain; `hash_type` for a
+file hash. Nothing in the service looks up or writes the other fields, so they
+are empty on every indicator it collects.
+
 This endpoint returns `tld`, `registrar`, `creation_date`, `expiration_date`,
 `ip_addresses`, `mx_records` and `ns_records`; `subdomain`, `apex_domain` and
 `dns_resolves` are only in the enrichment of
@@ -392,6 +403,11 @@ Path Parameters:
 - `malware_family` (string): Known malware family
 - `signature_names` (string[]): Detection signatures
 - `detection_ratio` (string): Format like "45/67" (detections/vendors)
+
+The service fills what it can derive from the value alone: `ip_version` for an
+IP address; `tld`, `subdomain` and `apex_domain` for a domain; `hash_type` for a
+file hash. Nothing in the service looks up or writes the other fields, so they
+are empty on every indicator it collects.
 
 `mime_type` is only in the enrichment of
 `GET /api/v1/indicators/{indicator_id}`, not in this endpoint's.
@@ -882,9 +898,9 @@ Indexes:
 
 ## Query Capabilities
 
-### Full-Text Search
+### Substring Search
 
-The `/api/v1/indicators/search` endpoint supports full-text search across:
+The `/api/v1/indicators/search` endpoint matches `q` as a case-insensitive substring of:
 
 - Indicator value
 - Normalized value
@@ -979,7 +995,10 @@ GET /api/v1/indicators/search?limit=100&offset=200
 
 ### Response Pagination Fields
 
-All search/list responses include:
+`GET /api/v1/indicators/search` is the only response with pagination fields
+(`GET /api/v1/telemetry/events` takes `limit` and `offset` and returns a bare
+array with no total; `GET /api/v1/sources` and `GET /api/v1/sensors` return
+every row as a bare array):
 
 ```json
 {
@@ -1034,37 +1053,23 @@ VALIDATE_COLLECTION_DATA=true
 
 **Indicator Enrichment:**
 
-**IP Addresses:**
+**IP Addresses:** the IP version.
 
-- ASN lookup
-- Geographic coordinates
-- Country codes
-- City information
-- Organization identification
+**Domains:** the TLD, the apex domain and the subdomain.
 
-**Domains:**
+**File Hashes:** the hash algorithm.
 
-- TLD extraction
-- WHOIS data (registrar, dates)
-- DNS resolution status
-- MX and NS records
-- Associated IPs
-
-**File Hashes:**
-
-- Hash type identification
-- File metadata
-- Malware family classification
-- Antivirus signatures
-- Detection ratios
+These are derived from the indicator's value when it is collected. The other
+columns of the per-type tables (ASN, organization, country, city,
+coordinates; registrar, dates, DNS records; file metadata, malware family,
+signatures, detection ratio) are returned by the API and written by nothing
+in the service.
 
 **Data Quality:**
 
 - Confidence scoring (low, medium, high, verified)
 - Severity rating (1-10 scale)
 - Expiration tracking
-- False positive marking
-- Whitelisting support
 
 ---
 
@@ -1094,10 +1099,8 @@ VALIDATE_COLLECTION_DATA=true
 
 - `first_seen`: Initial detection
 - `last_seen`: Most recent detection
-- `expires_at`: Automatic expiration
-- `active` flag: Manual lifecycle control
-- `false_positive` flag: QA marking
-- `whitelisted` flag: Exception marking
+- `expires_at`: set by the collector from the source; nothing deactivates an indicator when it passes
+- `active`, `false_positive`, `whitelisted`: columns; no route or command changes them, and only `active` is read (searches and lookups return active indicators)
 
 **Storage Strategy:**
 
@@ -1136,7 +1139,6 @@ BACKUP_RETENTION=30                   # 30 days
 - Configurable batch size (default: 1000)
 - Partial success handling (returns errors per item)
 - Automatic sensor metadata creation
-- Event-to-indicator correlation capability
 
 **Sensor Management:**
 
@@ -1152,7 +1154,7 @@ BACKUP_RETENTION=30                   # 30 days
 **Health Checks:**
 
 - Simple `/health` endpoint
-- Status and version reporting
+- Status and timestamp in the body; the service version is the `X-API-Version` header of every response
 - Ready for use in Kubernetes probes
 
 **Metrics Available:**
@@ -1180,8 +1182,9 @@ SENTRY_ENABLED=false                  # Optional error tracking
 
 - `200 OK`: Successful GET/POST
 - `400 Bad Request`: Max batch size exceeded
-- `403 Forbidden`: Request without the gateway headers or secret (the
-  gateway's own 401/403 answers come first for a client)
+- `403 Forbidden`: Request without the gateway headers or secret, without
+  `X-Wildbox-Auth-Type`, or from an API key without the scope (the gateway's
+  own 401/403 answers come first for a client)
 - `404 Not Found`: Indicator/sensor not found, or not visible to the caller
 - `422 Unprocessable Entity`: Invalid parameter or request body
 - `429 Too Many Requests`: Gateway per-team rate limit exceeded (the service
@@ -1206,11 +1209,13 @@ The canonical shape of `open_security_shared.errors`:
 
 ### Common Errors
 
-**Batch Size Exceeded:**
+**Batch Size Exceeded:** more than 1000 items answer 422 (`Request validation
+failed`). A 400 is answered only when `MAX_BATCH_SIZE` is set lower than 1000,
+for example with `MAX_BATCH_SIZE=500`:
 
 ```yaml
 Status: 400
-Detail: "Too many indicators. Maximum allowed: 1000"
+Detail: "Too many indicators. Maximum allowed: 500"
 ```
 
 **Indicator Not Found:**
@@ -1245,9 +1250,7 @@ Optimized for common queries:
 
 ### Caching
 
-- Redis support for frequently accessed data
-- Configurable cache TTL
-- Automatic cache invalidation on updates
+The service has no cache and does not use Redis.
 
 ### Rate Limiting
 

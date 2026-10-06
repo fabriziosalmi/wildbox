@@ -62,8 +62,9 @@ make logs
 ### Manual Installation
 
 ```bash
-# Install dependencies
+# Install dependencies, and the shared package the service imports
 make install
+pip install ../open-security-shared
 
 # Start Redis (required)
 redis-server --port 6381
@@ -117,8 +118,10 @@ with the status the run is in afterwards:
 - **A step in progress is not interrupted.** Its call to another service
   has been sent and may already have taken effect, so it runs to its end
   and is recorded as it ended, `completed` or `failed`, in
-  `step_results`. Those are the steps that ran; the run's log names the
-  steps that did not.
+  `step_results`. Those are the steps the worker reached, including a step
+  its condition skipped (recorded `completed`, with `output`
+  `{"skipped": true, "reason": "condition_failed"}`); the run's log names
+  the steps that were not reached.
 - **A cancelled run stays cancelled.** The worker's writes are
   compare-and-set against the run's status and its cancel request, so it
   cannot write `completed` or `failed` over a cancel. Whichever commits
@@ -232,7 +235,7 @@ A step's `input` templates and its `condition` see the same context:
 
 | Name | What it holds |
 | ---- | ------------- |
-| `trigger` | The JSON body the run was started with, as sent. |
+| `trigger` | The `trigger_data` object of the request the run was started with, as sent. |
 | `run.id` | The run's ID. |
 | `run.playbook_id` | The ID of the playbook being run. |
 | `run.started_at` | When the run was queued, ISO 8601 in UTC, for example `2026-10-03T09:42:03.123456+00:00`. |
@@ -371,6 +374,9 @@ Environment variables:
 | Variable | Description | Default |
 | ---------- | ------------- | --------- |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6381/0` |
+| `ENVIRONMENT` | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development`. The main `docker-compose.yml` requires it. | none |
+| `LOG_LEVEL` | Log level of the API | `INFO` |
+| `CORS_ORIGINS` | Comma-separated origins the service's own CORS headers allow | `http://localhost:3000` |
 | `GATEWAY_INTERNAL_SECRET` | Checked on the requests the responder receives, and sent with the run's caller on the requests its connectors make. Required. | none |
 | `WILDBOX_API_URL` | Tools service URL | `http://open-security-tools:8000` |
 | `WILDBOX_DATA_URL` | Data service URL | `http://open-security-data:8002` |

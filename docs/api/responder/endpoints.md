@@ -229,7 +229,7 @@ The timestamps and IDs above are illustrative. The fields come from
 | Field | Description |
 | --- | --- |
 | `status` | `queued`, `pending`, `running`, `cancelling`, `completed`, `failed` or `cancelled` |
-| `step_results` | One entry per step that ran, with its own `status`, `output`, `error` and timing |
+| `step_results` | One entry per step the worker reached, with its own `status`, `output`, `error` and timing. A step its `condition` skipped has an entry too: `status` `completed`, `output` `{"skipped": true, "reason": "condition_failed"}` |
 | `context` | The run's template context: `trigger`, `run` and the outputs of finished steps under `steps` |
 | `logs` | Log lines recorded during the run |
 | `error` | The failure reason when `status` is `failed` |
@@ -342,7 +342,10 @@ and every request a connector makes for the run carries that user's
 `X-Gateway-Secret`, and `X-Forwarded-Proto: https`: the headers the gateway itself
 puts on a request it forwards for that user (`open-security-responder/app/caller.py`).
 Guardian redirects a plain-HTTP request without the last one to `https://`, so a
-Guardian action sent without it is answered `301`.
+Guardian action sent without it is answered `301`. The connectors also state
+`X-Wildbox-Auth-Type: service`: tools, data and guardian check API-key scopes
+themselves and refuse a request that does not say what its credential is. The
+scopes of the key that started the run do not travel with it.
 
 - **The services authorize each call for that user.** The tool tasks a run starts,
   the AI analysis tasks it queues and the vulnerabilities it records belong to that
@@ -426,6 +429,9 @@ in the same container as the API):
 | `REDIS_URL` | `redis://localhost:6381/0` | Run state and the worker queue |
 | `PLAYBOOKS_DIRECTORY` | `./playbooks` | Where the playbook YAML files are loaded from |
 | `EXECUTION_RETENTION_DAYS` | `30` | How long run records are kept |
+| `ENVIRONMENT` | none | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development`. Required by `docker-compose.yml` |
+| `LOG_LEVEL` | `INFO` | Log level of the API |
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated origins the service's own CORS headers allow |
 
 The URL defaults are the services' addresses in `docker-compose.yml`, which also
 sets them. Each must be an absolute `http` or `https` URL with a host and no query,
