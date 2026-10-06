@@ -4,6 +4,1257 @@ This file records changes that an **existing deployment** has to act on. A fresh
 install needs none of it: `make generate-secrets` and the
 [Quick Start](https://www.wildbox.io/guides/quickstart/) cover everything here.
 
+## Upgrading to 0.12.0
+
+From 0.11.2: the changes an existing deployment has to act on. Coming from
+an earlier release, follow [Upgrading to 0.11.0](#upgrading-to-0110) and the
+two sections after it first. The numbered sections are grouped by who has
+to act (every operator, then operators who use a given part, then API
+clients); apply them in the order of the checklist that follows, where each
+step names the sections it comes from.
+
+### Order of operations for 0.12.0
+
+Every step is marked **required** or **conditional**, with its condition.
+Run the commands from the repository root. Steps 1 to 5 run while the
+0.11.2 stack is still up; step 7 recreates the containers. From the
+checkout of step 2 until then, do not restart or reload the gateway
+container (section 1).
+
+1. **Point Compose at your files (required).** Use the same files in every
+   step, as for 0.11.0:
+
+   ```bash
+   export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+   ```
+
+2. **Check out 0.12.0 (required).** Nothing runs the new code yet; the
+   scripts of the next steps are the new ones.
+
+   ```bash
+   git fetch --tags && git checkout v0.12.0
+   ```
+
+3. **Back up the databases, Redis and `.env` (required).** Ten guardian
+   migrations run in step 7; six of them cannot be reversed in data, and
+   two of those delete stored credentials (sections 5 and 6). `make backup` now
+   works on a default stack and writes to `./backups` (section 13):
+
+   ```bash
+   umask 077
+   cp -p .env .env.pre-0.12.0
+   make backup
+   ```
+
+   Keep these files private and copy them off the server.
+
+4. **Look at what the upgrade removes (conditional, with the old stack
+   up).**
+   - If teams sent guardian credentials of scanners, external systems,
+     webhooks or notification channels: list the records that hold one,
+     with the query of section 6.
+   - If the `automations` profile has been in use: check who owns the n8n
+     instance (section 7).
+   - If guardian discovers or port-scans hosts on your own network: note
+     the ranges; they have to be listed in step 5, or those scans answer
+     400 after the upgrade (section 20).
+   - If someone wrote rows into guardian's attachment table by hand:
+     guardian will not start until the table is empty (section 5).
+   - If you run sensors with a `log_sources` section or a configuration of
+     your own: validate it with the new code (section 16).
+
+5. **Edit `.env` (required review; each change as marked).**
+   - Required: `ENVIRONMENT` is set. Compose refuses to start without it
+     (section 2).
+   - Required check: `CORS_ORIGINS` holds origins only, or is empty. With
+     `*`, a trailing slash, a path or a bare host name the gateway does not
+     start (section 3).
+   - Required check, if present: `ANALYZE_RATE_LIMIT` and
+     `ANALYZE_TEAM_RATE_LIMIT` are now read from `.env`. A value that was
+     ignored until now takes effect, and one that cannot be parsed stops
+     the agents service (section 10).
+   - Required with the production overlay: every entry of `CORS_ORIGINS`
+     is an origin for guardian too, which now reads it (section 3).
+   - Conditional, required if guardian scans internal addresses:
+     `GUARDIAN_ALLOWED_INTERNAL_TARGETS` lists those ranges (section 20).
+   - Conditional, to receive guardian's e-mail: `GUARDIAN_EMAIL_HOST`,
+     `GUARDIAN_DEFAULT_FROM_EMAIL`, `GUARDIAN_CONTACTS_SECRET` and their
+     siblings (section 8).
+   - Conditional, optional settings: `GUARDIAN_RATE_LIMIT_USER`
+     (section 9), `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` and
+     `GUARDIAN_INTERNAL_URL` (section 8), `AGENT_TEAM_DATA_TOOLS`
+     (section 10), `ALERTMANAGER_CONFIG_FILE` and its siblings
+     (section 15), `GATEWAY_RATE_LIMIT_PER_SECOND` and its two siblings
+     (section 21).
+   - Remove if present, since nothing reads them: `RESPONDER_DATABASE_URL`,
+     `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW`, `N8N_BASIC_AUTH_ACTIVE`,
+     `N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD`, `ENABLE_METRICS`,
+     `METRICS_PORT`, `NEXTAUTH_SECRET`, `GRAFANA_ADMIN_PASSWORD`,
+     `GUARDIAN_DB_PASSWORD`, `N8N_ENCRYPTION_KEY`, `SESSION_TIMEOUT`,
+     `MAX_LOGIN_ATTEMPTS`, `LOCKOUT_DURATION`, `REQUIRE_EMAIL_VERIFICATION`,
+     `REQUIRE_MFA` (section 18).
+
+   Then check the result:
+
+   ```bash
+   make validate-secrets
+   docker compose config -q
+   ```
+
+6. **Rebuild every image (required).** The gateway and the services must
+   change together (section 1):
+
+   ```bash
+   docker compose build
+   ```
+
+7. **Start the new stack (required).** One `up -d` recreates the gateway,
+   the services and Redis together (sections 1 and 4). guardian's
+   migrations run in the image's entrypoint (section 5); no other service
+   has a schema change.
+
+   ```bash
+   docker compose up -d
+   docker compose logs -f gateway guardian
+   ```
+
+8. **Give the data service a source it can collect (conditional: you use
+   the threat-intelligence feeds).** The scheduler disables every source no
+   collector can run, which is every source the old defaults created
+   (section 22):
+
+   ```bash
+   docker compose exec data python manage.py sources add-defaults
+   ```
+
+9. **Rotate `REDIS_PASSWORD` (conditional: the responder's container logs
+   were readable by others or left the host).** The responder printed the
+   password in its log at every start, up to 0.11.2 (section 23):
+
+   ```bash
+   ./scripts/rotate_secrets.sh --secret REDIS_PASSWORD
+   ```
+
+   Then run the command it prints.
+
+10. **Recreate the monitoring profile (conditional: you run it).** It
+    gains Alertmanager and moves to Prometheus 3 (section 15). Pass the
+    same `-f` files:
+
+    ```bash
+    docker compose --profile monitoring up -d
+    ```
+
+11. **Rebuild and restart the sensors (conditional: you run them).**
+    Section 16 lists what a sensor's configuration and its consumers have
+    to change.
+
+12. **Verify (required).** Follow
+    [Verifying the upgrade](#verifying-the-upgrade). `make health` now
+    exits non-zero when something is unhealthy (section 14).
+
+13. **Tell API clients and log consumers what changed (required when
+    anything but the dashboard calls the API or reads the logs).**
+    Sections 22 to 27:
+    - Ingest clients of the data service: a batch is stored whole or
+      refused whole (section 22).
+    - Log parsers: no query string in the access logs, fields in the tools
+      service's lines (section 23).
+    - Error bodies: `error.details` for a dict detail, cspm's errors in
+      the common shape, identity's `detail` replaced by `error.message`,
+      no `input` in the field errors of a 422 (section 24).
+    - guardian: twenty routes removed, several answers changed, filters
+      that now filter, relative pagination links, JSON only, credential
+      fields and internal scan targets refused with 400 (sections 20
+      and 25).
+    - tools, agents, responder and cspm: asynchronous submissions refused
+      at once, `result_url` and `status_url` under `/api/v1/`, a failed
+      analysis that reads `failed`, cspm routes that answered 500
+      (section 26).
+    - API keys: scopes checked on every route, `/api/v1/automations/` gone
+      (sections 7 and 27).
+
+### 1. Rebuild every image and start them together (required)
+
+`docker compose up -d` does not rebuild an image that exists. This release
+changes every image, and three changes need both sides at once:
+
+- **The gateway and data, tools, guardian, agents and the responder.** The
+  gateway now sends `X-Wildbox-Auth-Type` and `X-Wildbox-Scopes`, and the
+  services check them. data and guardian refuse every API request, and
+  tools every tool run, that carries the gateway's secret without
+  `X-Wildbox-Auth-Type` (`403 GATEWAY_AUTH_TYPE_REQUIRED`). Behind a gateway
+  that was not rebuilt, the dashboard's data and vulnerability pages and
+  every tool run fail until it is. The same holds for agents and responder
+  images that were not rebuilt: their calls to tools, data and guardian are
+  refused. A new gateway in front of old services changes nothing.
+- **The gateway and guardian.** guardian's pagination links are now
+  relative and carry the gateway's prefix, which the gateway sends. A new
+  guardian behind an old gateway answers links without `/guardian`.
+- **The tools API and its worker** are one image. An old worker counts no
+  asynchronous run and does not read the record of a cancellation
+  (sections 11 and 26).
+- **The gateway image and its configuration.** The Compose stack mounts
+  `open-security-gateway/nginx` from the checkout, and the new `nginx.conf`
+  includes a file that only the new image's entrypoint writes
+  (section 21). An image built before this release does not write it, and
+  nginx stops with
+  `open() "/run/wildbox-gateway/limit_req_zones.conf" failed`. For the same
+  reason the 0.11.2 gateway must not be restarted or reloaded between the
+  checkout and the `up -d` below: it would read the new configuration.
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+Use the same `-f` files, or `COMPOSE_FILE`, you start the stack with.
+
+Scripts or monitoring that call data, guardian or the tools execution
+routes directly, with `X-Gateway-Secret` and the `X-Wildbox-*` headers,
+must add `X-Wildbox-Auth-Type: session` (or `service`). Requests through
+the gateway need no change, and sending either new header through the
+gateway has no effect.
+
+The images of data, guardian, sensor, cspm, identity, tools and the
+responder lose the packages no code imported (data's lock goes from 124 to
+67 packages, guardian's from 138 to 83). Nothing to do beyond the rebuild.
+
+On arm64, an image of tools built before this release holds an x86-64
+Trivy; the rebuild installs the arm64 one. Building the tools or sensor
+image for an architecture other than amd64 and arm64 fails, by design.
+
+The Compose images are pinned by digest: `docker compose pull` fetches
+exactly those bytes, and a registry mirror must serve images by digest.
+
+### 2. `.env` must set `ENVIRONMENT` (required)
+
+`docker compose up` now fails without `ENVIRONMENT`, before changing
+anything, and `make validate-secrets` reports the same. A `.env` made by
+`make generate-secrets` already has `ENVIRONMENT=production`.
+
+- **A stack that ran without the line was running as development.** Add
+  `ENVIRONMENT=production`. The services then apply their start-up checks:
+  identity needs `API_KEY_HASH_SECRET` (run `make init-api-key-hash` first,
+  so existing API keys keep working), data needs `DATA_SECRET_KEY` and
+  `DEBUG=false`. The API schemas stop being served (section 12).
+- **Any value other than `development` is held to the same checks**,
+  `staging` included. Only `development` is a development stack.
+- **`docker-compose.prod.yml` sets `production` on every service.** A
+  `.env` that says `development` no longer makes part of a production stack
+  a development one.
+- A service started on its own without `ENVIRONMENT` (a bare `docker run`)
+  is held to the checks too.
+
+### 3. `CORS_ORIGINS` must hold origins; the gateway reads it (required check)
+
+The gateway now answers CORS preflight requests itself, from
+`CORS_ORIGINS`: a comma-separated list, or a JSON list, of `https://host` or
+`https://host:port`.
+
+- **With `*`, a trailing slash, a path or a bare host name the gateway does
+  not start.** Check the value before upgrading. Empty is fine.
+- `localhost` and `127.0.0.1` are no longer allowed on every port.
+  `docker-compose.yml` defaults `CORS_ORIGINS` to `http://localhost:3000`,
+  the dashboard's development server; for another port or host, list it.
+- A dashboard served from another origin now works: list its origin and
+  recreate the gateway.
+- A client that sent `OPTIONS` as a health probe keeps getting 405.
+- **guardian reads the same value under the production overlay**, as
+  `CORS_ALLOWED_ORIGINS`, by the gateway's grammar. It allows exactly those
+  origins (none when `CORS_ORIGINS` is empty) instead of eight development
+  origins written in its settings, and stops at start-up on an entry that
+  is not an origin, with a message naming the entry. Nothing to do for a
+  deployment whose dashboard is served by the gateway.
+
+### 4. Redis is recreated, and its health check authenticates (nothing to do)
+
+The definition of the Redis container changed (an environment variable and
+the health check), so the next `docker compose up -d` recreates it. The
+data volume is kept; the services are without Redis for those seconds.
+
+A Redis that refuses the password it was created with is now `unhealthy`.
+After a `REDIS_PASSWORD` rotation that is the case until the command the
+rotation prints has been run (section 13).
+
+### 5. guardian applies ten migrations at start (back up first)
+
+`python manage.py migrate` runs in the image's entrypoint, as before:
+
+| Migration | What it does |
+| --- | --- |
+| `core.0004` | Adds `TeamMembership.last_seen`, set to `first_seen` for existing rows |
+| `core.0005` | A new table for revoked memberships |
+| `integrations.0003` | A webhook path is unique within its team, not on the platform |
+| `integrations.0004`, `scanners.0003` | Delete the stored credentials (section 6) |
+| `reporting.0004` | Adds `AlertNotification.failure_reason` |
+| `vulnerabilities.0003` | Dates resolved vulnerabilities from their history and clears the date of those that are not resolved |
+| `assets.0003` | Switches off discovery rules of the types guardian does not implement |
+| `integrations.0005` | Drops `IntegrationLog.request_data` and `response_data`, which guardian never wrote; the log says how many rows held a value |
+| `vulnerabilities.0004` | Drops the attachment table, when it is empty |
+
+None needs an operator step on a database guardian itself wrote.
+`vulnerabilities.0003`, `assets.0003`, the two that delete credentials and
+the two that drop columns or a table cannot be reversed in data: going back
+needs the backup of step 3.
+
+**If someone wrote rows into `vulnerabilities_vulnerabilityattachment` by
+hand**, guardian stops at start with `AttachmentsExist` and the number of
+rows, and changes nothing in that table; `integrations.0005` has been
+applied by then. Copy what you need, empty the table and start again. To
+check beforehand:
+
+```bash
+docker compose exec -T postgres psql -U postgres -d guardian -tAc \
+  'SELECT count(*) FROM vulnerabilities_vulnerabilityattachment'
+```
+
+`assign_guardian_team`: the output of `--dry-run` changed, and `--list`
+together with `--team` or `--dry-run` is now refused.
+
+The Celery task `apps.vulnerabilities.tasks.scan_vulnerability_remediation`
+no longer exists. Nothing dispatched it, so no queued message refers to it.
+
+### 6. guardian deletes the credentials it stored and never used
+
+guardian accepted a scanner's API key or password, an external system's
+`auth_config`, a webhook's `secret_token` and a notification channel's
+`config`, stored them in plain text and used none of them. The columns are
+dropped; the values are deleted, not migrated. Nothing stops working.
+
+- To see beforehand which records hold one (names only), run this against
+  the guardian database with the old stack up, for example through
+  `docker compose exec -T postgres psql -U postgres -d guardian`:
+
+  ```sql
+  SELECT 'scanner' AS record, name FROM scanners_scanner WHERE api_key <> '' OR password <> ''
+  UNION ALL SELECT 'external system', name FROM integrations_externalsystem WHERE auth_config::text NOT IN ('{}', 'null')
+  UNION ALL SELECT 'webhook endpoint', name FROM integrations_webhookendpoint WHERE secret_token <> ''
+  UNION ALL SELECT 'notification channel', name FROM integrations_notificationchannel WHERE config::text NOT IN ('{}', 'null');
+  ```
+
+  After the upgrade, `docker compose logs guardian | grep "guardian stored"`
+  shows how many rows of each kind held one.
+- **Backups written before the upgrade still hold those values in plain
+  text**, the one of step 3 included; so do volume snapshots and WAL
+  archives. Delete them as soon as you can do without them. If the
+  database or one of those backups may have been read, change the secrets
+  where they were issued (at the scanner, the ticketing system, Slack).
+- A request that sends a value in one of those fields now answers `400` on
+  that field (section 25).
+- Rolling the two migrations back adds the columns back empty.
+
+### 7. The gateway no longer routes to n8n (check who owns the instance)
+
+`/api/v1/automations/` answers 404. n8n's editor is on
+`http://127.0.0.1:5678` of the host, with the `automations` profile
+started; from another machine, `ssh -L 5678:127.0.0.1:5678 <host>`. Nothing
+shipped used the route. A workflow of your own that was started through
+`/api/v1/automations/webhook/...` is no longer reachable from outside the
+host.
+
+**If the `automations` profile has been in use**, check who owns the n8n
+instance (Settings > Users in the editor): until its owner account was
+created, any Wildbox user could create it through the gateway.
+
+```bash
+curl -s http://127.0.0.1:5678/rest/settings | jq .data.userManagement.showSetupOnFirstLoad
+```
+
+- `true`: no owner exists yet. Create it now.
+- The owner is not you: stop the profile, review the workflows and
+  credentials, and reset with
+  `docker compose exec automations n8n user-management:reset`.
+
+In both cases also rotate `GATEWAY_INTERNAL_SECRET`
+(`./scripts/rotate_secrets.sh --secret GATEWAY_INTERNAL_SECRET`, see
+`docs/SECURITY_SECRETS_ROTATION.md`) and clear n8n's execution history:
+every request that reached n8n through the gateway carried the secret, and
+n8n keeps the data of past executions, the headers of a webhook request
+among them.
+
+`N8N_BASIC_AUTH_ACTIVE`, `N8N_BASIC_AUTH_USER` and
+`N8N_BASIC_AUTH_PASSWORD` never protected n8n 1.x and are no longer read;
+`validate_secrets.py` no longer asks for the password.
+
+`N8N_ENCRYPTION_KEY` was generated and never passed to n8n: its encryption
+key is the `config` file of `open-security-automations/n8n-data/`. Keep
+that file with every backup of that directory's database, and do not add
+`N8N_ENCRYPTION_KEY` to a running instance: n8n refuses to start with a
+key other than the one in its data directory.
+
+### 8. guardian can send e-mail, to people of the team concerned
+
+Until this release no e-mail from guardian was delivered. Without the
+settings below that stays so, and each notification is now recorded as not
+sent, with the reason.
+
+**To receive e-mail**, set in `.env` and recreate `guardian-worker` and
+`identity`:
+
+- `GUARDIAN_EMAIL_HOST` and `GUARDIAN_DEFAULT_FROM_EMAIL` (required
+  together), and as needed `GUARDIAN_EMAIL_PORT`, `GUARDIAN_EMAIL_USE_TLS`,
+  `GUARDIAN_EMAIL_USE_SSL`, `GUARDIAN_EMAIL_HOST_USER`,
+  `GUARDIAN_EMAIL_HOST_PASSWORD`. A login without TLS, both TLS modes at
+  once, or a port that is not a number stop guardian at start-up.
+- `GUARDIAN_CONTACTS_SECRET`: a new value of at least 32 characters
+  (`openssl rand -hex 32`), different from every other secret. identity
+  does not start if it equals the gateway-internal secret, the JWT key or
+  the API-key hash secret. New installations get one from
+  `make generate-secrets`.
+- `GUARDIAN_BASE_URL`, if the e-mails should carry links. It must be an
+  origin (`https://wildbox.example.com`): a value with a path, a query or
+  credentials stops guardian at start-up.
+
+**Who is written to.** Once a mail server is configured, the owners and
+admins of a team receive its compliance notifications, the alerts and
+scheduled reports of rules and schedules that name no recipients, and one
+e-mail per SLA violation that has no assignee who can be told. To keep an
+alert rule's e-mail away from them, give the rule its own recipients.
+
+**Team memberships.** guardian learns who belongs to a team from the
+requests it serves and, now, from identity:
+
+- Removing a member from a team, or deleting an account, ends what they
+  were assigned in guardian in that team: vulnerabilities, remediation tickets,
+  workflows and steps, asset owner and technical contact, assessor,
+  dashboard shares. When guardian is down the removal takes up to about
+  7 seconds longer and then succeeds; identity logs
+  `guardian was not told of ...`. Apply it later with
+  `docker compose exec guardian python manage.py revoke_team_membership --team <team UUID> --user <user UUID>`.
+- A member guardian has not seen for more than 30 days cannot be assigned
+  work until their next request in the team
+  (`GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS`, 1 to 365; an invalid value
+  stops guardian, its worker and its scheduler at start-up).
+- A member removed from a team and added back within ten minutes can be
+  assigned or shared with only after the ten minutes.
+
+**A deployment with its own manifests** must pass
+`GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` and `GUARDIAN_INTERNAL_URL` as the
+Compose files do, let identity reach `open-security-guardian:8013` and
+`guardian-worker` reach identity on the internal network, and pass both
+containers the contacts secret. Set `GUARDIAN_INTERNAL_URL` empty only if
+the deployment does not run guardian. One that already set `EMAIL_HOST`
+must also set `DEFAULT_FROM_EMAIL`: there is no default sender any more,
+and guardian does not start without one.
+
+`EMAIL_BACKEND`, `DEFAULT_NOTIFICATION_RECIPIENTS` and
+`SECURITY_TEAM_EMAIL` are not read. A deployment that relied on the console
+backend to see e-mails in the worker's log no longer sees them there; one
+that defined the two recipient settings in a custom settings module sets
+`notification_config.recipients` on alert rules and `recipients` on report
+schedules instead.
+
+### 9. guardian's rate limit is per user and can be set
+
+guardian's throttle limited nobody and reported the service unhealthy for
+ten minutes of every hour. It is now a per-user limit.
+
+- To change it set `GUARDIAN_RATE_LIMIT_USER` in `.env` (for example
+  `500/hour`, or `off`). A malformed value stops guardian at start instead
+  of failing every request.
+- `API_RATE_LIMIT` in the root `.env` never had an effect and still has
+  none. A guardian run outside Compose with `API_RATE_LIMIT` set still
+  applies it, to the per-user rate only, and validates it: a value DRF
+  tolerated by accident (`10/hours`) stops the start. There is no anonymous
+  rate any more.
+
+### 10. agents: team-data tools are opt-in; the limits are read from `.env`
+
+- **The analysis does not read your team's data unless you opt in.**
+  `threat_intel_query_tool` and `vulnerability_search_tool` now work, and
+  are off: set `AGENT_TEAM_DATA_TOOLS` in `.env` to one or both names to
+  give them to the model. Doing so sends what they return (the team's
+  indicators; guardian's vulnerabilities with asset names) to Anthropic,
+  and exposes it to instructions hidden in text the other tools fetch.
+  Read "Giving the AI analysis your team's data" in
+  `docs/guides/deployment.md` first. Any other value stops the agents
+  service at start.
+- Four lookup tools that always failed now work (reputation, DNS, URL
+  redirects, file hash), so an analysis uses more of them.
+- **`ANALYZE_RATE_LIMIT` and `ANALYZE_TEAM_RATE_LIMIT` are read from
+  `.env`.** The Compose override that 0.11.0 asked for is no longer needed
+  (it still wins). A value already in `.env`, ignored until now, takes
+  effect; one that cannot be parsed stops the service at start.
+- **The counters move to Redis** and start from zero. A Redis outage now
+  answers `503` on submission. `completed_today` and `failed_today` restart
+  from zero and reset at 00:00 UTC.
+- **Without `ANTHROPIC_API_KEY`**, submissions are still accepted and each
+  task now fails at once, saying that AI analysis is not configured.
+- `TASK_TIMEOUT` below 60 stops the service at start; the root Compose
+  file does not pass it.
+- New optional variables: `AGENTS_WILDBOX_DATA_URL`,
+  `AGENTS_WILDBOX_GUARDIAN_URL`. A deployment that runs the agents service
+  outside the Compose files and relied on the `localhost` defaults of
+  `WILDBOX_API_URL`, `WILDBOX_DATA_URL` or `WILDBOX_GUARDIAN_URL` must set
+  them. `WILDBOX_RESPONDER_URL` is gone: a `.env` file in
+  `open-security-agents/` that still sets it, which only a run outside the
+  stack reads, stops the service at start with an error naming the key.
+- The dashboard has a new sidebar entry, AI Analysis. The page keeps the
+  indicators submitted from a browser in that browser's `localStorage`, per
+  account, until removed there.
+
+### 11. tools: a shared hourly limit, fewer unauthenticated routes
+
+- **`REDIS_URL` is required to run the tools that act for a caller** (today
+  `sql_injection_scanner`). The root Compose files set it for the API and
+  the worker. Without it, or while Redis is unreachable, a synchronous run
+  answers 503 `Rate limiting temporarily unavailable` and an asynchronous
+  one fails. Every caller starts with a full allowance after the upgrade.
+- **`/api/system/info`, `/api/system/metrics`,
+  `/api/system/operational-metrics` and `/api/system/health-aggregate`
+  answer 404.** The gateway never routed them; a script or monitor that
+  called them on the service port should use `/metrics`, `/health` and the
+  other services' own health checks.
+- **`GET /health` and `GET /api` on the service port answer less.**
+  `environment`, `available_tools`, `max_concurrent_tools`,
+  `default_timeout` and `response_time_ms` are gone from `/health`, and
+  `available_tools` from `/api`; `version` is `0.1.6`, not `1.0.0`.
+  `active_executions` is no longer always 0. The health checks read the
+  status and are unaffected. The tool list is `GET /api/v1/tools` through
+  the gateway.
+- A task whose worker process dies three times while running it ends as
+  `failed`, with that reason. It used to be restarted without end.
+- Two Redis keys per task are new, in the tools database, expiring after a
+  day: the cancellation record and the start count.
+- An override of your own that sets `WEB_CONCURRENCY` or adds `--workers`
+  to the tools API should drop it: the API is one process by design.
+- A standalone tools checkout whose `open-security-tools/.env` still sets
+  `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW`, `ENABLE_RATE_LIMITING` or one
+  of the seven `*_SERVICE_URL` keys stops at start-up with
+  `Extra inputs are not permitted`. Delete those lines. The image is not
+  affected: it contains no `.env` file.
+
+### 12. The API schemas are served in development only
+
+`/openapi.json`, `/docs` and `/redoc` answer 404 on every service unless
+`ENVIRONMENT` is exactly `development`; a service started without
+`ENVIRONMENT` does not serve them either. No client of the gateway is
+affected: none of these paths was routed.
+
+- A production deployment only loses data's and tools' `/openapi.json` on
+  their service ports. One with any other value, `staging` for example,
+  loses the three paths on identity, agents and the responder as well.
+- cspm no longer follows `DEBUG`: `DEBUG=true` with
+  `ENVIRONMENT=production` no longer serves the pages.
+- The sensor serves its route list at `/` and `/docs` only with
+  `ENVIRONMENT=development`; it used to serve it unless the value was
+  `production`.
+- `scripts/generate-api-docs*` are removed.
+  `https://www.wildbox.io/api/agents-api.html` and `.../responder-api.html`
+  redirect to the endpoint references. For an OpenAPI schema, run the
+  service with `ENVIRONMENT=development` and read `/openapi.json` on its
+  local port (guardian: `/api/schema/` with `DEBUG`).
+
+### 13. Backup, restore and rotation scripts
+
+**Backup.**
+
+- `make backup` works on a default stack: it runs inside the stack's
+  `postgres` container, also snapshots Redis, and writes to `./backups` (it
+  was `/backups/postgres`, which the host usually cannot create). The
+  `backup` profile container still writes to `/backups/postgres` in the
+  `wildbox_backups` volume. `BACKUP_DIR` is no longer restricted to
+  `/backups/` or `/tmp/`.
+- **A backup without Redis now fails** instead of warning. If you run
+  `scripts/backup_postgres.sh` yourself against an external database and
+  have no `redis-cli` or `REDIS_PASSWORD` there, provide them or set
+  `SKIP_REDIS=true`.
+- **Host mode is selected by `POSTGRES_HOST`.** A cron line that sets
+  `POSTGRES_HOST` and `POSTGRES_PASSWORD` keeps working. One that set only
+  `POSTGRES_PASSWORD` and relied on the `wildbox-postgres` default must add
+  `BACKUP_MODE=host`, or it now runs in Compose mode.
+- Unknown arguments to the backup script are now an error.
+
+**Restore.**
+
+- **`scripts/restore_postgres.sh` no longer restores over the live
+  databases by default.** A command or script that relied on that now exits
+  with status 2 and changes nothing. Add `--overwrite-live-databases` where
+  overwriting is intended. It stops at the first error and rolls that
+  database back, where it used to carry on and exit non-zero at the end;
+  its output changed: the archives are read first, then the databases are
+  restored.
+- **`scripts/restore_redis.sh` needs `--replace-redis-data`**, and room in
+  the Redis volume for the old data and the new at once.
+- `--latest` can refuse, in both scripts: when the newest run lacks a
+  database that was asked for, or has no Redis snapshot. Name the run with
+  `--timestamp`.
+- `make restore-drill` restores into scratch databases through the
+  container and compares exact row counts. Its output changed
+  (`every row count equals the source's`), and it no longer writes to
+  `/tmp/wildbox-restore-drill`; an old directory there can be deleted.
+
+**Rotation.**
+
+- **Rotating `POSTGRES_PASSWORD` or `REDIS_PASSWORD` needs the stack
+  running** and changes the password in the server itself. Do not run
+  `\password` by hand before or after it. Set `COMPOSE_FILE` (and
+  `COMPOSE_PROJECT_NAME`, if you use one) the way you start the stack.
+- Afterwards run the one command the script prints
+  (`docker compose up -d --no-deps <services>`, no longer
+  `--force-recreate` of everything). For Redis it recreates Redis and the
+  services that use it; until then a restart of the Redis container brings
+  the old password back, and Redis reads `unhealthy` (section 4). The
+  command names the `backup` container only when that profile is active.
+- **If you rotated `POSTGRES_PASSWORD` with an earlier version**, `.env`
+  may hold a `POSTGRES_PASSWORD` that neither the server nor the connection
+  strings use. Running the rotation again repairs it.
+- Rotated values have the generator's shapes: `API_KEY` is
+  `wsk_prod.<64 hex>`; `JWT_SECRET_KEY`, `GATEWAY_INTERNAL_SECRET` and
+  `API_KEY_HASH_SECRET` are 64 hex characters; `REDIS_PASSWORD` is 24
+  characters. If you rotated `API_KEY` with an earlier version and
+  `make start` now fails on `validate-secrets`, rotate it once more.
+- Commands copied from the guides that pass `-e REDISCLI_AUTH="..."` still
+  work; replace them with the new form, which keeps the password out of the
+  process list.
+
+### 14. `make health` exits non-zero when something is unhealthy
+
+If a deployment script or cron job calls `make health`, it will start
+failing on stacks it used to pass: a service answering an error, guardian
+down, PostgreSQL missing a database, Redis down or refusing the
+`REDIS_PASSWORD` of `.env`. That is the fix; check anything that runs
+`make health && ...`.
+
+- It no longer creates the `data` database or restarts the gateway. If you
+  relied on that, run
+  `./scripts/shell-scripts/comprehensive_health_check.sh fix`.
+- It fails when it finds no Redis password to check with. Set `ENV_FILE` if
+  the stack uses another env file.
+- With the `automations` or `monitoring` profile, set `COMPOSE_PROFILES`
+  (`COMPOSE_PROFILES=automations,monitoring make health`) to require those
+  services. Without it they are checked when they answer and skipped when
+  they do not; `alertmanager` has a line of its own.
+- `scripts/shell-scripts/system_monitor.sh` is removed. Nothing called it.
+
+### 15. Monitoring profile: Alertmanager, Prometheus 3, new alert names
+
+For a deployment that runs `--profile monitoring`. Others notice nothing.
+
+- `docker compose --profile monitoring up -d` now also starts
+  `alertmanager` on `127.0.0.1:9093` (the port must be free) and creates
+  the volume `alertmanager_data`. With the production overlay, keep passing
+  the same `-f` files, or the two services are recreated on the development
+  network.
+- **You are still not notified.** Alerts now reach Alertmanager, whose
+  shipped configuration sends them to `no-notifications`. To receive them,
+  follow "Being notified" in `docs/guides/deployment.md`, section 7: copy
+  an example to `monitoring/local/`, put the secret in
+  `monitoring/secrets/` (readable by UID 65534), set
+  `ALERTMANAGER_CONFIG_FILE` in `.env`, recreate the container, send the
+  test alert. `ALERTMANAGER_SECRETS_DIR`, `ALERTMANAGER_EXTERNAL_URL` and
+  `PROMETHEUS_EXTERNAL_URL` are optional too; none is a secret.
+- **Prometheus moves from 2.55.1 to 3.13.4.** The data volume is read as it
+  is; going back is possible to 2.55 and not earlier. If you added rules or
+  scrape targets of your own: range selectors exclude a sample that falls
+  exactly on the lower bound, and a target must answer `/metrics` with a
+  valid `Content-Type`. The web UI is the new one. Console templates are no
+  longer shipped.
+- **Alert names.** `WildboxToolFailureRate` is
+  `WildboxSyncToolFailureRate`; `WildboxNoToolExecutions` is gone;
+  `WildboxAlertmanagerDown`, `WildboxAlertNotificationsFailing`,
+  `WildboxAsyncToolFailureRate`, `WildboxAsyncToolTasksNotConsumed`
+  (critical) and `WildboxAsyncToolMetricsUnreadable` are new. Anything of
+  yours that matches the old names, or routes by name or severity, needs
+  the new ones. The tools API exports four new `wildbox_tool_async_*`
+  metrics.
+- If you added an `alerting:` section to `monitoring/prometheus.yml`
+  yourself, `git pull` will conflict there; keep whichever target you use.
+
+### 16. Sensor: configuration, delivery and local API
+
+Rebuild the sensor image; it moves to osquery 5.23.1. Validate a
+configuration with the new code before restarting, from
+`open-security-sensor/`:
+
+```bash
+python main.py --config <file> --validate-config
+```
+
+**Log sources.**
+
+- A sensor with log forwarding on and no `log_sources` section reads what
+  it read before: the per-platform defaults.
+- **A sensor whose configuration has a `log_sources` section now reads
+  exactly the enabled sources of that section**, and no longer
+  `/var/log/syslog`, `/var/log/auth.log` and the journal, which it read
+  whatever the section said. To keep those, list them:
+
+  ```yaml
+  log_sources:
+    - {name: syslog, path: /var/log/syslog, format: syslog}
+    - {name: auth, path: /var/log/auth.log, format: syslog}
+    - {name: journald, type: journald}
+  ```
+
+- **A `log_sources` section the sensor cannot understand stops it at
+  start-up** (exit code 2; the message names each entry). The `filters` key
+  the web-attack-detection use case showed was never implemented: remove
+  it. A `log_sources:` key with every entry commented out is refused too:
+  write `log_sources: []` or remove the key.
+- In the container a source's path is the container's, and no host log is
+  mounted. Mount the log directory read-only and name the mounted path
+  (sensor README, "What a source can read"). The container runs as uid
+  999: logs that are not world-readable need `group_add`.
+- A configuration copied from the use case has `logging.format: json`,
+  which prints the word `json` for every log record. Remove that line.
+
+**Stricter start-up.** These now stop the sensor with a message: a
+`logging.format` or `logging.level` the logging module cannot use; a
+`fim.paths` that is not a list of absolute paths; `fim.exclude_patterns`
+given as one string (it silently excluded every file), an invalid
+`fim.max_depth` or `fim.max_files`; a `data_dir` that does not exist or is
+not writable by the sensor's user; no working `osqueryi` on the `PATH`
+while an osquery collection setting is on. No `osqueryd` is started any
+more.
+
+**Positions and buffering.**
+
+- The container configurations set `data_dir: /var/lib/security-sensor`,
+  the existing `sensor_data` volume. The first start after the upgrade
+  behaves as before (`read_from` applies, the file monitor takes its
+  baseline); from then on a restarted sensor goes on where it stopped, and
+  reports the file changes made while it was stopped. A configuration of
+  your own keeps positions in memory until you add `data_dir`. One sensor
+  per directory.
+- **A sensor whose key is refused stops collecting when its buffer is
+  full**, instead of reading on and discarding. `delivery_state` in
+  `GET /api/v1/stats` and `main.py --status` say so; alert on it.
+- `data_lake.retry_attempts` is ignored, with a warning: remove it. New
+  optional keys: `data_lake.retry_max_delay`, `buffer_max_events`,
+  `buffer_max_bytes`, `rate_limit_share` (0.5) and `fim.max_files`
+  (50,000).
+- `config.yaml` (the host configuration) listed the container's
+  `/host/...` paths under `fim.paths`, which exist on no host; it now lists
+  `/etc`, `/bin`, `/usr/bin` and `/opt`. A host started from that file
+  begins to watch them.
+- `main.py --status` exits 1 when no sensor answers; a script that relied
+  on its constant 0 must be changed.
+- The `security-sensor` and `ossensor` commands are gone; start the sensor
+  with `python main.py --config <file>`, as the image does.
+- A sensor that was stuck on a batch the data service answered `503` for,
+  because of a value the database refuses, delivers the rest of its buffer
+  once the data service is upgraded, and drops the event at fault
+  (section 22).
+
+**Stopping.** Nothing to do for a stack started from the repository's
+Compose files: `stop_grace_period` is still 30 s, and the stop now fits in
+it (the collectors get 8 s instead of 15, the pipeline 12 instead of 15).
+
+- A stop asked for while the sensor is starting is now received, and ends
+  with exit status 0 and one of two new lines:
+  `Security Sensor not started: a stop was asked for while it was starting`
+  or `A stop was asked for while the sensor was starting: the start is
+  abandoned, and what it had started is stopped`. It used to be lost, and
+  the container was killed when the grace period ended.
+- **If you run the sensor with a `command:` or an image of your own**, keep
+  `env --block-signal=TERM --block-signal=INT` in front of
+  `python main.py`, as the image's `CMD` has it. Without it a stop that
+  falls in the interpreter's own start is not received.
+- Wherever else you run it, give the sensor at least 30 s to stop
+  (`docker run --stop-timeout 30`, `terminationGracePeriodSeconds: 30`).
+- New in the logs:
+  `File integrity monitoring: stopped with N changes found and not queued
+  yet`, and, when a worker thread outlives the stop by 2 s,
+  `The sensor has stopped and its process has not ended after 2 seconds`.
+  The count in `Stopped with N events still on their way to the sender`
+  includes the event a collector was waiting to queue and the events the
+  processor was holding.
+- The image no longer has `osqueryd` on its `PATH`, nor `osqueryctl`.
+
+**Inventory.** `system_inventory.*` events arrive when the sensor starts
+and every `performance.inventory_interval` seconds after that (default
+3600), not every `performance.query_interval`. Set
+`performance.inventory_interval: 0` to keep the old pace. Anything that
+took the absence of a recent inventory event as a sign of a silent sensor
+should look at another event type.
+
+**Events.**
+
+- On Windows, `user_events.logon_events` is gone; it never returned a row.
+  Configure a `windows_event` log source on the `Security` log.
+- Unified-log events are `log.<name>` (were `log.unified`) and Windows
+  events `log.<name>` (were `log.windows.<log>`), as documented.
+  `process_events.process_events`, `network.socket_events` and
+  `user_events.user_events` are no longer produced; they never carried a
+  row.
+- `metadata.log_file` is the file the line came from. A line longer than
+  16 KiB is cut and carries `metadata.truncated: true`. Bytes that are not
+  UTF-8 arrive as U+FFFD instead of disappearing. An unfinished line is no
+  longer sent in two parts, and a journald source no longer sends
+  `journalctl`'s last ten entries at each start.
+- `network.process_open_sockets` rows of `systemd` and `dbus` processes are
+  no longer filtered out. With osquery 5.23.1, `users` returns only the
+  users of `/etc/passwd`, so the user name of a process owned by a
+  directory account is empty in the process tree.
+
+**Local API** (`127.0.0.1` of the sensor).
+
+- `GET /api/v1/stats` has more fields and real values; `throttled` is
+  renamed `over_limits`; `delivery_state` and `delivery_since` are new;
+  `events_in_pipeline` also counts events being processed.
+- `GET /api/v1/components`: under `data_forwarder`, `events_failed` and
+  `current_batch_size` are gone, `delivery`, `pacing` and `buffer` are new,
+  and `events_dropped_refused` counts single events;
+  `osquery_manager.process_alive` is gone (`osqueryi`, `osquery_version`,
+  `queries_run`, `queries_failed`, `last_error` instead); `file_monitor`
+  gains `max_files`, `files_over_limit`, `baseline` and `changes_failed`; `log_forwarder`
+  gains `default_sources`, `stats`, per file source `path`, `format`,
+  `files` and `problems`, and `behind` on its positions.
+- `GET /api/v1/config` gains `log_sources` (`null` without the section)
+  and `inventory_interval`.
+  `GET /api/v1/dashboard/metrics` lost the fields the sensor never
+  measured.
+
+### 17. Standalone Compose files and images of your own
+
+For the platform stack (`docker-compose.yml`, with or without the
+production overlay) nothing here applies. With the production overlay ten
+more services rotate their log, once the containers are recreated.
+
+- Removed, since none could start:
+  `open-security-gateway/docker-compose.dev.yml`,
+  `open-security-data/docker-compose.yml`,
+  `open-security-sensor/docker-compose.dev.yml` and
+  `open-security-sensor/docker-compose.scale.yml`. Run the data service
+  from the root file (`docker compose up -d data data-scheduler gateway`).
+- `open-security-sensor/docker-compose.yml` starts the sensor only. If you
+  ran the old file: `docker compose down --remove-orphans` once, to remove
+  its Redis, and delete the volumes `redis_data`, `prometheus_data` and
+  `grafana_data` of that project if you do not want them. The
+  `security-suite` network is no longer needed; to attach the sensor to
+  another stack's network, name it in a `docker-compose.override.yml`.
+- `open-security-cspm/docker-compose.yml` no longer mounts `./config`.
+- `open-security-gateway/docker-compose.yml` could not start and is
+  removed, with its `Makefile`, `scripts/setup.sh`, `scripts/test_config.sh`,
+  `test/integration_test.sh` and `.env.example`. Run the gateway from the
+  root stack.
+- The tools standalone Compose files require `API_KEY`.
+- Removed, since nothing ran them: `scripts/setup.sh` (use
+  `make generate-secrets` and `make start`), the dashboard's and tools'
+  `Makefile`s and `open-security-tools/.env.template`.
+- **A `.env` file in a service's own directory** (a run outside the
+  Compose stack) stops tools, responder, cspm or agents at start if it
+  still names a removed setting: `API_KEY_NAME`, `LOG_FORMAT`,
+  `TOOL_RESULT_TTL`, `ENABLE_CACHING`, `DATABASE_URL`,
+  `ENABLE_AUDIT_LOGGING`, `ENABLE_SECURITY_HEADERS`, `TOOLS_DIRECTORY`,
+  `AUTO_RELOAD_TOOLS` (tools); `WILDBOX_SENSOR_URL`, `API_KEY`,
+  `DEFAULT_STEP_TIMEOUT`, `MAX_CONCURRENT_EXECUTIONS`, `DRAMATIQ_PROCESSES`,
+  `DRAMATIQ_THREADS` (responder); `REDIS_PASSWORD`,
+  `ACCESS_TOKEN_EXPIRE_MINUTES`, `REPORTS_STORAGE_PATH`,
+  `PROMETHEUS_ENABLED`, `PROMETHEUS_PORT`, `WILDBOX_IDENTITY_URL`,
+  `WILDBOX_API_URL`, `WILDBOX_GUARDIAN_URL` (cspm); `DEBUG`,
+  `INTERNAL_API_KEY`, `MAX_CONCURRENT_TASKS` (agents). Remove the line. In
+  the Compose stack nothing changes: those variables were never passed, or
+  are ignored.
+- The dashboard's standalone Compose file could not start either and is
+  removed; run the dashboard from the root stack.
+- The remaining standalone files publish their ports on `127.0.0.1`
+  instead of every interface: tools (8000, Redis 6379) and agents (8006,
+  Redis 6382). To reach one from another machine, use an SSH tunnel or a
+  Compose override that names the address.
+- `open-security-tools/Dockerfile.dev` is Python 3.11 and needs the
+  `shared` build context: a bare `docker build -f Dockerfile.dev .` needs
+  `--build-context shared=../open-security-shared`.
+- **A Dockerfile of your own that installs `open-security-shared`** must
+  name the extras of the modules it uses, for example
+  `"/tmp/open-security-shared[fastapi,metrics]"`: the package no longer
+  pulls in FastAPI, Pydantic or prometheus-client by itself. The
+  `observability`, `tracing`, `auth` and `events` extras do not exist any
+  more, and `install_observability()` has no `enable_tracing` argument: no
+  service used them. An image build fails where a lock does not provide
+  what the shared modules in use require.
+
+### 18. Settings that are gone
+
+Leftover lines in `.env` are ignored and can be deleted.
+
+| Setting | Was |
+| --- | --- |
+| `RESPONDER_DATABASE_URL` | Passed to the responder, which has no database. The container no longer waits for PostgreSQL |
+| `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` | tools settings that never limited anything. The per-team limit is the gateway's `RATE_LIMIT_PER_HOUR` |
+| `N8N_BASIC_AUTH_ACTIVE`, `N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD` | Ignored by n8n 1.x (section 7) |
+| `ENABLE_METRICS`, `METRICS_PORT`, `WORKERS` for the tools API | Passed to no container, or without effect |
+| `API_RATE_LIMIT` | Never applied to guardian in the Compose stack (section 9) |
+| `NEXTAUTH_SECRET`, `NEXT_PUBLIC_DEBUG` | Passed to the dashboard, which has no NextAuth and reads neither. `./scripts/rotate_secrets.sh --secret NEXTAUTH_SECRET` answers that it is not a rotatable secret |
+| `GRAFANA_ADMIN_PASSWORD`, `GUARDIAN_DB_PASSWORD`, `N8N_ENCRYPTION_KEY` | Generated, and interpolated by no Compose file (section 7 for n8n's key) |
+| `SESSION_TIMEOUT`, `MAX_LOGIN_ATTEMPTS`, `LOCKOUT_DURATION`, `REQUIRE_EMAIL_VERIFICATION`, `REQUIRE_MFA` | Offered by the template, read by nothing. They switched nothing on or off |
+| `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` (production overlay) | Set on the postgres container, whose image reads neither: PostgreSQL has always run with 100 connections and 128MB. To raise them, add `command: postgres -c max_connections=200 -c shared_buffers=256MB` in an override file |
+| `LOG_FILE` and the `guardian_logs` volume | guardian logs to the console only. The volume was always empty; `docker volume rm <project>_guardian_logs` removes it |
+| `ENVIRONMENT` for guardian, the gateway, the dashboard, postgres and n8n; `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`, `LOG_LEVEL` for the gateway | Passed and read by none of them. guardian's development mode is `DEBUG` |
+| `WILDBOX_API_URL`, `WILDBOX_API_KEY`, `WILDBOX_DATA_URL`, `WILDBOX_DATA_API_KEY` for guardian; `API_BASE_URL`, `CORS_ORIGIN`, `CUSTOM_KEY` for the dashboard | Read by nothing |
+| `WORKER_CONCURRENCY`, `CELERY_WORKER_PREFETCH_MULTIPLIER` (production overlay, agents and responder) | Read by nothing: the workers' concurrency is set in their entrypoints |
+
+### 19. A gateway configuration of your own
+
+The shipped configuration needs nothing. A server block of your own must
+declare three variables, or every authenticated request answers 500 and
+scope-limited keys need `admin`:
+
+```nginx
+set $wildbox_route_uri $uri;
+set $wildbox_auth_type "";
+set $wildbox_scopes "";
+```
+
+A location that calls `authenticate()` needs a row in `ROUTE_SCOPES`
+(`auth_handler.lua`); without one, scope-limited keys need `admin` there.
+
+An `nginx.conf` of your own must take the `limit_req` zones from the file
+the entrypoint writes, and define none itself (section 21):
+
+```nginx
+include /run/wildbox-gateway/limit_req_zones.conf;
+```
+
+### 20. guardian refuses internal scan targets (`GUARDIAN_ALLOWED_INTERNAL_TARGETS`)
+
+guardian's discovery and port scans now apply the target policy the tools
+service has applied since 0.11.0: a private, loopback, link-local,
+multicast, reserved, shared or cloud-metadata address is refused. In the
+Compose stack `guardian-worker` shares a network with PostgreSQL, Redis and
+identity, and Docker takes the stack's networks from the same private
+ranges a LAN uses, so no default can open the LAN without opening those
+too.
+
+- **After the upgrade**, a discovery (`assets/assets/discover/`), a new or
+  edited discovery rule and a port scan (`assets/assets/{id}/scan/`) aimed
+  at such an address answer `400`. To keep scanning your own network, add
+  its ranges to `.env` as comma-separated CIDR ranges and IP addresses,
+  then recreate `guardian` and `guardian-worker`:
+
+  ```bash
+  GUARDIAN_ALLOWED_INTERNAL_TARGETS=192.168.50.0/24,10.20.0.0/16
+  ```
+
+- A discovery must lie inside the listed ranges entirely; the limit of
+  1,024 addresses for each discovery still applies.
+- No host names in the list, and a range must have its host bits zero. A
+  bad entry stops `guardian` and `guardian-worker` at start-up;
+  `docker compose logs guardian` names the variable and the entry.
+- `TOOLS_ALLOWED_INTERNAL_TARGETS` does not open anything for guardian. If
+  the tools service and guardian both scan the lab, set both.
+- **Stored discovery rules keep their networks.** Each run skips the
+  internal networks that are not listed, and `guardian-worker` logs the
+  network and the variable; the run still ends `completed`, with those
+  networks not counted in `networks_queued`. Such a rule cannot be saved
+  again with that network until the range is listed.
+- Assets at internal addresses stay in the inventory and can be created as
+  before; they are not port scanned, on creation or on request, until
+  their range is listed.
+- Do not list the stack's Docker networks, loopback or the cloud metadata
+  address.
+- API clients: the `400` bodies are `{"network_range": [message]}`,
+  `{"target_specification": [message]}` and `{"error": message}`; the
+  message names `GUARDIAN_ALLOWED_INTERNAL_TARGETS`.
+
+### 21. The gateway's per-address limits are settings
+
+Nothing changes for a deployment that sets nothing. The three limits the
+gateway applied to every client address were written in `nginx.conf`; they
+are now optional settings with the same values as defaults:
+
+| Setting | Default | Protects |
+| --- | --- | --- |
+| `GATEWAY_RATE_LIMIT_PER_SECOND` | 100 | Every request to the HTTPS server |
+| `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` | 5 | Login, registration and forgotten password |
+| `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` | 500 | Static assets |
+
+- A value that is not a whole number from 1 to 100000 stops the gateway at
+  start-up, with a message naming the setting. A change needs the
+  container recreated; an nginx reload does not apply it.
+- The bursts are unchanged and are not settings.
+- The gateway image must be rebuilt (section 1).
+- To run the integration or Playwright suites against a stack of your own,
+  add the three settings at 10000 (and `RATE_LIMIT_PER_HOUR=1000000`) to
+  its `.env`, as `tests/README.md` says. With the defaults the integration
+  suite warns before its first test.
+
+### 22. data: ingest is all or nothing; only sources that can be collected run
+
+**Ingest clients.** A batch is stored whole or not at all, and every answer
+other than `200` means nothing was stored:
+
+| Answer | When | What the sender does |
+| --- | --- | --- |
+| `200`, `events_ingested` equal to `events_received`, empty `errors` | Everything is stored | Nothing |
+| `422`, naming the event by its index | An event is invalid | Sends the others without it |
+| `422 BATCH_NOT_STORABLE` | The database refuses a value the schema let through | Splits the batch |
+| `503` with `Retry-After` | Another database error | Sends the batch again |
+
+`sensor_id` and `source_host` are limited to 255 characters, and
+`sensor_id`, `source_host` and `raw_data` may not contain a NUL character.
+Such events were never stored: they answered a `503` every time, or a `200`
+with nothing stored, and are now refused with a `422` that names them.
+Sensors need no change.
+
+**Sources.** After the upgrade the scheduler disables every enabled source
+whose `source_type` has no collector, with the reason in `last_error`. On a
+deployment that ran `manage.py sources add-defaults` or
+`scripts/init_feeds.py`, that is every source they created (types `txt`,
+`json`, `api`, `feed`); none of them ever collected anything. Custom
+sources of type `http`, `https`, `json`, `csv`, `txt`, `rss` or `atom` are
+disabled too: no collector could run them.
+
+```bash
+docker compose exec data python manage.py sources add-defaults
+```
+
+gives the default that works: it turns the "Feodo Tracker" row of the old
+defaults into the one that can be collected, in place, and enables it.
+`scripts/init_feeds.py` is gone. The threat-intelligence pages show fewer
+active feeds, which is now the number of feeds that are collected.
+
+`recent_collections` of `GET /api/v1/data/stats` counts the caller's and
+the global sources' runs, where it counted every team's.
+
+`collection_runs.error_message` and `sources.last_error` now hold the class
+and HTTP status of a failed collection, not the client's error text. Rows
+written before the upgrade keep what they have: a feed whose URL holds a
+key may have it in those two columns, and in old log files. Clear them, or
+rotate the key, if that matters to you.
+
+### 23. Logs: nothing a caller submits is written by value
+
+**The responder printed the Redis password at every start.** From 0.6.1 to
+0.11.2 its entrypoint wrote `REDIS_URL`, password included, to the
+container's log: `docker logs open-security-responder`, the file Docker
+keeps for the container under `/var/lib/docker/containers/`, and wherever
+the deployment ships container logs. The line is gone, and recreating the
+container in step 7 discards its log file.
+
+- Redis is not published outside the stack's Docker network in the shipped
+  Compose files, so the password opens nothing from outside by itself: it
+  is useful to someone who can also reach that network.
+- **If those logs were readable by anyone who should not hold the password,
+  or left the host** (a log collector, a support bundle, a pasted
+  `docker logs`), rotate it after the upgrade:
+  `./scripts/rotate_secrets.sh --secret REDIS_PASSWORD`, then the command
+  it prints (section 13). Copies shipped elsewhere are yours to purge:
+  search them for `Redis URL: redis://`.
+- If the logs never left the host and only its administrators can read
+  them, there is nothing to rotate.
+
+- **Access logs lose the query string.** The gateway's access log and each
+  service's uvicorn access log have the method, the path and the status.
+  The gateway's also loses `"$http_referer"`: a parser of the `gateway`
+  format must drop that field.
+- **The tools service's log lines gain fields**: `request_id`, `tool`,
+  `user_id`, `team_id`, `input_fields` (names, not values), `status`,
+  `duration`. They carried none before.
+- **Flower** shows `{'tool_name': ..., 'user_id': ..., 'input_data': '<n
+  field(s)>'}` for a task, not its input.
+- **identity** logs a locked account by a digest of the address:
+  `printf %s user@example.com | shasum -a 256`, first twelve digits.
+- Log lines of the HTTP client libraries (httpx, urllib3, botocore) below
+  WARNING are no longer written, whatever `LOG_LEVEL` is.
+
+### 24. API clients: error bodies
+
+Statuses do not change, except where said.
+
+- **tools, data, agents, responder: an error whose detail is a dict.**
+  `error.message` is the explanation, where it was a Python dict literal,
+  and `error.details` holds the dict:
+
+  ```json
+  {"error": {"code": 403, "type": "HTTPException", "request_id": "...",
+    "message": "This action requires one of these roles: owner, admin",
+    "details": {"error": "Insufficient permissions",
+                "message": "This action requires one of these roles: owner, admin",
+                "code": "INSUFFICIENT_ROLE"}}}
+  ```
+
+  A client that matched on a substring of `error.message`, such as
+  `GATEWAY_AUTH_REQUIRED`, must read `error.details.code`. Through the
+  gateway a client meets this in one place today:
+  `POST /api/v1/responder/playbooks/reload` as a member or viewer.
+- **cspm: every error an endpoint raises has the common shape.** Read
+  `error.message` instead of the top-level `message`, and `error.code`
+  instead of `details.status_code`. `error` is an object, not the string
+  `"HTTPException"`. There is no `timestamp`; `error.request_id` identifies
+  the request in the logs.
+- **identity: 404, 500 and 503 have the common shape.** A client that read
+  `detail` must read `error.message`. The message of a route-raised 404 is
+  the route's (`User not found`), not `Endpoint not found`. A 500 from the
+  analytics routes or from the deletion of a user reads
+  `An internal error occurred`, with a `request_id`; the cause is in the
+  service log under that id.
+- **The field errors of a 422** no longer carry `input`, `ctx` or `url`;
+  `type`, `loc` and `msg` are unchanged. The validation message for an IOC
+  no longer ends with the value.
+- **Invalid input that a model's validator refuses answers 422** with the
+  field errors, where it answered 500 (for example
+  `POST /api/v1/agents/analyze` with an IOC value of the wrong format). A
+  client that retried that 500 gets a 422 it should not retry.
+- The `error_message` of a failed tools workflow step no longer contains
+  the text of a connection error, an exception's class or a module path;
+  an invalid parameter is reported as `<field>: <message>`.
+- cspm's `/health` answers `"error": "Health check failed"` where it named
+  an exception class, and **503** when its body says `unhealthy` (Redis
+  unreachable, or the check itself failed). It answered 200 when a check
+  raised and 500 when Redis was down. `degraded` (no worker answers) is
+  still 200. A monitor that read the code now sees an unhealthy cspm as
+  such, and so does `make health`.
+- **cspm, with Redis unreachable:** every route that needs it answers
+  **503** (`Scan store or task queue temporarily unavailable`) where it
+  answered 500. A client that retries on 503 and not on 500 now retries.
+
+### 25. API clients: guardian
+
+Paths are under `/api/v1/guardian/`. Nothing in the dashboard, the
+responder, the agents or the shipped automations used what is removed.
+
+**Lists.**
+
+- `next` and `previous` are relative references such as
+  `/api/v1/guardian/assets/assets/?page=2`. Resolve them against the URL
+  you requested. The former absolute links could not be followed.
+- `?page_size=N` is honored on every list, up to 200.
+- `vulnerabilities/` and `vulnerabilities/stats/`: `severity`, `status`,
+  `priority` and `threat_level` now filter; a client that sent one of them
+  and showed the (always empty) answer now gets the matching rows.
+  `?search=` also finds a vulnerability by its asset's address, its scanner
+  or its service, and requires every word of the text.
+- A true/false filter given `false` selects the rows that are not so
+  (`overdue`, `due_today`, `due_this_week`, `unassigned`, `is_overdue`,
+  `needs_review`). It used to be ignored.
+- `?format=json` and `?format=api` no longer choose the renderer; use the
+  `Accept` header. On `reports/reports/`, `format` is the filter on a
+  report's format. A request with `Accept: text/html` only answers `406`:
+  JSON is the only representation unless `DEBUG=true`.
+- `assets/assets/?ip_range=` with an IPv6 range of more than 256 addresses
+  answers `400`; a range includes its network and broadcast addresses.
+  `?tags=a,` ignores the empty entry.
+
+**Removed routes** (`404`, unless said):
+
+| Route | Use instead |
+| --- | --- |
+| `POST integrations/systems/{id}/test_connection/`, `health_check/` | Nothing: guardian contacts no external system |
+| `GET integrations/systems/{id}/sync_status/` | `GET integrations/systems/{id}/` and read `last_sync` |
+| `POST integrations/mappings/{id}/test_mapping/`, `sync_now/` | Nothing: there is no synchronization |
+| `GET integrations/sync-records/sync_statistics/` | `GET integrations/sync-records/?sync_status=failed` (or another status) and read `count` |
+| `POST integrations/sync-records/{id}/retry_sync/` | Nothing |
+| `POST integrations/webhooks/{id}/test_webhook/`, `trigger_webhook/` | Nothing: guardian sends no webhooks |
+| `GET integrations/logs/error_summary/` | `GET integrations/logs/?level=error` and read `count` |
+| `POST integrations/notifications/{id}/test_notification/`, `send_notification/` | Nothing: guardian delivers nothing through a notification channel |
+| `POST scanners/scanners/{id}/test_connection/` | Nothing: guardian cannot reach a scanner |
+| `POST scanners/scans/{id}/start/`, `stop/`, `pause/`, `resume/` | `PATCH scanners/scans/{id}/` with `{"status": "..."}` |
+| `POST scanners/scans/import_results/` (`405`) | `POST scanners/scan-results/` and `POST vulnerabilities/` |
+| `POST scanners/scan-schedules/{id}/trigger/`, `enable/` | Nothing: guardian runs no scan schedule. `POST`, `PUT` and `PATCH` on `scanners/scan-schedules/` answer `405` |
+| `POST remediation/tickets/{id}/sync_external/` | `PATCH remediation/tickets/{id}/` |
+| `POST remediation/workflows/{id}/pause/` | `PATCH remediation/workflows/{id}/` with `{"status": "deferred"}` |
+| `GET vulnerabilities/{id}/attachments/` | Nothing: no attachment could be stored |
+
+**Changed answers.**
+
+| Route | Before | Now |
+| --- | --- | --- |
+| `DELETE integrations/logs/cleanup_logs/` | `200`, nothing deleted | **Deletes** the team's logs older than `older_than_days` (default 30); `400` unless 1 to 36500 |
+| `POST remediation/tickets/{id}/assign/` | `200` for any `assignee_id`, ticket unchanged | Sets `assigned_to`; `400` unless a current member of the team |
+| `POST remediation/tickets/{id}/update_status/` | Stored any string | `400` for a status the model does not define |
+| `POST remediation/templates/{id}/clone/` | `200`, nothing created | `201` with the copy; optional `name` |
+| `POST remediation/templates/{id}/apply/` | `200`, no workflow | `201` with the created workflow; `409 WORKFLOW_EXISTS`; `400 TEMPLATE_STEPS_INVALID` |
+| `POST remediation/workflows/{id}/start/`, `complete/` | Status only | Also set the actual start and completion dates |
+| `POST vulnerabilities/bulk_action/` | `reopen`, `untag`: nothing done. `assign`: cleared the field not given | Performed; `assign` leaves the field not given as it was; `close` writes the resolution metadata and a history entry |
+| `POST vulnerabilities/{id}/assign/` | `200` with neither `assigned_to` nor `assignee_group` | `400` |
+| `POST vulnerabilities/` | `cve_id` required; no `id` in the answer | `cve_id` optional; `id` in the answer |
+| `PUT`, `PATCH vulnerabilities/{id}/` changing `assigned_to` | No e-mail | Queues the assignment e-mail, as `bulk_action/` `assign` does |
+| `resolved_at` of a vulnerability | Set by `close/` only | Follows the status on every save |
+| `GET vulnerabilities/trends/` | `500` for a `days` that is not a number | `400` unless `days` is 0 to 366; `total_open` and `avg_risk_score` are of what was open on that day |
+| `asset_details.environment` in `GET vulnerabilities/{id}/` | `null`, or `500` | The environment's name, or `null` |
+| `file_path` on a report | Server path | Field removed |
+| `POST assets/assets/discover/` | Any `network_range`, any `scan_type` | `400` unless a network of at most 1,024 addresses and `basic` or `comprehensive` |
+| A discovery rule's `target_specification` | Networks of any size and number | `400` over 1,024 addresses a network or 32 networks |
+| `POST assets/discovery-rules/{id}/execute/`, `enable/` on a type that is not `network_scan` | `200` | `501 DISCOVERY_TYPE_NOT_IMPLEMENTED`; `PATCH` with `"enabled": true` answers `400` |
+| `POST integrations/webhooks/` | A path was unique on the platform | Unique within the team; a duplicate answers `400` on `endpoint_url` |
+| `api_key`, `password` (scanners), `auth_config` (external systems), `secret_token` (webhooks), `config` (notification channels) | Stored | `400` on that field when a value is sent. Leave the field out; it was never returned |
+
+A path without its trailing slash, followed through the gateway, now leads
+to the route: the redirect guardian answers used to lead to a `404`. Keep
+writing the slash; a redirected `POST` is resent as a `GET` by most
+clients. `/admin/` answers `404`; it answered `500` in the image. Scans of
+internal addresses answer `400` unless their range is listed (section 20).
+
+**Notifications.** `GET reports/alerts/{id}/notifications/` gains
+`failure_reason`, and `recipients` lists the owners and admins a
+notification was addressed to. SLA entries in a vulnerability's history
+read `sent`, `sent to the team's owners and admins (no assignee to
+e-mail)` or `not sent (<reason>)`. An assignment notification adds a
+history entry with `field_name` `assignment_notification`.
+
+### 26. API clients: tools, agents, responder, cspm
+
+- **`POST /api/v1/tools/{tool}/async` refuses what the synchronous route
+  refuses**: 404 for a name that is no tool, 422 for input the tool's
+  schema refuses, 400 for a target the network target policy refuses. It
+  used to answer 202, and the task then read `failed`. A responder
+  playbook step with `async_execution` gets the refusal from the
+  submission too.
+- **A canceled tools task reads `cancelled` immediately**, and a second
+  `DELETE /api/v1/tasks/{id}` answers 400. The error of a task refused when
+  it runs names the field and the kind of error
+  (`Input validation failed (iterations: int_parsing)`).
+- **An asynchronous run whose tool raised** reads
+  `error: "Tool execution failed (<class>)"`, and no longer the text of the
+  error. A failed step of `security_automation_orchestrator` has a new
+  `error_code`; one whose tool raised on its input reads
+  `Tool execution failed: the tool could not process its input`. A `403`
+  for a target a caller may not test names the target's host, not its URL.
+- **agents:** `result_url` is `/api/v1/agents/analyze/{task_id}` (was
+  `/v1/analyze/{task_id}`). An analysis that fails reads `status: failed`
+  with a specific `error`, where it read as a completed analysis with
+  verdict `Informational` and confidence 0. `status` can be `revoked`.
+  `started_at` and `completed_at` are the task's start and end; both were
+  the time of the request. `GET /api/v1/agents/stats` gains
+  `model_configured`, and `failed_today` includes tasks killed at the time
+  limit.
+- **responder:** `status_url` in the answer of
+  `POST /api/v1/responder/playbooks/{id}/execute` is
+  `/api/v1/responder/runs/{run_id}` (was `/v1/runs/{run_id}`).
+  `GET /api/v1/responder/connectors` no longer returns `config`.
+  `GET /api/v1/responder/playbooks` lists a sixth playbook,
+  `asset_vulnerabilities`; the steps that call guardian now work, so
+  `all_star_e2e` can record a vulnerability when its conditions hold.
+
+A client that built `result_url` or `status_url` from the identifier is
+unaffected; one that prefixed the returned value itself must stop.
+
+**cspm.**
+
+- `GET /api/v1/cspm/checks` answers 200 with the catalog where it answered
+  500. Each check carries `references` and `remediation`. An unknown
+  `provider` value answers an empty list.
+- `GET /api/v1/cspm/scans/{id}/compliance` answers 200 for a completed scan
+  where it answered 500. `generated_at` is an ISO 8601 time in UTC without
+  an offset.
+- `DELETE /api/v1/cspm/scans/{id}` answers **409** for a scan that already
+  completed, failed or was canceled, where it answered 200 and recorded
+  `cancelled`. A client that deleted finished scans to clear them must
+  stop: nothing was cleared. A scan canceled before a worker took it is no
+  longer run.
+- `GET /api/v1/cspm/scans/{id}/report` answers the scan's own id in
+  `scan_id`, and `GET /api/v1/cspm/compliance/findings` the same id in
+  `scan_id` and `finding_id`; they carried an id no route knows. Reports
+  stored before the upgrade are read with the right id too.
+
+### 27. API keys: the documented scope is required on every route
+
+- A key scoped `tools:read` or `tools:execute` can list the tools at
+  `GET /api/v1/tools`. Other methods on that path need `tools:execute`
+  instead of `write`; the tools service has no such route.
+- A key holding `tools:admin` keeps working; the scope now grants what
+  `tools:execute` grants.
+- API paths ending in `.js`, `.css`, `.png`, `.jpg`, `.jpeg`, `.gif`,
+  `.svg`, `.woff`, `.woff2`, `.ttf`, `.eot` or `.ico` now reach their
+  service and need a credential.
+- What a session or an API key can do through the gateway is otherwise
+  unchanged.
+- The dashboard's `/api/proxy/*` answers 404, and its own `/api/*` routes
+  no longer send `Access-Control-Allow-Origin`. Nothing shipped used them.
+
 ## Upgrading to 0.11.2
 
 From 0.11.1, nothing is required for a production deployment: the
@@ -1641,13 +2892,17 @@ make validate-secrets     # every required secret present, .env is 0600
 docker compose config -q  # compose files resolve
 docker compose ps         # every service up, and healthy where it has a check
 make health
-make restore-drill        # backup -> restore -> row-by-row comparison
+make restore-drill        # backup -> restore into scratch databases -> exact row counts
 ```
 
-`make restore-drill`, like `make backup`, runs from the host and connects to
-`POSTGRES_HOST` (default `wildbox-postgres`), which the default Compose file
-does not publish: run it from a machine or container that reaches the
-database.
+`make restore-drill`, like `make backup`, needs only Docker on the host. It
+runs `pg_dump`, `pg_restore` and `psql` inside the stack's `postgres`
+container with `docker compose exec`, so no database port has to be published
+and no `POSTGRES_HOST` has to resolve. It restores into `<db>_restore_drill`,
+compares every table's row count with the source as the backup's own snapshot
+saw it, and drops the scratch databases; the live databases are only read.
+For a database the stack does not run, set `BACKUP_MODE=host` (or
+`POSTGRES_HOST`) and run it from a machine that reaches the database.
 
 With the production overlay, also check the network segmentation and Redis:
 
@@ -1675,3 +2930,22 @@ After the upgrade to 0.11.0, also check:
   shows the scheduled tasks running (sections 12 and 13).
 - **`cspm-worker` takes scans**: cspm's `/health` reports `healthy`
   (section 27).
+
+After the upgrade to 0.12.0, also check:
+
+- **The gateway started with its limits**: `docker compose logs gateway`
+  has a line `Per-address request limits: global 100 r/s, auth 5 r/s,
+  static assets 500 r/s` (section 21 of "Upgrading to 0.12.0").
+- **guardian applied its migrations and deleted the stored credentials**:
+  `docker compose exec guardian python manage.py showmigrations --plan`
+  lists none unapplied, and `docker compose logs guardian | grep "guardian
+  stored"` says how many records held one (sections 5 and 6).
+- **A scan of your own network answers as you set it**: `400` naming
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS` for a range you did not list, a
+  `task_id` for one you did (section 20).
+- **The data service has a source it can collect**:
+  `docker compose exec data python manage.py sources list` shows "Feodo
+  Tracker" enabled, and the others disabled with the reason (section 22).
+- **The responder's log holds no Redis URL**:
+  `docker compose logs responder | grep -c 'Redis URL'` prints `0`
+  (section 23).
