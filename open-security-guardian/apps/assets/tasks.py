@@ -8,7 +8,6 @@ from celery import shared_task
 from django.utils import timezone
 from django.conf import settings
 import logging
-import requests
 import errno
 import socket
 import ipaddress
@@ -16,7 +15,7 @@ from datetime import timedelta
 
 from apps.core.tenancy import normalize_team_id, scope_to_team
 
-from .networks import NetworkRefused, scan_network
+from .networks import NetworkRefused, check_address, scan_network
 from .models import (
     IMPLEMENTED_DISCOVERY_TYPES,
     Asset,
@@ -42,7 +41,9 @@ def discover_assets(self, network_range, scan_type='basic', team_id=None):
             alone. None is the rows without a team (a legacy rule's).
     """
     # What the API refuses, refused here too: a rule stored before the check
-    # may name a range of any size (#724). Not retried: it would be the same.
+    # may name a range of any size (#724) or an internal one, and the ranges
+    # the operator allows may have changed since this was queued (#748). Not
+    # retried: it would be the same.
     try:
         network = scan_network(network_range)
     except NetworkRefused as refused:
@@ -186,7 +187,16 @@ def scan_asset_ports(asset_id, port_range=None):
         if not asset.ip_address:
             logger.warning(f"Asset {asset.name} has no IP address for port scanning")
             return {'status': 'skipped', 'reason': 'no_ip_address'}
-        
+
+        # The address is checked here, where the scan runs, whoever queued
+        # it: the scan action, the creation of an asset, a discovery, or a
+        # task queued before the check existed (#748). An asset may sit at
+        # an internal address; it is recorded, and not scanned.
+        _, refusal = check_address(asset.ip_address)
+        if refusal is not None:
+            logger.warning(f"Port scan of asset {asset.name} refused: {refusal}")
+            return {'status': 'refused', 'reason': refusal}
+
         # Define ports to scan
         if port_range:
             if '-' in port_range:

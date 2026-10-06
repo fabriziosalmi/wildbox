@@ -27,62 +27,37 @@ What this module guarantees for an accepted URL:
 Whether the host is *public* is left to the caller, because the two callers
 differ: one checks IP literals and local names only, the other also resolves
 the name. This module performs no network I/O.
+
+The rules for a host (its spelling, the labels of a name, what reads as a
+number, the names that mean this machine) and the parser of a bare host,
+:func:`parse_host`, live in ``open_security_shared.target_policy``, which
+guardian's scans use too (#748). They are imported here under the names
+this service has always used; what stays in this module is the URL around
+the host, and the IDNA encoding of a host that is not ASCII, which needs the
+``idna`` package the shared module does without.
 """
 
 from __future__ import annotations
 
 import ipaddress
-import re
-import unicodedata
-from dataclasses import dataclass
-from typing import Iterable, Optional, Union
+from typing import Iterable
 from urllib.parse import urlsplit
 
 import idna
+from open_security_shared.target_policy import (  # noqa: F401 - re-exported
+    IPAddress,
+    ParsedTarget,
+    canonical_hostname,
+    is_local_hostname,
+    parse_host,
+)
+from open_security_shared.target_policy import looks_numeric as _looks_numeric
+from open_security_shared.target_policy import (
+    reject_control_and_space as _reject_control_and_space,
+)
 
 DEFAULT_ALLOWED_SCHEMES = ("http", "https")
 DEFAULT_MAX_LENGTH = 2048
-
-# A DNS label after IDNA encoding: letters, digits and hyphens, not starting
-# or ending with a hyphen. Underscores are accepted because real host names
-# carry them (service records, some cloud endpoints) and they do not change
-# how a name resolves.
-_LABEL_RE = re.compile(r"^(?!-)[a-z0-9_-]{1,63}(?<!-)$")
-
-# A label that a WHATWG URL parser treats as a number when it is the last
-# label of the host: decimal, 0x-prefixed hex (possibly empty), or octal.
-_NUMERIC_LABEL_RE = re.compile(r"^(?:[0-9]+|0[xX][0-9a-fA-F]*)$")
-
-IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
-
-
-@dataclass(frozen=True)
-class ParsedTarget:
-    """The parts of an accepted URL that callers need for host checks."""
-
-    scheme: str
-    host: str  # lower-case ASCII, no trailing dot, no brackets
-    port: Optional[int]
-    ip: Optional[IPAddress]  # set when the host is an IP literal
-
-
-def _reject_control_and_space(url: str) -> None:
-    for ch in url:
-        if ch.isspace() or unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp"):
-            raise ValueError("URL must not contain whitespace or control characters")
-
-
-def _looks_numeric(host: str) -> bool:
-    """True if a WHATWG URL parser would treat ``host`` as an IPv4 address.
-
-    The rule (URL Standard, "ends in a number") looks at the last label: if
-    it is a decimal, hex or octal number, the whole host goes through the
-    IPv4 parser, which accepts 1 to 4 parts in any of those bases. Clients
-    and ``inet_aton`` behave the same way, so ``127.1`` or ``0x7f000001``
-    reach loopback even though ``ipaddress`` refuses to parse them.
-    """
-    last = host.rsplit(".", 1)[-1]
-    return bool(_NUMERIC_LABEL_RE.match(last))
 
 
 def _encode_hostname(host: str) -> str:
@@ -98,18 +73,9 @@ def _encode_hostname(host: str) -> str:
             ) from exc
         ascii_host = ascii_host.lower()
 
-    # One trailing dot is the fully qualified spelling of the same name
-    # (``localhost.`` is ``localhost``); drop it so the checks below and the
-    # caller's host checks see the canonical form.
-    if ascii_host.endswith("."):
-        ascii_host = ascii_host[:-1]
-
-    if not ascii_host or len(ascii_host) > 253:
-        raise ValueError("URL host has an invalid length")
-    for label in ascii_host.split("."):
-        if not _LABEL_RE.match(label):
-            raise ValueError("URL host is not a valid domain name")
-    return ascii_host
+    # The trailing dot, the length and the labels: one rule for the host of
+    # a URL and for a bare host.
+    return canonical_hostname(ascii_host)
 
 
 def parse_target_url(
@@ -190,68 +156,3 @@ def parse_target_url(
         return ParsedTarget(scheme=scheme, host=host, port=port, ip=ip4)
 
     return ParsedTarget(scheme=scheme, host=host, port=port, ip=None)
-
-
-def parse_host(host: object) -> ParsedTarget:
-    """Parse a bare host: an IP literal or a DNS name, nothing around it.
-
-    The network target policy (``app.target_policy``) checks host, IP and
-    CIDR inputs with this, so a bare host is held to the same spelling rules
-    as the host of a URL: no whitespace or control characters, a valid DNS
-    name, and only the canonical dotted-quad spelling for anything a
-    resolver would read as IPv4 (``127.1``, ``0x7f000001`` and
-    ``2130706433`` are refused rather than normalized).
-
-    Two rules are stricter than for a URL host, because the value is handed
-    to the socket layer as written rather than through a URL parser:
-
-    * a name must be ASCII (use the ``xn--`` form): Python's socket module
-      encodes a non-ASCII name with IDNA 2003, which maps some characters
-      differently from the UTS #46 encoding checked here, so the checked
-      name and the dialed name could differ;
-    * an IPv6 literal is written without brackets, as sockets take it.
-
-    The returned ``scheme`` is empty and ``port`` is ``None``.
-    """
-    if not isinstance(host, str) or not host:
-        raise ValueError("Host must be a non-empty string")
-    if len(host) > 253 + 1:
-        raise ValueError("Host has an invalid length")
-    _reject_control_and_space(host)
-
-    if ":" in host:
-        # Only an IPv6 literal contains a colon. A zone id ("%eth0") only
-        # makes sense for link-local addresses and is refused.
-        if "%" in host:
-            raise ValueError("Host must not carry an IPv6 zone id")
-        try:
-            ip6 = ipaddress.IPv6Address(host)
-        except ValueError as exc:
-            raise ValueError("Host is not a valid IPv6 address or host name") from exc
-        return ParsedTarget(scheme="", host=str(ip6), port=None, ip=ip6)
-
-    if not host.isascii():
-        raise ValueError(
-            "Host name must be ASCII; write an internationalized name in its "
-            "xn-- form"
-        )
-    ascii_host = _encode_hostname(host)
-
-    if _looks_numeric(ascii_host):
-        # IPv4Address accepts the canonical dotted quad only: no leading
-        # zeros, no fewer parts, no hex or octal.
-        try:
-            ip4 = ipaddress.IPv4Address(ascii_host)
-        except ValueError as exc:
-            raise ValueError(
-                "Host must be a dotted-quad IPv4 address or a domain name"
-            ) from exc
-        return ParsedTarget(scheme="", host=ascii_host, port=None, ip=ip4)
-
-    return ParsedTarget(scheme="", host=ascii_host, port=None, ip=None)
-
-
-def is_local_hostname(host: str) -> bool:
-    """True for names that always mean this machine (RFC 6761)."""
-    host = host.lower().rstrip(".")
-    return host == "localhost" or host.endswith(".localhost")

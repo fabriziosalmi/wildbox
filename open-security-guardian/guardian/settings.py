@@ -397,6 +397,15 @@ from guardian.schedule import team_membership_max_age  # noqa: E402
 
 TEAM_MEMBERSHIP_MAX_AGE = team_membership_max_age()
 
+# The internal ranges a discovery or a port scan may reach (#748):
+# GUARDIAN_ALLOWED_INTERNAL_TARGETS, comma-separated CIDR ranges and IP
+# addresses, empty by default, so that nothing internal is scanned until the
+# operator names it. Parsed here: a malformed entry stops guardian and its
+# worker at start-up. See guardian/scan_targets.py.
+from guardian.scan_targets import allowed_internal_targets  # noqa: E402
+
+SCAN_ALLOWED_INTERNAL_TARGETS = allowed_internal_targets()
+
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
