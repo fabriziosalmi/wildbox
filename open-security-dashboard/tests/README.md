@@ -97,6 +97,7 @@ This is what `.github/workflows/test.yml` runs, after `npm run build`.
    defaults, which are a deployment's limits, a spec fails with a `429` from
    the gateway sooner or later. The limits themselves are tested by the
    gateway harness (`open-security-gateway/test/rate_limit_tests.py`).
+
 2. Load the threat-intel seed, because the data service has no API that
    creates indicators:
 
