@@ -9,6 +9,7 @@ class MetricsProbeInput(BaseModel):
     behaviour: Literal[
         "return",
         "raise",
+        "quote",
         "crash",
         "sleep",
         "hang",

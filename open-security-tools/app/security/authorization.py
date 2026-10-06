@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import json
 import os
 
+from app.log_safety import host_of
 from app.security.rate_limit import get_rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -124,7 +125,7 @@ class AuthorizationManager:
             return False
         
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Authorization check failed for {target}: {e}")
+            logger.error(f"Authorization check failed for {host_of(target)}: {type(e).__name__}")
             return False
     
     def is_user_authorized(self, user_id: str, operation: OperationType) -> bool:
@@ -165,7 +166,7 @@ class AuthorizationManager:
             
             # Check target authorization
             if not self.is_target_authorized(target, operation):
-                raise PermissionError(f"Target {target} not authorized for {operation.value} operations")
+                raise PermissionError(f"Target {host_of(target)} not authorized for {operation.value} operations")
             
             # Check rate limiting
             if not self.check_rate_limit(user_id, operation):
@@ -176,10 +177,10 @@ class AuthorizationManager:
                 self._perform_additional_checks(additional_checks, target, operation)
             
             # Log successful authorization
-            logger.info(f"Authorization granted: user={user_id}, target={target}, operation={operation.value}, tool={tool_name}")
+            logger.info(f"Authorization granted: user={user_id}, target={host_of(target)}, operation={operation.value}, tool={tool_name}")
             
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Authorization denied: user={user_id}, target={target}, operation={operation.value}, reason={str(e)}")
+            logger.error(f"Authorization denied: user={user_id}, target={host_of(target)}, operation={operation.value}, reason={type(e).__name__}")
             raise
     
     def get_operation_type(self, tool_name: str, parameters: Dict) -> OperationType:
@@ -360,7 +361,7 @@ class AuthorizationManager:
         log_entry = {
             'timestamp': datetime.utcnow().isoformat(),
             'user_id': user_id,
-            'target': target,
+            'target': host_of(target),
             'operation': operation.value,
             'tool': tool_name,
             'source_ip': 'unknown'  # Would be filled by middleware

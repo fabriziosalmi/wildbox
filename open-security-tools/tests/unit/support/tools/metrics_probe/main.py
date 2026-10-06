@@ -34,6 +34,9 @@ def execute_tool(data: MetricsProbeInput) -> MetricsProbeOutput:
     if data.behaviour == "raise":
         # A type the task catches: the run is reported as failed.
         raise ValueError("the probe was asked to fail")
+    if data.behaviour == "quote":
+        # As above, with an error that repeats the input it was raised over.
+        raise ValueError(f"the probe cannot use {data.marker!r}")
     if data.behaviour == "crash":
         # A type nothing catches: Celery retries the task, then fails it.
         raise RuntimeError("the probe was asked to crash")

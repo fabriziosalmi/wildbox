@@ -253,6 +253,42 @@ app/tools/<name>/
 Tools are copied into the image, so rebuild and restart `api` and
 `tools-worker` after adding one.
 
+## What the service logs, and what Redis holds
+
+A tool's input is whatever the tool takes: a password to grade, a token to
+decode, a key to test, a URL with a credential in it. Nothing a caller
+submits is written to the log by value
+([#755](https://github.com/fabriziosalmi/wildbox/issues/755)).
+
+- A run is logged with the tool, the caller's user and team ids, the request
+  id and the names of the fields the caller set (`input_fields`), for the
+  synchronous route and for a submission alike.
+- A record's fields reach the log only when they are named in
+  `LOGGED_FIELDS` (`app/logging_config.py`), so what a line can carry is
+  decided in one place. The list has no field for an input, a body, a
+  header, a URL or the text of an error.
+- A request is logged by its path, without its query string.
+- An error a tool raises while it works on its input is logged by its class
+  and the line that raised it (`ValueError at main.py:42 in scan`). A
+  refused target is logged as a refusal, without the target; the caller
+  reads which target in the answer.
+- A tool names its target in a log line by its host only
+  (`app/log_safety.py`, `host_of`): no user, password, path or query.
+- The HTTP client libraries do not log the URLs the tools call.
+- The traceback of an unexpected failure (a 500) is logged with the text of
+  the exception: it is a fault of the service, and its cause is the
+  operator's to read.
+
+An asynchronous run needs its input to run, so the input is stored: it is
+the body of the task's message in Redis, in the queue until a worker takes
+the task and in the transport's `unacked` hash until the task ends, and it
+is deleted when the task is acknowledged. A retry sends it again. A task no
+worker ever takes stays queued, with its input, until the queue is purged:
+the message has no expiry of its own. The result, which Redis keeps for an
+hour, does not hold the input (`result_extended` is off), and the text of
+the arguments that Celery sends along for worker logs, `celery inspect` and
+Flower says how many fields the input has and nothing else.
+
 ## Caller and target policy
 
 The two sections below are maintained with the policy code
