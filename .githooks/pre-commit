@@ -100,7 +100,7 @@ if git diff --cached --name-only | grep -E "docker-compose.*\.yml"; then
     echo -e "${YELLOW}WARNING: docker-compose file may contain hardcoded secrets!${NC}"
     echo ""
     echo "Use environment variable substitution instead:"
-    echo "  NEXTAUTH_SECRET:\${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}"
+    echo "  JWT_SECRET_KEY:\${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}"
     echo ""
     echo "Suspicious lines:"
     git diff --cached | grep -E "docker-compose" | grep -E "(SECRET|PASSWORD|KEY):.*[a-zA-Z0-9]{16,}" | grep -vE "\$\{|:-" --color=always

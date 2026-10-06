@@ -204,14 +204,12 @@ def main():
         "API_KEY": generate_api_key("prod"),
         "INITIAL_ADMIN_PASSWORD": generate_password(24),
         "N8N_ENCRYPTION_KEY": generate_hex(32),
-        "NEXTAUTH_SECRET": generate_base64(32),
         # Encrypts cloud credentials before CSPM writes them to Redis
         # (WILDBO-SEC-02). Required; the service refuses to scan without it.
         "CSPM_CREDENTIAL_KEY": generate_base64(32),
         # Keys the HMAC for stored API-key digests, kept separate from
         # JWT_SECRET_KEY so the two rotate independently (WILDBO-SEC-01).
         "API_KEY_HASH_SECRET": generate_hex(32),
-        "GRAFANA_ADMIN_PASSWORD": generate_password(16),
         # Both are declared ${VAR:?} in docker-compose.yml -- the stack will not
         # start without them -- but neither was generated here, so `make setup`
         # produced a .env that `docker compose up` rejected.
@@ -292,20 +290,14 @@ def main():
 
     print("✅ Successfully generated .env with secure random secrets!\n")
     print("📊 Generated secrets:")
-    print("   • JWT_SECRET_KEY")
-    print("   • POSTGRES_PASSWORD")
-    print("   • GATEWAY_INTERNAL_SECRET")
-    print("   • API_KEY")
-    print("   • INITIAL_ADMIN_PASSWORD")
-    print("   • N8N_ENCRYPTION_KEY")
-    print("   • NEXTAUTH_SECRET")
-    print("   • CSPM_CREDENTIAL_KEY")
-    print("   • API_KEY_HASH_SECRET")
-    print("   • GRAFANA_ADMIN_PASSWORD")
+    # The names, from the map: the list written here had ten of them and
+    # named two that nothing read (#665).
+    for name in secrets_map:
+        print(f"   • {name}")
 
     print("\n📋 Next steps:")
     print(
-        "   1. Review .env and add any optional values (Stripe keys, OpenAI key, etc.)"
+        "   1. Review .env and add any optional values (ANTHROPIC_API_KEY, e-mail, etc.)"
     )
     print("   2. Run validation:  make validate-secrets")
     print("   3. Start services:  make start        (development)")
