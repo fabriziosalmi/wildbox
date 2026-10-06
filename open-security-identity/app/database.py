@@ -17,6 +17,12 @@ if database_url.startswith("postgresql://"):
 engine = create_async_engine(
     database_url,
     echo=settings.debug,
+    # Statements, never their parameters: with DEBUG the engine logs every
+    # statement it runs, and the text of a database error ends with the
+    # statement that failed. Both came with the values bound to them: the
+    # address a login was tried with, a password hash, the hash of an API
+    # key (#755).
+    hide_parameters=True,
     pool_pre_ping=True,
     pool_recycle=300,
 )
