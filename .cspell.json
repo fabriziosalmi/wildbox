@@ -810,7 +810,8 @@
     "TARGETARCH",
     "SASL",
     "libc",
-    "pyyaml"
+    "pyyaml",
+    "ENVSUBST"
   ],
   "ignoreWords": [
     "APIKEY",

@@ -300,8 +300,9 @@ services:
       - frontend
       - backend
     environment:
-      - ENVIRONMENT=production
-      - LOG_LEVEL=warn
+      # ENVIRONMENT=production and LOG_LEVEL=warn used to be set here: the
+      # gateway reads neither (its error log level is `warn` in nginx.conf),
+      # so they are gone (#756).
       # As for the services below: only what the operator lists, and nothing
       # when it is empty (the dashboard on the gateway's own origin).
       - CORS_ORIGINS=${CORS_ORIGINS}

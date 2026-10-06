@@ -607,7 +607,9 @@ The gateway applies two limits to tools and task requests:
   `docker-compose.yml`; it must be a whole number from 1 to 1,000,000,000,
   and any other value stops the gateway at startup.
 - **Per client IP**: the server-wide nginx `limit_req` zone `global`,
-  100 requests per second with a burst of 10, answered with 429.
+  100 requests per second with a burst of 10, answered with 429. The rate
+  is the gateway's `GATEWAY_RATE_LIMIT_PER_SECOND` setting, 100 unless the
+  operator changed it.
 
 The tools service applies no request rate limit of its own: every request
 reaches it through the gateway, already counted against the caller's team.

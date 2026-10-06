@@ -59,12 +59,6 @@ READ_BY_THE_RUNTIME = {
 # list cannot outlive what it lists; a new unread variable fails it too.
 KNOWN_UNREAD = {
     "docker-compose.yml": {
-        "gateway": {
-            "ENVIRONMENT",
-            "GATEWAY_LOG_LEVEL",
-            "NGINX_ENVSUBST_OUTPUT_DIR",
-            "WILDBOX_ENV",
-        },
         "dashboard": {
             "ENVIRONMENT",
             "NEXT_PUBLIC_DEBUG",
@@ -75,7 +69,6 @@ KNOWN_UNREAD = {
         "sensor": {"LOG_LEVEL"},
     },
     "docker-compose.prod.yml": {
-        "gateway": {"ENVIRONMENT", "LOG_LEVEL"},
         # The overlay sets production on every service the base file gives
         # the variable to (#736); the dashboard is one, and reads none.
         "dashboard": {"ENVIRONMENT"},
@@ -307,6 +300,10 @@ def test_the_services_built_here_are_found():
         ("api", "GATEWAY_INTERNAL_SECRET"),  # os.getenv in the shared package
         ("api", "USER_PERMISSIONS_FILE"),  # os.getenv in the service
         ("gateway", "GATEWAY_INTERNAL_SECRET"),  # os.getenv in Lua
+        # ${...} in the script the entrypoint runs (#756)
+        ("gateway", "GATEWAY_RATE_LIMIT_PER_SECOND"),
+        ("gateway", "GATEWAY_AUTH_RATE_LIMIT_PER_SECOND"),
+        ("gateway", "GATEWAY_STATIC_RATE_LIMIT_PER_SECOND"),
         ("guardian", "ALLOWED_HOSTS"),  # Django settings
         ("dashboard", "NEXT_PUBLIC_GATEWAY_URL"),  # process.env
     ],
@@ -316,7 +313,17 @@ def test_a_variable_the_code_reads_is_seen_as_read(service, name):
 
 
 @pytest.mark.parametrize(
-    "name", ["WORKERS", "ENABLE_METRICS", "METRICS_PORT", "NO_SUCH_SETTING"]
+    "name",
+    [
+        "WORKERS",
+        "ENABLE_METRICS",
+        "METRICS_PORT",
+        "NO_SUCH_SETTING",
+        # What Compose passed the gateway until #756, read by nothing in it.
+        "WILDBOX_ENV",
+        "GATEWAY_LOG_LEVEL",
+        "NGINX_ENVSUBST_OUTPUT_DIR",
+    ],
 )
 @pytest.mark.parametrize("service", ["api", "identity", "gateway", "dashboard"])
 def test_a_variable_nothing_reads_is_seen_as_unread(service, name):

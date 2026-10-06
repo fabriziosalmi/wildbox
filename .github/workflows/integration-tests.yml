@@ -107,16 +107,36 @@ jobs:
           docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml \
             -f .github/compose.ci-cache.yml build
 
-      - name: Raise the rate limit for the suite
+      - name: Raise the rate limits for the suite
         # The gateway allows RATE_LIMIT_PER_HOUR/60 requests per minute per team
         # (166 by default) and the suite makes several hundred with one key, so
         # tests part-way through the run started failing with 429 -- the limiter
         # working correctly, on a workload it was never meant to shape. Rate
         # limiting itself is covered by test_rate_limiting, which reads the
         # budget headers rather than trying to exhaust them.
+        #
+        # The per-address limits too (#756). Every request of the suite comes
+        # from this runner, one after another and faster than the 100 a second
+        # a deployment allows one address (5 a second on the login and
+        # registration routes), so tests that had nothing to do with rate
+        # limiting got nginx's 429. Those limits are tested at the rates a
+        # deployment has by the gateway harness
+        # (open-security-gateway/test/rate_limit_tests.py), and the suite
+        # checks before its first test that the stack it was given does not
+        # refuse its pace (tests/integration/conftest.py).
+        #
         # Replaced in place, not appended: .env.example already defines the
-        # key, and two definitions leave which one wins up to the reader.
-        run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
+        # keys, and two definitions leave which one wins up to the reader. A
+        # key that is not there fails the step instead of changing nothing.
+        run: |
+          for setting in RATE_LIMIT_PER_HOUR=1000000 \
+                         GATEWAY_RATE_LIMIT_PER_SECOND=10000 \
+                         GATEWAY_AUTH_RATE_LIMIT_PER_SECOND=10000 \
+                         GATEWAY_STATIC_RATE_LIMIT_PER_SECOND=10000; do
+            name="${setting%%=*}"
+            grep -q "^$name=" .env || { echo "::error::$name is not in .env"; exit 1; }
+            sed -i "s/^$name=.*/$setting/" .env
+          done
 
       - name: Start the stack
         # No `. ./.env`: docker compose reads it from the project directory by

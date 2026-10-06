@@ -58,11 +58,26 @@ jobs:
           python3 scripts/generate_secrets.py --force
           python3 scripts/validate_secrets.py
 
-      - name: Raise the rate limit for the suite
+      - name: Raise the rate limits for the suite
         # The per-team API budget (RATE_LIMIT_PER_HOUR/60 a minute) is not what
         # these specs test, and the suite drives one admin team through every
-        # page. Replaced in place: .env.example already defines the key.
-        run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
+        # page. Neither are the per-address limits (#756): the browser and
+        # the API helpers all call from this runner, and the specs used to
+        # retry a 429 on the login and registration routes and to pause
+        # between logins to stay under 5 a second. Those limits are tested at
+        # the rates a deployment has by the gateway harness
+        # (open-security-gateway/test/rate_limit_tests.py). Replaced in
+        # place: .env.example already defines the keys, and a key that is not
+        # there fails the step.
+        run: |
+          for setting in RATE_LIMIT_PER_HOUR=1000000 \
+                         GATEWAY_RATE_LIMIT_PER_SECOND=10000 \
+                         GATEWAY_AUTH_RATE_LIMIT_PER_SECOND=10000 \
+                         GATEWAY_STATIC_RATE_LIMIT_PER_SECOND=10000; do
+            name="${setting%%=*}"
+            grep -q "^$name=" .env || { echo "::error::$name is not in .env"; exit 1; }
+            sed -i "s/^$name=.*/$setting/" .env
+          done
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

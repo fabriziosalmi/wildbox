@@ -392,10 +392,12 @@ services:
       # sensor (#628).
       - gateway_cert:/etc/ssl/wildbox-public
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
-      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
-      - WILDBOX_ENV=${WILDBOX_ENV:-development}
-      - GATEWAY_LOG_LEVEL=${GATEWAY_LOG_LEVEL:-info}
+      # Only what the gateway reads. ENVIRONMENT, WILDBOX_ENV,
+      # GATEWAY_LOG_LEVEL and NGINX_ENVSUBST_OUTPUT_DIR used to be passed
+      # too: no nginx directive, Lua module or script of the gateway read
+      # any of them (the last is a setting of the official nginx image's
+      # entrypoint, which this image does not use), so setting them changed
+      # nothing (#756).
       - IDENTITY_SERVICE_URL=${IDENTITY_SERVICE_URL:-http://open-security-identity:8001}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - AUTH_CACHE_TTL=${AUTH_CACHE_TTL:-300}
@@ -403,6 +405,16 @@ services:
       # passed it in, so the limit was always the 10000/hour built-in default
       # and the setting had no effect wherever it was written.
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10000}
+      # Requests per second the gateway accepts from one client address,
+      # before authentication: everywhere, on the login, registration and
+      # forgotten-password routes, and for the dashboard's static assets
+      # (#756). The entrypoint writes them into the limit_req zones nginx
+      # loads; the defaults are the limits the gateway always had. A value
+      # that is not a whole number from 1 to 100000 stops the gateway at
+      # startup. Operator settings: nothing a client sends changes them.
+      - GATEWAY_RATE_LIMIT_PER_SECOND=${GATEWAY_RATE_LIMIT_PER_SECOND:-100}
+      - GATEWAY_AUTH_RATE_LIMIT_PER_SECOND=${GATEWAY_AUTH_RATE_LIMIT_PER_SECOND:-5}
+      - GATEWAY_STATIC_RATE_LIMIT_PER_SECOND=${GATEWAY_STATIC_RATE_LIMIT_PER_SECOND:-500}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
       # The origins whose pages may call the API from a browser (#712). The
       # gateway answers their preflights and names them in its responses;
