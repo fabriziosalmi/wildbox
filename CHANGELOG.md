@@ -717,6 +717,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vulnerability, so the list was always empty; and the `file` of an
   attachment would have been a `/media/` URL, which nothing serves. The
   route answers 404 and its serializer is gone. The table stays, unused.
+- **`open-security-data/scripts/init_feeds.py`, and the source types `http`,
+  `https`, `json`, `csv`, `txt`, `rss` and `atom`** (#665, #755). The
+  script was a second list of default sources, of types no collector was
+  registered for; nothing ran it. The seven types were registered to the
+  two base classes of the collectors, which have no `parse_item` and
+  cannot be instantiated: a source of one of them never collected
+  anything. Default sources that cannot be collected as they are were
+  left out of the one remaining list: Malware Domain List (its feed
+  answers 403), PhishTank (404 without an application key), ThreatFox and
+  MalwareBazaar (401 without an abuse.ch key), AbuseIPDB and URLVoid
+  (offered with a placeholder for a key). Their collectors are still
+  registered, for a source that is given what its feed asks for.
 
 ### Fixed
 
@@ -1688,6 +1700,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The sensor splits a batch on a 422 and keeps it on a 5xx, and
   `tests/shared/ingest_answer_vectors.json` holds the answers for the
   tests of both services.
+- **The default threat-intelligence sources can be collected** (#665,
+  #755). `manage.py sources add-defaults` created five sources of type
+  `txt` or `json`, and `scripts/init_feeds.py` six of type `api` or
+  `feed`. The first two types were registered to a collector class that
+  cannot be instantiated and the other two to nothing, so every one of
+  the eleven failed each time the scheduler tried it, and counted as an
+  active feed meanwhile. There is one list now
+  (`open-security-data/app/collectors/defaults.py`), of sources a fresh
+  deployment can collect from as it is: Feodo Tracker, whose feed needs no
+  key. `sources add-defaults` repairs in place the "Feodo Tracker" an
+  earlier release created with a type that had no collector.
+  `sources enable` refuses a source whose type has no collector, and the
+  scheduler disables such a source when it meets one, with the reason in
+  its `last_error`.
 
 ### Changed
 
