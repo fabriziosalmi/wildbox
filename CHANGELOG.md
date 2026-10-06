@@ -156,6 +156,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unit test now reads the three compose files and fails if the sensor
   loses `cap_drop: ALL` or `no-new-privileges`, or gains a capability,
   `privileged`, the host's PID namespace or the root user.
+  Since #726 there are two such files: the sensor's development file is
+  removed.
 - **gateway: n8n is no longer reachable through the gateway** (#714).
   `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
   REST API and its webhooks, for whoever the gateway authenticated:
@@ -273,6 +275,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   start-up checks that apply to `production` only. The development
   Compose files of tools and the sensor now set
   `ENVIRONMENT=development` themselves.
+  Since #736 (below) the root Compose file requires `ENVIRONMENT` and gives
+  it no default, and the start-up checks apply to every environment but
+  `development`; since #726 the sensor has no development Compose file.
 - **guardian: pagination links no longer name the internal host, and a
   client can follow them** (#643). A list of more than one page answered
   `next` and `previous` links such as
@@ -330,6 +335,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version the registry served. It also shipped to `syslog://logs:514`, a
   host the file never defined, so nothing read its output. The service
   is removed: `docker compose logs -f` follows every container.
+  Since #726 the file itself is removed.
 - **The standalone Compose files publish on loopback and name image
   versions** (#680). An audit of all 21 tracked Compose files found no
   other socket mount and no privileged setting, but 19 ports published
@@ -343,6 +349,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `curlimages/curl:8.22.0`. The gateway's 80, 443 and 8080 in the root
   stack, and the reverse proxies of the standalone data, tools and
   scaled-sensor stacks, stay on every interface: they are entry points.
+  Since #726 the standalone data stack and the sensor's scale and
+  development files no longer exist: of these entry points, the reverse
+  proxy of the standalone tools stack is the one left.
 
 - **Image builds no longer run or download an installer that nothing
   pinned** (#657). cspm, guardian, responder, tools and the tools
@@ -365,6 +374,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--require-hashes`, drops an unpinned `pip install watchdog` that
   nothing imported, and installs the shared package, without which its
   container could not import the application.
+  Since #722 the shared package is installed without `--no-deps`, still with
+  `--no-index`; the sensor's own package keeps the three flags.
 - **The downloads in the image builds are checked against a SHA-256**
   (#657). Trivy in the tools image, osquery in the sensor image and the
   three lua-resty-http files in the gateway images were pinned by
@@ -394,6 +405,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   method, with a key that has no scope and with one holding exactly the
   scope. `scripts/check_gateway_config.py` fails for a configuration
   that authenticates without declaring `$wildbox_route_uri`.
+  Since #714 (above) the automations route is gone and no route requires
+  `tools:admin`; the scope map and the `admin` default of a route without a
+  row are as described.
 
 - **A user who left a team is no longer one of its users in guardian**
   (#676). guardian recorded a membership the first time the gateway
@@ -443,6 +457,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name them. The SLA check no longer records a notification as sent when
   its delivery failed. Unit tests define both settings and check that
   nothing reaches them; eleven mutations of the fix each fail a test.
+  Since #705 a notification that names no recipient, a compliance
+  notification included, goes to the owners and admins of the team; one that
+  still reaches nobody is recorded as not sent.
 - **The responder's connector listing no longer prints internal service
   addresses** (#654). `GET /api/v1/responder/connectors`, which any
   member of any team can call, answered each connector's `config`: the
@@ -1176,6 +1193,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **gateway: the redirect guardian answers a path without its trailing
+  slash leads to the route** (#665). For `/api/v1/guardian/assets/assets`
+  Django's `APPEND_SLASH` answers `301` with the path alone,
+  `/api/v1/assets/assets/`. The gateway rewrote a `Location` on guardian's
+  internal name and not this one, so the client was sent to a path under
+  `/api/` that no location serves and got the gateway's
+  `404 endpoint_not_found`. The guardian location now rewrites it to
+  `/api/v1/guardian/...` too. `open-security-gateway/test/redirect_tests.sh`
+  checks the three forms of `Location` against the production image, in the
+  Gateway Tests workflow.
 - **The sensor no longer loses the event it had just taken when it
   stops** (#754). Before it stops its pipeline the sensor waits for the
   events already collected to reach the sender. It decided that nothing
@@ -1700,6 +1727,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gateway would not take stopped all forwarding until a restart. A
   refused batch is now dropped and counted; a batch that failed for a
   reason that may pass (a network error, 429, 5xx) is kept and retried.
+  Since #745 a 401 or a 403 keeps the batch as an outage does, and a 413 or
+  a 422 drops only the event at fault.
 - **The sensor keeps its events while the gateway takes none** (#725).
   A batch that failed for a reason that may pass (a network error, 429,
   5xx) came back as its first 100 events, and after that one more event
@@ -1725,6 +1754,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batch twice. `events_failed` and `current_batch_size` are gone from
   that status, and `data_lake.retry_attempts` is no longer read: no
   number of attempts gives a batch up.
+  Since #745 no 4xx drops a batch: a 401, a 403 or a 404 keeps it, and an
+  answer about the payload drops only the event at fault.
 - **The sensor notices a log file rewritten with the same beginning**
   (#725). A file truncated and written past the position already read
   was recognized by its first 256 bytes only, so a file that always
@@ -2073,10 +2104,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   down, and the README and the shipped configurations call the two
   settings what they are, the thresholds of a warning. The sensor still
   measures every 5 seconds (it measured every 10 while the flag was set).
-- **The sensor's `DOCKER.md` says where its monitoring profile listens**
-  (#745). It said Prometheus and Grafana were published on all host
-  interfaces; `open-security-sensor/docker-compose.yml` binds both to
-  `127.0.0.1`, as it does the sensor's local API.
+- **The sensor's `DOCKER.md` no longer says that anything is published on
+  all host interfaces** (#745). It said so of a Prometheus and a Grafana.
+  Since #726 `open-security-sensor/docker-compose.yml` starts neither: the
+  sensor is its only service, its local API is published on
+  `127.0.0.1:8004`, and the page says where the stack's Prometheus is.
 - **guardian: a vulnerability can be recorded without a CVE, its
   creation answers with its `id`, and its record is served when its
   asset has an environment** (#724). `POST vulnerabilities/` answered
@@ -2193,6 +2225,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays 50. It was ignored: the dashboard home asked for one asset to
   read a count, and for the three newest vulnerabilities, and was sent
   fifty rows each time. `next` and `previous` keep the parameter.
+- **A firing alert has somewhere to go: the `monitoring` profile runs an
+  Alertmanager** (#658). Prometheus evaluated
+  `monitoring/alert_rules.yml`, but `monitoring/prometheus.yml` had no
+  `alerting` section and no Compose file defined an Alertmanager, so a
+  firing alert was a line on a page bound to `127.0.0.1:9090` and
+  Prometheus dropped the notification. The profile now starts
+  `prom/alertmanager:v0.34.1` next to Prometheus, on `127.0.0.1:9093`,
+  as a non-root user on a read-only root filesystem, and Prometheus
+  sends it what fires. Out of the box it still notifies nobody, and says
+  so: the shipped `monitoring/alertmanager.yml` routes every alert to a
+  receiver named `no-notifications`, and alerts are then visible in the
+  Alertmanager and Prometheus UIs only. To be notified, point
+  `ALERTMANAGER_CONFIG_FILE` at a copy of one of the two examples in
+  `monitoring/examples/` (e-mail, generic webhook). Neither holds a
+  secret, and none goes in `.env` or on a command line: the SMTP
+  password and the webhook URL are read from files in
+  `ALERTMANAGER_SECRETS_DIR`. The
+  [deployment guide](docs/guides/deployment.md#7-monitoring) has the
+  steps and a command that sends a test alert. Both services have a
+  container health check, and Alertmanager is in the table of health
+  URLs that `make health` reads (`scripts/lib/health_endpoints.sh`).
+- **Every alert rule reads a metric that exists and says what it
+  measures** (#658). `WildboxToolFailureRate` is now
+  `WildboxSyncToolFailureRate`: its counter is incremented by the api
+  process only, so it never saw a run submitted to
+  `/api/v1/tools/{tool}/async`, and its name and one-line summary did
+  not say so. The expression is unchanged. Every rule has a description
+  of what it counts and what it cannot see. Two rules watch the alerting
+  path itself, `WildboxAlertmanagerDown` and
+  `WildboxAlertNotificationsFailing`, which fires when Alertmanager
+  cannot deliver, for example because a secret file is unreadable.
+  Notifications link to `PROMETHEUS_EXTERNAL_URL` and
+  `ALERTMANAGER_EXTERNAL_URL` (`http://127.0.0.1:9090` and `:9093`)
+  instead of a container ID. CI now fails on a broken rule or
+  configuration: `scripts/check_monitoring_config.py` runs
+  `promtool check config`, `promtool test rules` on
+  `monitoring/alert_rules.test.yml` and `amtool check-config` from the
+  images the Compose file names, a unit test of the tools service
+  checks each `wildbox_*` selector against what `/metrics` really
+  serves, and the production-stack job starts the profile and checks
+  that every target is up and every metric a rule reads is exported.
+- **The documentation says what the code does** (#665). Every statement
+  about the behavior changed since 0.11.2 was checked against the code in
+  the service READMEs, the guides, the API references, the security pages,
+  the site and the machine-readable indexes, and corrected where it was
+  false: routes, scopes, headers, status codes, variables, commands and what
+  a service does not do. The CSPM service has a reference,
+  `docs/api/cspm/endpoints.md`; it documents two routes that answer `500` as
+  they are (`GET /api/v1/cspm/checks` when a check matches,
+  `GET /api/v1/cspm/scans/{id}/compliance` for a completed scan).
+  `scripts/CRITICAL_FIXES_QUICKSTART.md`, a list of urgent tasks that were
+  all done or false, is removed. `manage.py assign_guardian_team --help`
+  names the release whose upgrade needs it, 0.11.0.
 - **The data service no longer answers 200 for a telemetry batch it did not
   store** (#755). `POST /api/v1/data/ingest` answered 200 with
   `events_ingested: 0` when the commit failed with an error that was not
@@ -2849,99 +2934,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that matches nothing any more fails too. On the previous commit it
   reports 27 problems.
 
-- **A firing alert has somewhere to go: the `monitoring` profile runs an
-  Alertmanager** (#658). Prometheus evaluated
-  `monitoring/alert_rules.yml`, but `monitoring/prometheus.yml` had no
-  `alerting` section and no Compose file defined an Alertmanager, so a
-  firing alert was a line on a page bound to `127.0.0.1:9090` and
-  Prometheus dropped the notification. The profile now starts
-  `prom/alertmanager:v0.34.1` next to Prometheus, on `127.0.0.1:9093`,
-  as a non-root user on a read-only root filesystem, and Prometheus
-  sends it what fires. Out of the box it still notifies nobody, and says
-  so: the shipped `monitoring/alertmanager.yml` routes every alert to a
-  receiver named `no-notifications`, and alerts are then visible in the
-  Alertmanager and Prometheus UIs only. To be notified, point
-  `ALERTMANAGER_CONFIG_FILE` at a copy of one of the two examples in
-  `monitoring/examples/` (e-mail, generic webhook). Neither holds a
-  secret, and none goes in `.env` or on a command line: the SMTP
-  password and the webhook URL are read from files in
-  `ALERTMANAGER_SECRETS_DIR`. The
-  [deployment guide](docs/guides/deployment.md#7-monitoring) has the
-  steps and a command that sends a test alert. Both services have a
-  container health check, and Alertmanager is in the table of health
-  URLs that `make health` reads (`scripts/lib/health_endpoints.sh`).
-- **Every alert rule reads a metric that exists and says what it
-  measures** (#658). `WildboxToolFailureRate` is now
-  `WildboxSyncToolFailureRate`: its counter is incremented by the api
-  process only, so it never saw a run submitted to
-  `/api/v1/tools/{tool}/async`, and its name and one-line summary did
-  not say so. The expression is unchanged. Every rule has a description
-  of what it counts and what it cannot see. Two rules watch the alerting
-  path itself, `WildboxAlertmanagerDown` and
-  `WildboxAlertNotificationsFailing`, which fires when Alertmanager
-  cannot deliver, for example because a secret file is unreadable.
-  Notifications link to `PROMETHEUS_EXTERNAL_URL` and
-  `ALERTMANAGER_EXTERNAL_URL` (`http://127.0.0.1:9090` and `:9093`)
-  instead of a container ID. CI now fails on a broken rule or
-  configuration: `scripts/check_monitoring_config.py` runs
-  `promtool check config`, `promtool test rules` on
-  `monitoring/alert_rules.test.yml` and `amtool check-config` from the
-  images the Compose file names, a unit test of the tools service
-  checks each `wildbox_*` selector against what `/metrics` really
-  serves, and the production-stack job starts the profile and checks
-  that every target is up and every metric a rule reads is exported.
-- **The sensor's log forwarder reads the sources listed under
-  `log_sources`** (#638). The section was ignored: the configuration had
-  no such field, and the forwarder read a fixed list per platform (on
-  Linux `/var/log/syslog`, `/var/log/auth.log` and the systemd journal)
-  whatever the file said, so the web-attack-detection use case, which
-  points `log_sources` at an nginx access log, forwarded none of it. A
-  source is now a `name`, a `type` (`file`, `journald`, `windows_event`,
-  `unified_log`), for a file an absolute `path` or pattern and a `format`
-  (`syslog`, `nginx`, `apache`, `raw`), an `enabled` flag and `read_from`
-  (`end` or `beginning`). With the section, the forwarder reads exactly
-  what it lists; without it, the same per-platform defaults as before. A
-  section the sensor cannot understand (an unknown key, type or format, a
-  relative path, a repeated name, the key with no value) stops it at
-  start-up with a message naming each entry, as an unusable `data_lake`
-  does; a file that does not exist yet or cannot be read is a warning
-  naming the source, logged once, and the file is read when it can be.
-  The sources and their problems are in `GET /api/v1/components`, the
-  configured list in `GET /api/v1/config`. A source is confined to the
-  directory its path names: the forwarder reads regular files only and
-  follows no link out of that directory, so a link placed in a log
-  directory is reported and not sent. In the container no host log is
-  mounted; the sensor README and `DOCKER.md` list what the container can
-  read and how to mount a log directory. The use case's configuration
-  and quick start no longer set `logging.format: json`, which made the
-  sensor print the word `json` for every log record, or a `filters` key
-  that never existed.
-- **The sensor's log forwarder follows a file through rotation and does
-  not split, repeat or hold lines** (#638). It reopened the path every
-  second and read from a remembered size, so the lines written to a file
-  just before `logrotate` renamed it were lost, a new file longer than
-  the old position was read from the middle, a line whose end was not
-  written yet was sent as two events, and a file that had grown by a
-  gigabyte was read into memory at once. It now keeps the file open and
-  reads it to its end before opening the one that replaced it, notices a
-  file truncated in place by its size or its first bytes, reads a file
-  that appears later from its beginning, sends a line when its newline
-  is written, sends a line longer than 16 KiB once, cut and marked
-  `truncated`, turns bytes that are not UTF-8 into U+FFFD, and reads
-  64 KiB at a time, waiting for the event queue to take each line: when
-  Wildbox is unreachable it stops reading and the file is the buffer.
-  Stopping the sensor now ends a forwarder that is waiting on a full
-  queue. Positions are still kept in memory only: after a restart the
-  forwarder continues from each file's end.
-- **A batch the gateway refuses no longer blocks the sensor's later
-  batches.** The sender put a refused batch (401, 403, or a 413 or 422
-  for one it found too large or malformed) back in its buffer, so it
-  was sent again with every flush and refused again, and the events
-  collected meanwhile went out with it and were lost: one batch the
-  gateway would not take stopped all forwarding until a restart. A
-  refused batch is now dropped and counted in `events_failed`; a batch
-  that failed for a reason that may pass (a network error, 429, 5xx) is
-  still kept and retried.
 - **guardian's unit tests run on PostgreSQL too** (#724). They ran on
   in-memory SQLite only, and two modules could run nowhere else:
   `test_gateway_only_auth.py` created a table in SQLite's dialect, and

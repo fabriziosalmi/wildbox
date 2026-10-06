@@ -96,21 +96,12 @@ architecture.
 
 #### Python Dependencies
 
-✅ **DO:**
-
-```python
-fastapi==0.115.5
-pydantic==2.10.3
-requests==2.32.3
-```
-
-❌ **DON'T:**
-
-```python
-fastapi>=0.104.1
-pydantic>=2.5.0
-requests>=2.31.0
-```
+Each service has a `requirements.in` (its direct dependencies, as ranges)
+and a `requirements.txt` generated from it with `make lock`, which pins every
+package, transitive ones included, to an exact version with SHA-256 hashes.
+The images install only the lock, with `--require-hashes`. Do not edit
+`requirements.txt` by hand, and do not install anything in a Dockerfile
+outside it. See `docs/DEPENDENCY_MANAGEMENT_GUIDE.md`.
 
 **Rationale:** Pinned versions ensure reproducible builds and prevent supply chain attacks.
 
@@ -328,24 +319,23 @@ async def health_check():
         }
     }
 
-@router.get("/metrics")
-async def get_metrics():
-    """Prometheus-compatible metrics."""
-    return {
-        "requests_total": request_counter,
-        "requests_failed": error_counter,
-        "response_time_avg": avg_response_time,
-        "active_scans": len(active_scans)
-    }
 ```
+
+`/metrics` is not written per service:
+`install_observability(app, service_name=..., service_version=...)` from
+`open_security_shared.observability` adds it and serves the Prometheus
+exposition format.
 
 ### 2. Monitoring Integration
 
 **Required tools:**
 
-- **Prometheus:** Metrics collection (already configured)
-- **Grafana:** Visualization dashboards (already configured)
-- **Structured logging:** `structlog` for all Python services
+- **Prometheus and Alertmanager:** the `monitoring` Compose profile
+  (`monitoring/prometheus.yml`, `monitoring/alert_rules.yml`). There is no
+  Grafana in the stack.
+- **Logging:** the standard library's `logging` in every service; no log
+  line holds what a request carried (`open_security_shared.log_safety`,
+  `tests/scripts/test_no_request_values_in_logs.py`)
 
 ---
 
@@ -356,10 +346,9 @@ async def get_metrics():
 **Gateway-based routing is MANDATORY in production:**
 
 ```typescript
-// ✅ Correct: Uses gateway
-const client = new ApiClient(
-  useGateway ? `${GATEWAY_URL}/api/v1/identity` : 'http://localhost:8001'
-)
+// ✅ Correct: every client addresses the gateway (src/lib/api-client.ts)
+const gw = getGatewayUrl()
+export const dataClient = new ApiClient(`${gw}/api/v1/data`)
 
 // ❌ Wrong: Direct service access in production
 fetch('http://identity:8001/api/v1/auth/me')
@@ -371,16 +360,15 @@ fetch('http://identity:8001/api/v1/auth/me')
 
 ```yaml
 services:
-  llm:
-    image: ollama/ollama:0.4.7
+  gateway:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 4G
+          cpus: '1'
+          memory: 512M
         reservations:
-          cpus: '1.0'
-          memory: 2G
+          cpus: '0.25'
+          memory: 128M
 ```
 
 ---
@@ -443,40 +431,19 @@ async def create_scan(
 
 ### 1. Pre-commit Checks
 
-**Create `.pre-commit-config.yaml`:**
-
-```yaml
-repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
-    hooks:
-      - id: check-yaml
-      - id: check-added-large-files
-      - id: detect-private-key
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
-        language_version: python3.11
-
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.1.1
-    hooks:
-      - id: flake8
-        args: ['--max-line-length=100']
-```
+The repository ships `.pre-commit-config.yaml` (pre-commit-hooks, black,
+isort, flake8, detect-secrets, shellcheck and a local hook);
+`docs/PRE_COMMIT_HOOKS.md` describes it. Install with
+`pip install pre-commit && pre-commit install`. The hooks are local and
+opt-in: no workflow runs them.
 
 ### 2. GitHub Actions
 
-**Required workflows:**
-
-- ✅ `test.yml`: Run all tests on PR
-- ✅ `security-scan.yml`: Dependency and container scanning
-- ✅ `lint.yml`: Code quality checks
-- ⚠️  `integration.yml`: Currently disabled (requires environment setup)
+The workflows and their jobs are listed in `.github/workflows/README.md`. In
+short: `test.yml` (unit tests, the dashboard's smoke tests and lint, the
+Security Scanning and Code Quality jobs), `pr-validation.yml`,
+`integration-tests.yml` (the whole stack, on every pull request),
+`gateway-tests.yml` and `secret-scan.yml`.
 
 ---
 
@@ -495,16 +462,19 @@ repos:
 
 - [ ] Replace blanket `except Exception` with specific error handling
 - [ ] Remove mock data from dashboard (use real service metrics)
-- [ ] Add Prometheus metrics endpoints to all services
 - [ ] Implement retry logic with exponential backoff
+
+### Done since
+
+- [x] `/metrics` on the FastAPI services, scraped by `monitoring/prometheus.yml`
+- [x] Pre-commit configuration (local, opt-in)
+- [x] Per-team rate limit at the gateway
+- [x] Circuit breakers: gateway to identity, agents to the model provider
 
 ### Planned
 
-- [ ] Add pre-commit hooks for automated checks
 - [ ] Create Grafana dashboards for all services
 - [ ] Implement distributed tracing (OpenTelemetry)
-- [ ] Add rate limiting at gateway level
-- [ ] Implement circuit breakers for external API calls
 
 ---
 

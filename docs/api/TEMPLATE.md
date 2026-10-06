@@ -32,12 +32,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **Obtaining a Token**:
 
 ```bash
-curl -X POST http://localhost:[PORT]/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "your-password"
-  }'
+curl -s --cacert open-security-gateway/ssl/wildbox.crt \
+  -X POST https://<host>/auth/jwt/login \
+  --data-urlencode "username=user@example.com" \
+  --data-urlencode "password=your-password"
 ```
 
 ---
@@ -53,7 +51,7 @@ Retrieve a list of resources.
 **Method**: `GET`
 **Path**: `/v1/resource`
 **Authentication**: Required (Bearer Token)
-**Rate Limit**: 100 requests/minute
+**Rate Limit**: the gateway's (see [Rate Limiting](#rate-limiting)); name the service's own limit if it has one
 
 **Query Parameters**:
 
@@ -93,13 +91,12 @@ curl -X GET "http://localhost:[PORT]/v1/resource?limit=10&offset=0" \
 }
 ```
 
-**Error Response (401 Unauthorized)**:
+**Error Response (401 Unauthorized)**, answered by the gateway:
 
 ```json
 {
-  "error": "Unauthorized",
-  "message": "Invalid or missing authentication token",
-  "status": "error"
+  "error": "authentication_required",
+  "message": "Valid authentication token required"
 }
 ```
 
@@ -154,15 +151,18 @@ curl -X POST http://localhost:[PORT]/v1/resource \
 }
 ```
 
-**Error Response (400 Bad Request)**:
+**Error Response (422 Unprocessable Entity)**:
 
 ```json
 {
-  "error": "Bad Request",
-  "message": "Field 'name' is required",
-  "status": "error",
-  "validation_errors": {
-    "name": "This field is required"
+  "error": {
+    "code": 422,
+    "message": "Request validation failed",
+    "type": "ValidationError",
+    "request_id": "<request id>",
+    "details": [
+      {"type": "missing", "loc": ["body", "name"], "msg": "Field required"}
+    ]
   }
 }
 ```
@@ -284,45 +284,61 @@ The API uses standard HTTP status codes and returns error details in JSON format
 
 ### Error Response Format
 
+The FastAPI services answer the shared Wildbox error body
+(`open-security-shared/errors.py`):
+
 ```json
 {
-  "error": "Error Code",
-  "message": "Human-readable error message",
-  "status": "error",
-  "request_id": "req-12345",
-  "timestamp": "2024-11-07T10:45:00Z"
+  "error": {
+    "code": 404,
+    "message": "Resource not found",
+    "type": "HTTPException",
+    "request_id": "<request id>"
+  }
 }
 ```
+
+`error.code` is the HTTP status. A `422` carries the field errors in
+`error.details`, each with `type`, `loc` and `msg`. The gateway's own
+refusals are flat: `{"error": "<code>", "message": "..."}`.
 
 ---
 
 ## Rate Limiting
 
-API endpoints are rate limited to prevent abuse.
+The gateway applies two limits to every service; say here only what the
+service adds of its own.
 
-**Rate Limits**:
+- **Per team**, on every route the gateway authenticates:
+  `RATE_LIMIT_PER_HOUR` requests an hour (10000 by default), enforced in
+  fixed 60-second windows of one sixtieth of that (166 by default).
+- **Per client address**, before authentication:
+  `GATEWAY_RATE_LIMIT_PER_SECOND` (100 by default, burst 10), and
+  `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` (5 by default) for login,
+  registration and forgotten password.
 
-- **Standard endpoints**: 100 requests/minute per user
-- **Analysis endpoints**: 10 requests/minute per user
-- **Authentication endpoints**: 5 requests/minute per IP
-
-**Rate Limit Headers**:
+**Rate Limit Headers** (the per-team limit, for the current minute):
 
 ```yaml
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
+X-RateLimit-Limit: 166
+X-RateLimit-Remaining: 161
 X-RateLimit-Reset: 1730963100
+X-RateLimit-Policy: 10000;w=3600
 ```
 
-When rate limit is exceeded, the API returns:
+Over the per-team limit the gateway answers `429` with `Retry-After` and:
 
 ```json
 {
-  "error": "Too Many Requests",
-  "message": "Rate limit exceeded. Try again in 45 seconds.",
-  "status": "error"
+  "error": "rate_limit_exceeded",
+  "message": "Rate limit exceeded",
+  "limit_per_hour": 10000,
+  "retry_after_seconds": 45
 }
 ```
+
+Over a per-address limit the answer is nginx's own `429`, an HTML page
+without `Retry-After`.
 
 ---
 
@@ -333,12 +349,10 @@ When rate limit is exceeded, the API returns:
 **1. Login and get token**:
 
 ```bash
-TOKEN=$(curl -X POST http://localhost:[PORT]/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "password"
-  }' | jq -r '.data.token')
+TOKEN=$(curl -s --cacert open-security-gateway/ssl/wildbox.crt \
+  -X POST https://<host>/auth/jwt/login \
+  --data-urlencode "username=user@example.com" \
+  --data-urlencode "password=your-password" | jq -r .access_token)
 ```
 
 **2. Create resource**:
@@ -377,19 +391,6 @@ curl -X PUT http://localhost:[PORT]/v1/resource/resource-id \
 curl -X DELETE http://localhost:[PORT]/v1/resource/resource-id \
   -H "Authorization: Bearer $TOKEN"
 ```
-
----
-
-## SDKs and Libraries
-
-Official SDKs coming soon for:
-
-- Python
-- JavaScript/TypeScript
-- Go
-- Java
-
-Check [GitHub releases](https://github.com/fabriziosalmi/wildbox/releases) for SDK availability.
 
 ---
 

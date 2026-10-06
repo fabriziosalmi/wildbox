@@ -14,22 +14,24 @@ configured in `playwright.config.ts`:
 
 ```text
 tests/e2e/
-├── *.spec.ts                    # 18 spec files
+├── *.spec.ts                    # 20 spec files
 ├── backend.setup.ts             # Setup project for the backend specs
 ├── support/backend.ts           # Shared helpers (accounts, API calls, sessions)
 ├── fixtures/threat-intel-seed.sql
 └── page-objects/                # admin-page.ts, dashboard-page.ts, login-page.ts
 ```
 
-Frontend smoke specs (3):
+Frontend smoke specs (4):
 
 - `admin-ui-only.spec.ts`: login form, route guard redirects, form
   validation and layout, without a backend
 - `quick-login-test.spec.ts`: the login page renders and its form accepts input
 - `tool-schema.spec.ts`: unit tests of the toolbox's schema-to-form mapping
   (`src/lib/tool-schema.ts`), no page involved
+- `ai-analysis-ui.spec.ts`: the AI analysis page, with the agents service's
+  answers supplied by the test
 
-Backend specs (15): `admin-comprehensive`, `api-docs`,
+Backend specs (16): `admin-comprehensive`, `ai-analysis`, `api-docs`,
 `cloud-security-compliance`, `cloud-security-overview`, `cloud-security-scans`,
 `dashboard-home`, `login-flow`, `response`, `settings-management`,
 `signup-flow`, `team-members`, `threat-intel-lookup`, `toolbox`,
@@ -74,7 +76,8 @@ npx playwright install chromium
 npx playwright test --project=chromium \
   tests/e2e/admin-ui-only.spec.ts \
   tests/e2e/quick-login-test.spec.ts \
-  tests/e2e/tool-schema.spec.ts
+  tests/e2e/tool-schema.spec.ts \
+  tests/e2e/ai-analysis-ui.spec.ts
 ```
 
 This is what `.github/workflows/test.yml` runs, after `npm run build`.

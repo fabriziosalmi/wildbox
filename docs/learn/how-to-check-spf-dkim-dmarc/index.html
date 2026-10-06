@@ -194,10 +194,10 @@
             <div class="callout"><p><strong>Doing this for many domains, repeatedly?</strong> Checking three records by hand is fine once. Across a fleet, and after every provider change, it doesn't scale.</p></div>
 
             <h2>Automate it with Wildbox</h2>
-            <p>Wildbox is a self-hosted, open-source security platform. Its <strong>email security analyzer</strong> resolves SPF, DKIM, and DMARC for a domain in one pass, flags a permissive <code class="inline-code">+all</code> or an unenforced <code class="inline-code">p=none</code>, checks the sending IP against public DNS blocklists (DNSBL), and can run on a schedule so you catch regressions instead of discovering them from a bounce. It runs on your own infrastructure — the domains and results never leave your environment.</p>
+            <p>Wildbox is a self-hosted, open-source security platform. Its <strong>email security analyzer</strong> takes the headers of a message and, in one run, looks up the sender domain's SPF and DMARC records and the DKIM key named in the message's signature, flags a permissive <code class="inline-code">+all</code> or an unenforced <code class="inline-code">p=none</code>, and checks the sending IP and domain against public DNS blocklists (DNSBL). It runs on your own infrastructure; what leaves it are the DNS queries those lookups need.</p>
             <div class="flex flex-col sm:flex-row gap-3 mt-6 mb-2">
                 <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="btn btn-primary px-5 py-2.5 text-sm">Get Wildbox on GitHub</a>
-                <a href="/docs.html" class="btn btn-secondary px-5 py-2.5 text-sm">Read the quick start</a>
+                <a href="/guides/quickstart/" class="btn btn-secondary px-5 py-2.5 text-sm">Read the quick start</a>
             </div>
 
             <h2>FAQ</h2>

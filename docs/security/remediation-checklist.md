@@ -1,11 +1,11 @@
 # Security Remediation Checklist
 
-> **Historical document (November 2024).** It describes the code as it was then;
+> **Historical document (November 2025).** It describes the code as it was then;
 > file paths, line numbers, scores and statuses below no longer match `main`.
 > For what is true today, see the [Security status](status.md).
 
-**Last Updated**: November 7, 2024  
-**Audit Date**: November 7, 2024
+**Last Updated**: November 7, 2025  
+**Audit Date**: November 7, 2025
 
 ---
 
@@ -91,6 +91,11 @@ echo ".env" >> open-security-identity/.gitignore
 echo ".env.*" >> open-security-identity/.gitignore
 echo "!.env.example" >> open-security-identity/.gitignore
 ```
+
+> **Superseded.** History was not rewritten: the committed keys were dead, and
+> a rewrite would break every fork without un-leaking anything (the reason is
+> recorded in `.github/workflows/secret-scan.yml`). Do not run steps 3 to 5 on
+> this repository.
 
 **Step 3: Remove .env from git history (REQUIRES FORCE PUSH)**
 
@@ -362,7 +367,7 @@ docker-compose --env-file .env.production up
 
 ### [ ] 7. Remove Plaintext Password Logging
 
-**File 1**: `open-security-identity/demo.py` (line 22)
+**File 1**: `open-security-identity/demo.py` (line 22; the file has since been removed)
 
 Replace:
 

@@ -25,7 +25,7 @@ this module, so that it is implemented once:
   another team is refused as an id that does not exist.
 
 Rows without a team on a model that is not shared reference data are the
-rows written before guardian kept a team (0.8.x and earlier). No team can
+rows written before guardian kept a team (0.10.x and earlier). No team can
 reach them through the API until an operator assigns them with
 ``manage.py assign_guardian_team``; Celery work that belongs to such a row
 (a discovery rule, a report schedule, an alert rule) sees the other rows

@@ -1,6 +1,6 @@
 # Comprehensive Security Audit Report - Wildbox Security Platform
 
-> **Historical document (November 2024).** It describes the code as it was then;
+> **Historical document (November 2025).** It describes the code as it was then;
 > file paths, line numbers, scores and statuses below no longer match `main`.
 > For what is true today, see the [Security status](status.md).
 
@@ -191,7 +191,7 @@ async def analyze_ioc(request: Request, ...):
 
 **Files**:
 
-- `open-security-identity/demo.py` (Line 22)
+- `open-security-identity/demo.py` (Line 22; the file has since been removed)
 - `open-security-identity/auth.py` (Line 291)
 
 **Severity**: HIGH
@@ -615,6 +615,6 @@ Current implementation is partially aligned with:
 
 ---
 
-**Audit Date**: November 7, 2024
+**Audit Date**: November 7, 2025
 **Audit Scope**: Python FastAPI/Django services, Docker configuration, dependency files
 **Tools Used**: Manual code review, grep/pattern matching, dependency analysis

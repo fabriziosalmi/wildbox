@@ -12,7 +12,7 @@
 
 ## Why Squash Commits?
 
-### Bad Commit History (Current State)
+### Bad Commit History
 
 ```text
 fix
@@ -32,7 +32,7 @@ fix tests
 - Impossible to bisect bugs
 - Clutters `git log` output
 
-### Good Commit History (Target State)
+### Good Commit History
 
 ```yaml
 feat(identity): Add API key expiration and rotation

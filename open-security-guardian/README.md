@@ -62,6 +62,11 @@ headers and forwards trusted ones (`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
 the matching secret (403) and answers 503 when `GATEWAY_INTERNAL_SECRET` is
 unset. A request without gateway identity headers, whatever other header it
 carries, answers 403 `GATEWAY_AUTH_REQUIRED`, as the other services do.
+With `DEBUG` false Guardian first redirects plain HTTP to HTTPS
+(`SECURE_SSL_REDIRECT`; only `/health/` and
+`/internal/team-memberships/revoke/` are exempt), so a request sent straight
+to port 8013 answers `301` unless it carries `X-Forwarded-Proto: https`,
+which the gateway sends; the 403 and 503 above are what such a request gets.
 The gateway also forwards the credential's type and an API key's scopes
 (`X-Wildbox-Auth-Type`, `X-Wildbox-Scopes`), and the middleware requires the
 scope the gateway requires, again: `data:read` to read, `data:write` to
@@ -253,9 +258,10 @@ curl --cacert "$CA" -H "$AUTH" -H "Content-Type: application/json" \
 curl --cacert "$CA" -H "$AUTH" -X POST "$G/vulnerabilities/<vulnerability-uuid>/reopen/"
 ```
 
-Responses to create and update use the write serializers
-(`VulnerabilityCreateSerializer`, `VulnerabilityUpdateSerializer`), which do
-not include `id`; read the record back to get it.
+The answer to a create (`VulnerabilityCreateSerializer`) carries the new
+record's `id`. The answer to a `PUT` or `PATCH`
+(`VulnerabilityUpdateSerializer`) holds the fields an update can change,
+without `id`.
 
 The route prefixes (`guardian/urls.py`), each relative to `/api/v1/guardian/`
 through the gateway:
@@ -340,6 +346,17 @@ Settings are in `guardian/settings.py`. The root compose file passes:
   on `wildbox-redis` unless overridden by the `GUARDIAN_*` equivalents.
 - `GATEWAY_INTERNAL_SECRET`, shared with the gateway.
 - `DEBUG` (default `false`), `LOG_LEVEL`, `ALLOWED_HOSTS`.
+- `CORS_ALLOWED_ORIGINS`, on `guardian` under the production overlay only,
+  from `CORS_ORIGINS` in `.env`: the origins a browser may call guardian
+  from, separated by commas or as a JSON list, read by the gateway's rules
+  (`guardian/cors.py`). Empty or `[]` allows nobody; an entry that is not an
+  origin stops guardian at start-up. When the variable is not set at all,
+  as in the development stack, guardian allows eight local development
+  origins.
+- `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS`, on all three containers: how many
+  days a user stays one of a team's users without acting in it, 1 to 365, 30
+  when empty. Any other value stops Guardian at start-up
+  (`guardian/schedule.py`).
 - `GUARDIAN_RATE_LIMIT_USER`, on `guardian` only: see
   [Rate limit](#rate-limit).
 - `GUARDIAN_ALLOWED_INTERNAL_TARGETS`, on `guardian` and `guardian-worker`:
@@ -434,7 +451,11 @@ framework's `website`) are records: nothing fetches them.
   registry; 404 when `PROMETHEUS_ENABLED` is false.
 
 Neither route is under `/api/v1/`, so the gateway does not expose them; reach
-them on `127.0.0.1:8013` or from inside the Docker network.
+them on `127.0.0.1:8013` or from inside the Docker network. `/health/`
+answers over plain HTTP. `/metrics/` is not exempt from the HTTPS redirect:
+with `DEBUG` false send `X-Forwarded-Proto: https`
+(`curl -H 'X-Forwarded-Proto: https' http://127.0.0.1:8013/metrics/`), or the
+answer is a `301`. No Prometheus job in `monitoring/` scrapes it.
 
 ```bash
 docker compose logs -f guardian guardian-worker guardian-beat
