@@ -94,11 +94,13 @@ def parse_target_url(
     try:
         parts = urlsplit(url)
     except ValueError as exc:  # e.g. an unbalanced "[" in the netloc
-        raise ValueError(f"Invalid URL: {exc}") from exc
+        # Not urlsplit's text: it quotes the host it could not read. No
+        # error of this function repeats a part of the URL (#774).
+        raise ValueError("URL is not well formed") from exc
 
     scheme = parts.scheme.lower()
     if scheme not in {s.lower() for s in allowed_schemes}:
-        raise ValueError(f"Invalid URL scheme: {parts.scheme or '(none)'}")
+        raise ValueError("URL scheme is missing or not allowed")
 
     netloc = parts.netloc
     if not netloc:

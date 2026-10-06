@@ -216,8 +216,10 @@ def middleware_files() -> list:
 def test_the_services_have_middlewares_for_this_to_read():
     # Nine files had one when this was written. Two were modules of the
     # shared package that no service imported (security_middleware.py and
-    # idempotency.py), removed in #665.
-    assert len(middleware_files()) >= 7, middleware_files()
+    # idempotency.py), removed in #665. A third was a middleware of the
+    # tools service that its application never installed
+    # (validate_request_input in app/input_validation.py), removed in #774.
+    assert len(middleware_files()) >= 6, middleware_files()
 
 
 @pytest.mark.parametrize("path", middleware_files())

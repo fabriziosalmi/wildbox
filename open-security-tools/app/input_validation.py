@@ -1,19 +1,49 @@
-"""Input validation middleware and utilities for enhanced security."""
+"""The URL guard: which URLs a tool may be pointed at (SSRF protection).
+
+This module also held ``validate_request_input``, a middleware that ran
+every JSON body through ``InputSanitizer.sanitize_dict`` and answered 400
+with the text of the error. The application never installed it (it is not
+among the middlewares ``app.main.create_app`` adds), and nothing else called
+it, the three ``sanitize_*`` methods or their list of patterns: they are
+gone (#774). Had it been installed it would have refused every request that
+carries a URL, which its patterns match.
+"""
 
 import re
-import json
-from typing import Any, Dict, List, Union
-from fastapi import Request, HTTPException, status
+from typing import Optional
 from pydantic import AnyUrl, BaseModel
 import pydantic_core
-import logging
 
 from open_security_shared.target_policy import METADATA_HOSTNAMES, is_blocked_address
 
-from .log_safety import error_site
 from .url_guard import is_local_hostname, parse_target_url
 
-logger = logging.getLogger(__name__)
+# The refusals of the URL guard. None repeats the URL, its host or the
+# address the host resolves to: the answer goes back to the caller with the
+# field the URL was in, and the texts are also what a tool reports when it
+# checks a URL itself (#774). They are the sentences they were, less the
+# value each one quoted.
+LOCAL_HOST = "URL hostname is blocked (SSRF protection)"
+RESOLVES_INSIDE = "Hostname resolves to a blocked IP address (SSRF protection)"
+DOES_NOT_RESOLVE = (
+    "Hostname could not be resolved; refusing to connect (SSRF protection)"
+)
+BLOCKED_ADDRESS = "IP address is in a blocked range (SSRF protection)"
+URL_WALK_TOO_DEEP = "Tool input is nested too deeply to validate"
+
+
+class UrlRefused(ValueError):
+    """A URL in a tool input is refused.
+
+    ``reason`` is the text of the refusal. ``field`` is the field of the
+    input the URL was found under: the top-level one, also for a URL nested
+    in a model, a list or a dictionary below it.
+    """
+
+    def __init__(self, reason: str, field: Optional[str] = None) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.field = field
 
 
 def _pydantic_url_types() -> tuple:
@@ -43,117 +73,6 @@ class InputSanitizer:
     # is the shared target policy's, which guardian's scans use too (#748).
     BLOCKED_HOSTNAMES = METADATA_HOSTNAMES
     
-    # Dangerous patterns that should be blocked
-    DANGEROUS_PATTERNS = [
-        # SQL injection patterns
-        r"(?i)(union\s+select|drop\s+table|delete\s+from|insert\s+into)",
-        r"(?i)('|\"|;).*(-{2}|#|\/\*)",
-        
-        # XSS patterns
-        r"(?i)<script[^>]*>.*?</script>",
-        r"(?i)javascript:",
-        r"(?i)on\w+\s*=",
-        
-        # Command injection patterns
-        r"[;&|`$\(\){}]",
-        r"(?i)(wget|curl|nc|netcat|bash|sh|cmd|powershell)",
-        
-        # Path traversal patterns
-        r"\.\.[\\/]",
-        r"(?i)etc[\\/]passwd",
-        r"(?i)windows[\\/]system32",
-        
-        # File inclusion patterns
-        r"(?i)(file|http|ftp|data)://",
-        
-        # XXE patterns
-        r"(?i)<!entity",
-        r"(?i)<!doctype.*entity",
-    ]
-    
-    @classmethod
-    def sanitize_string(cls, value: str, max_length: int = 1000) -> str:
-        """Sanitize a string input."""
-        if not isinstance(value, str):
-            raise ValueError("Input must be a string")
-        
-        # Length check
-        if len(value) > max_length:
-            raise ValueError(f"Input too long (max {max_length} characters)")
-        
-        # Check for dangerous patterns
-        for pattern in cls.DANGEROUS_PATTERNS:
-            if re.search(pattern, value):
-                logger.warning(f"Blocked dangerous pattern in input: {pattern}")
-                raise ValueError("Input contains potentially dangerous content")
-        
-        # Basic HTML entity encoding for output safety
-        value = value.replace("&", "&amp;")
-        value = value.replace("<", "&lt;")
-        value = value.replace(">", "&gt;")
-        value = value.replace('"', "&quot;")
-        value = value.replace("'", "&#x27;")
-        
-        return value.strip()
-    
-    @classmethod
-    def sanitize_dict(cls, data: Dict[str, Any], max_depth: int = 5) -> Dict[str, Any]:
-        """Sanitize dictionary inputs recursively."""
-        if max_depth <= 0:
-            raise ValueError("Maximum nesting depth exceeded")
-        
-        sanitized = {}
-        for key, value in data.items():
-            # Sanitize the key
-            if not isinstance(key, str):
-                key = str(key)
-            
-            # Length limit for keys
-            if len(key) > 100:
-                raise ValueError("Key too long")
-            
-            sanitized_key = cls.sanitize_string(key, max_length=100)
-            
-            # Sanitize the value based on type
-            if isinstance(value, str):
-                sanitized[sanitized_key] = cls.sanitize_string(value)
-            elif isinstance(value, dict):
-                sanitized[sanitized_key] = cls.sanitize_dict(value, max_depth - 1)
-            elif isinstance(value, list):
-                sanitized[sanitized_key] = cls.sanitize_list(value, max_depth - 1)
-            elif isinstance(value, (int, float, bool)) or value is None:
-                sanitized[sanitized_key] = value
-            else:
-                # Convert unknown types to string and sanitize
-                sanitized[sanitized_key] = cls.sanitize_string(str(value))
-        
-        return sanitized
-    
-    @classmethod
-    def sanitize_list(cls, data: List[Any], max_depth: int = 5) -> List[Any]:
-        """Sanitize list inputs recursively."""
-        if max_depth <= 0:
-            raise ValueError("Maximum nesting depth exceeded")
-        
-        # Limit list size
-        if len(data) > 1000:
-            raise ValueError("List too large (max 1000 items)")
-        
-        sanitized = []
-        for item in data:
-            if isinstance(item, str):
-                sanitized.append(cls.sanitize_string(item))
-            elif isinstance(item, dict):
-                sanitized.append(cls.sanitize_dict(item, max_depth - 1))
-            elif isinstance(item, list):
-                sanitized.append(cls.sanitize_list(item, max_depth - 1))
-            elif isinstance(item, (int, float, bool)) or item is None:
-                sanitized.append(item)
-            else:
-                sanitized.append(cls.sanitize_string(str(item)))
-        
-        return sanitized
-
     @classmethod
     def validate_url(cls, url: str) -> str:
         """Validate a URL that a tool will connect to. Blocks SSRF attempts.
@@ -172,7 +91,7 @@ class InputSanitizer:
         target = parse_target_url(url)
 
         if is_local_hostname(target.host) or target.host in cls.BLOCKED_HOSTNAMES:
-            raise ValueError(f"URL hostname '{target.host}' is blocked (SSRF protection)")
+            raise ValueError(LOCAL_HOST)
 
         # Resolve hostname to IP and validate
         cls._validate_ip_not_private(target.host)
@@ -238,20 +157,36 @@ class InputSanitizer:
           or an indicator sent to a third-party API may legitimately contain
           a URL that nobody fetches.
         """
-        cls._walk_request_urls(input_obj, url_named=False, depth=0, seen=set())
+        cls._walk_request_urls(
+            input_obj, url_named=False, depth=0, seen=set(), field=None
+        )
 
     @classmethod
-    def _walk_request_urls(cls, value, *, url_named: bool, depth: int, seen: set) -> None:
+    def _refuse_url(cls, url: str, field: Optional[str]) -> None:
+        """validate_url, with the field the URL is under in what it raises."""
+        try:
+            cls.validate_url(url)
+        except UrlRefused:
+            raise
+        except ValueError as exc:
+            # The texts are this module's and the URL parser's own: fixed
+            # sentences about the URL's structure, none with the URL in it.
+            raise UrlRefused(str(exc), field) from exc
+
+    @classmethod
+    def _walk_request_urls(
+        cls, value, *, url_named: bool, depth: int, seen: set, field: Optional[str]
+    ) -> None:
         if depth > cls.URL_WALK_MAX_DEPTH:
-            raise ValueError("Tool input is nested too deeply to validate")
+            raise ValueError(URL_WALK_TOO_DEEP)
 
         if isinstance(value, _PYDANTIC_URL_TYPES):
-            cls.validate_url(str(value))
+            cls._refuse_url(str(value), field)
             return
 
         if isinstance(value, str):
             if url_named and re.match(r'^https?://', value.strip(), re.IGNORECASE):
-                cls.validate_url(value)
+                cls._refuse_url(value, field)
             return
 
         if value is None or isinstance(value, (bool, int, float, bytes)):
@@ -267,17 +202,28 @@ class InputSanitizer:
             fields = dict(value)  # declared fields, then extra ones
             for name, item in fields.items():
                 cls._walk_request_urls(
-                    item, url_named=cls.is_url_field_name(name), depth=depth + 1, seen=seen
+                    item,
+                    url_named=cls.is_url_field_name(name),
+                    depth=depth + 1,
+                    seen=seen,
+                    # The field of the input itself: what is below it keeps it.
+                    field=name if field is None and isinstance(name, str) else field,
                 )
         elif isinstance(value, dict):
             for key, item in value.items():
                 cls._walk_request_urls(
-                    item, url_named=cls.is_url_field_name(key), depth=depth + 1, seen=seen
+                    item,
+                    url_named=cls.is_url_field_name(key),
+                    depth=depth + 1,
+                    seen=seen,
+                    field=key if field is None and isinstance(key, str) else field,
                 )
         elif isinstance(value, (list, tuple, set, frozenset)):
             # The items of a list carry the name of the field that holds it.
             for item in value:
-                cls._walk_request_urls(item, url_named=url_named, depth=depth + 1, seen=seen)
+                cls._walk_request_urls(
+                    item, url_named=url_named, depth=depth + 1, seen=seen, field=field
+                )
 
     @classmethod
     def validate_ip(cls, ip_str: str) -> str:
@@ -307,9 +253,7 @@ class InputSanitizer:
                 for family, _type, _proto, _canonname, sockaddr in resolved:
                     addr = ipaddress.ip_address(sockaddr[0])
                     if cls._is_blocked_ip(addr):
-                        raise ValueError(
-                            f"Hostname '{host}' resolves to blocked IP {addr} (SSRF protection)"
-                        )
+                        raise ValueError(RESOLVES_INSIDE)
                 return
             except socket.gaierror as exc:
                 # Fail CLOSED. This used to return (allow) on the reasoning that
@@ -318,13 +262,10 @@ class InputSanitizer:
                 # buys nothing and hands an attacker who controls a nameserver a
                 # trivial bypass: answer SERVFAIL for the validation lookup and
                 # 127.0.0.1 for the request moments later (WILDBO-INPT-02).
-                raise ValueError(
-                    f"Hostname '{host}' could not be resolved; refusing to connect "
-                    "(SSRF protection)"
-                ) from exc
+                raise ValueError(DOES_NOT_RESOLVE) from exc
 
         if cls._is_blocked_ip(addr):
-            raise ValueError(f"IP address {addr} is in a blocked range (SSRF protection)")
+            raise ValueError(BLOCKED_ADDRESS)
 
     @staticmethod
     def _is_blocked_ip(addr) -> bool:
@@ -367,56 +308,6 @@ class InputSanitizer:
             raise ValueError("Filename too long")
         
         return filename
-
-
-async def validate_request_input(request: Request, call_next):
-    """Middleware to validate and sanitize request inputs."""
-    try:
-        # Get request body if it exists
-        if request.method in ["POST", "PUT", "PATCH"]:
-            content_type = request.headers.get("content-type", "")
-            
-            if "application/json" in content_type:
-                # Read and parse JSON body
-                body = await request.body()
-                if body:
-                    try:
-                        json_data = json.loads(body)
-                        # Sanitize JSON data
-                        if isinstance(json_data, dict):
-                            sanitized_data = InputSanitizer.sanitize_dict(json_data)
-                        elif isinstance(json_data, list):
-                            sanitized_data = InputSanitizer.sanitize_list(json_data)
-                        else:
-                            sanitized_data = json_data
-                        
-                        # Store sanitized data for use in the endpoint
-                        request.state.sanitized_json = sanitized_data
-                        
-                    except json.JSONDecodeError:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Invalid JSON format"
-                        )
-                    except ValueError as e:
-                        logger.warning(f"Input validation failed: {error_site(e)}")
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Input validation failed: {str(e)}"
-                        )
-        
-        # Continue processing
-        response = await call_next(request)
-        return response
-        
-    except HTTPException:
-        raise
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Input validation middleware error: {error_site(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error during input validation"
-        )
 
 
 # ---------------------------------------------------------------------------

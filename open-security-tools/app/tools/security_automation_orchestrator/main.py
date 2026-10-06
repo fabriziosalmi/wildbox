@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from ...execution_manager import tool_acts_for_caller
 from ...log_safety import error_site
-from ...target_policy import TargetRefused, enforce_target_policy
+from ...target_policy import TargetRefused, enforce_target_policy, refusal_summary
 from ...tool_loader import find_schema_classes
 from .schemas import (
     AutomationWorkflowInput,
@@ -346,7 +346,9 @@ class SecurityAutomationOrchestrator:
             try:
                 await asyncio.to_thread(enforce_target_policy, tool_name, tool_input)
             except TargetRefused as e:
-                raise HTTPException(status_code=400, detail=f"Blocked target: {e}")
+                raise HTTPException(
+                    status_code=400, detail=f"Blocked target: {refusal_summary(e)}"
+                )
 
             result = execute_func(tool_input)
             if inspect.isawaitable(result):

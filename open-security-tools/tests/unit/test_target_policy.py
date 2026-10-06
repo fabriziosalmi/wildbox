@@ -526,9 +526,14 @@ def test_a_range_with_an_internal_address_is_refused(value):
         check_value(TargetKind.IP_OR_CIDR, value, NO_ALLOWLIST)
 
 
-def test_the_refusal_names_the_first_internal_address_of_a_range():
-    with pytest.raises(TargetRefused, match=r"includes 192\.0\.0\.0"):
+def test_the_refusal_keeps_the_first_internal_address_of_a_range_as_data():
+    """For the code that catches it. The text has neither the range nor the
+    address: it named both until #774."""
+    with pytest.raises(TargetRefused, match="range includes a private") as refused:
         check_value(TargetKind.IP_OR_CIDR, "192.0.0.0/22", NO_ALLOWLIST)
+
+    assert refused.value.address == ipaddress.ip_address("192.0.0.0")
+    assert "192.0" not in str(refused.value)
 
 
 @pytest.mark.parametrize(
@@ -817,7 +822,10 @@ def test_a_name_resolving_partly_outside_the_allowlist_is_refused(resolver):
     [
         ("10.20.0.0/22", True),
         ("10.20.255.0/24", True),
-        ("10.19.255.0/23", False),  # overlaps the allowlist, half of it outside
+        # 10.19.254.0-10.19.255.255: it ends where the allowed /16 begins and
+        # has no address in it. (No range within the limit can lie half in a
+        # /16: the next test has a list that a range does straddle.)
+        ("10.19.255.0/23", False),
         ("10.20.0.1-200", True),
     ],
 )
@@ -826,22 +834,25 @@ def test_a_range_must_be_covered_by_the_allowlist(value, allowed):
     if allowed:
         check_value(kind, value, LAB)
     else:
-        with pytest.raises(TargetRefused, match="10.19.254.0"):
+        with pytest.raises(TargetRefused) as refused:
             check_value(kind, value, LAB)
+        assert refused.value.address == ipaddress.ip_address("10.19.254.0")
 
 
 def test_every_address_of_a_range_is_checked():
     narrow = parse_allowlist("10.20.0.0/24")
     # The first address is allowed, the second half of the range is not.
-    with pytest.raises(TargetRefused, match="includes 10.20.1.0"):
+    with pytest.raises(TargetRefused) as refused:
         check_value(TargetKind.IP_OR_CIDR, "10.20.0.0/23", narrow)
+    assert refused.value.address == ipaddress.ip_address("10.20.1.0")
     # The last address of a short range is the only one outside.
     almost = parse_allowlist(
         "10.20.0.0/25,10.20.0.128/26,10.20.0.192/27,10.20.0.224/28"
     )
     check_value(TargetKind.NETWORK, "10.20.0.230-239", almost)
-    with pytest.raises(TargetRefused, match="includes 10.20.0.240"):
+    with pytest.raises(TargetRefused) as refused:
         check_value(TargetKind.NETWORK, "10.20.0.230-240", almost)
+    assert refused.value.address == ipaddress.ip_address("10.20.0.240")
 
 
 def test_the_allowlist_does_not_lift_the_range_limit():
@@ -1013,7 +1024,15 @@ def test_the_sync_endpoint_refuses_before_the_tool_runs(
     response = http.post(path, json={"target": target, "ports": [6379]})
 
     assert response.status_code == 400, response.text
-    assert "network target policy" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert "network target policy" in detail["reason"]
+    # The field that held the target, where a 422 names its fields; the
+    # target itself is nowhere in the answer (#774).
+    (error,) = detail["errors"]
+    assert error["loc"] == ["target"]
+    assert error["msg"] == detail["reason"]
+    assert error["type"] == "target_internal"
+    assert target not in response.text
     assert calls == []
 
 
@@ -1109,6 +1128,9 @@ def test_an_orchestrated_step_aimed_inside_is_refused(
     assert result.status == "failed"
     assert "Blocked target" in result.error_message
     assert "network target policy" in result.error_message
+    # The step's parameter that held the target, and not the target (#774).
+    assert result.error_message.endswith("(target: target_internal)")
+    assert target not in result.error_message
     assert orchestrator_spy == []
 
 

@@ -9,15 +9,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **tools calls a tool that fails once** (#774). Two layers called it
+  again. With `SECURITY_CONTROLS_ENABLED` and outside strict mode, the
+  security layer called the tool inside the handler meant for a failed
+  check, so a `ValueError`, `KeyError`, `TypeError`, `ConnectionError` or
+  `TimeoutError` of the tool's own was taken for one and the tool was
+  called a second time, "without security": two scans of the target, and
+  the caller read the outcome of the second call, `completed` included,
+  with no trace of the first. On the asynchronous path the task caught
+  those five classes only: any other error of a tool (a `RuntimeError`,
+  an error of an HTTP client) was raised to Celery, whose retry policy
+  called the tool twice more. A tool is now called once on both paths and
+  in both modes, and what it raises is reported as its own failure: `500`
+  (`Tool execution failed`) on the synchronous route, and a task that
+  reads `failed` with `Tool execution failed (<class>)`. A task is still
+  retried when it fails before its tool is called (Redis does not answer
+  for a cancellation or an allowance), which is not a second run. What a
+  failed check does is unchanged and now documented in the tools README:
+  in strict mode the tool is not called; outside it the failure is logged
+  as an error that says the tool runs without that check.
+- **tools does not repeat a refused target in its answer** (#774). The
+  refusals of the network target policy and of the URL guard quoted what
+  they refused (`Target '10.0.0.5' is a private ... address`, `Hostname
+  'x' resolves to blocked IP ...`, `Invalid URL scheme: ...`), in the
+  `400` of a run and of a submission, in the result of a task, which
+  Redis keeps for an hour, in the error of a workflow step and in the
+  field errors of a `422`. identity and agents stopped repeating refused
+  values in #722 and #735. A refusal now says what kind it is and, for an
+  internal target, names `TOOLS_ALLOWED_INTERNAL_TARGETS`; the field that
+  held the target is in `error.details.errors` (`loc`, `msg`, `type`),
+  where a `422` has its own. The statuses and `error.message` being a
+  sentence are unchanged; `error.details` is new on this `400`.
+- **A failed asynchronous tools task keeps no text of what failed it**
+  (#774). Celery stores the exception of a failed task and its traceback
+  with the result, for an hour, and the worker logs both for the failure
+  and for each retry before it: a validator that quotes the value it
+  refuses, or the address of the Redis that did not answer, was in all of
+  them. #755 covered the errors the task expected. Whatever a tool raises
+  is now stored and logged by class and line, like those; a task that
+  fails before its tool is called raises `TaskFailed` with the class and
+  the line of what failed it, in place of the exception. The task's owner
+  still reads `Task execution failed (<the class that failed it>)`.
+- **tools' `SecurityValidator` decides which address is internal with the
+  shared target policy** (#774). It decided with an expression of its own
+  beside `open_security_shared.target_policy`, and the two had drifted:
+  it accepted the reserved IPv6 space and an internal IPv4 address behind
+  the NAT64 prefix (`64:ff9b::a9fe:a9fe`). The URL guard, which runs
+  before any tool, already refused both, so nothing was reachable through
+  it. Compared over the shared vector file and 720,000 generated
+  addresses, nothing the old expression refused is accepted now.
+
+### Fixed
+
+- **tools refuses an address or a range written with an IPv6 zone id**
+  (#774). `fe80::1%eth0` was read as the same address without the zone,
+  and a range likewise, in the fields that take an address or a range
+  (`dns_servers`, `ip_range`, `network`); the fields that take a host
+  refused it, and so does guardian. It answers `400` now. The shared
+  vector file has the case. An entry of
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` or `GUARDIAN_ALLOWED_INTERNAL_TARGETS`
+  written with a zone is still read without it, in both services.
+- **tools no longer carries a request middleware nothing installed**
+  (#774). `validate_request_input` answered `400` with the text of an
+  error and would have refused every body that holds a URL; the
+  application never added it. It is removed with the three `sanitize_*`
+  methods and the pattern list only it used.
 - **guardian's log of a discovery that could not be queued names the
   error, not its text** (#788). When the broker did not take a network's
   scan, the rule's result said so in guardian's own words (#775), and the
   line in `guardian-worker`'s log beside it held the exception's text,
   which names the broker and its address and may hold the URL it was
   given. The line now names the network and the class of the error.
-
-### Fixed
-
 - **Every redirect the gateway writes keeps the client on the port it
   called** (#788). 0.12.1 fixed this for guardian's location (#776).
   The `301` nginx writes for the eight other proxied prefixes asked

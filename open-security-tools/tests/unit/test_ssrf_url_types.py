@@ -291,7 +291,14 @@ def test_sync_endpoint_refuses_before_the_tool_runs(resolver, client, probe_tool
     response = http.post(path, json=body)
 
     assert response.status_code == 400, response.text
-    assert "SSRF" in response.json()["detail"] or "blocked" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert "SSRF" in detail["reason"]
+    # The field of the input the URL is under, also for a URL in a list of
+    # models below it; the URL is not repeated (#774).
+    (error,) = detail["errors"]
+    assert error["loc"] == [next(reversed(body))]
+    assert error["type"] == "url_refused"
+    assert "169.254" not in response.text and "::1" not in response.text
     assert calls == []
 
 
