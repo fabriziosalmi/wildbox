@@ -34,6 +34,27 @@ PRODUCTION = "docker-compose.prod.yml"
 DEVELOPMENT = "docker-compose.dev.yml"
 
 REQUIRED = re.compile(r"^\$\{ENVIRONMENT:\?[^}]+\}$")
+# The services whose code reads ENVIRONMENT. The base file gave it to
+# eighteen: the dashboard, PostgreSQL and n8n read none and no longer get it
+# (#665). A service that is given a variable it does not read is refused by
+# test_compose_variables_are_read.py, so this is a floor, not a census.
+READS_ENVIRONMENT = {
+    "identity",
+    "api",
+    "tools-worker",
+    "tools-flower",
+    "data",
+    "data-scheduler",
+    "guardian",
+    "guardian-worker",
+    "guardian-beat",
+    "responder",
+    "cspm",
+    "cspm-worker",
+    "agents",
+    "sensor",
+}
+READS_NONE = {"dashboard", "postgres", "automations"}
 DEFAULTED = re.compile(r"\$\{ENVIRONMENT:?-")
 
 
@@ -95,7 +116,8 @@ def _load(relative: str, name: str):
 
 def test_the_base_file_requires_the_variable_of_every_service_it_gives_it_to():
     values = environments(BASE)
-    assert len(values) == 18, sorted(values)
+    assert READS_ENVIRONMENT <= set(values), sorted(values)
+    assert not READS_NONE & set(values), sorted(values)
     for service, value in values.items():
         assert REQUIRED.match(value), (service, value)
 
@@ -221,7 +243,8 @@ def test_the_rendered_production_stack_is_production_whatever_the_env_file_says(
         for name, service in services.items()
         if "ENVIRONMENT" in (service.get("environment") or {})
     }
-    assert len(rendered) == 18, sorted(rendered)
+    assert READS_ENVIRONMENT <= set(rendered), sorted(rendered)
+    assert not READS_NONE & set(rendered), sorted(rendered)
     assert set(rendered.values()) == {"production"}, rendered
 
 

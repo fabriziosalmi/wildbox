@@ -53,10 +53,11 @@ READ_BY_THE_RUNTIME = {
     "TZ": "the C library",
 }
 
-# Found by this test and not fixed here: variables a Compose file passes that
-# the service's code does not read. They are left for the cross-service
-# cleanup (#665). An entry that no longer applies fails the test, so the
-# list cannot outlive what it lists; a new unread variable fails it too.
+# Variables a Compose file passes that the service's code does not read. The
+# cross-service cleanup (#665) removed every one but the gateway's, which
+# #756 settles with the gateway's other settings. An entry that no longer
+# applies fails the test, so the list cannot outlive what it lists; a new
+# unread variable fails it too.
 KNOWN_UNREAD = {
     "docker-compose.yml": {
         "gateway": {
@@ -65,37 +66,9 @@ KNOWN_UNREAD = {
             "NGINX_ENVSUBST_OUTPUT_DIR",
             "WILDBOX_ENV",
         },
-        "dashboard": {
-            "ENVIRONMENT",
-            "NEXT_PUBLIC_DEBUG",
-            "NEXTAUTH_SECRET",
-            "NEXTAUTH_URL",
-        },
-        "guardian": {"LOG_FILE"},
-        "sensor": {"LOG_LEVEL"},
     },
     "docker-compose.prod.yml": {
         "gateway": {"ENVIRONMENT", "LOG_LEVEL"},
-        # The overlay sets production on every service the base file gives
-        # the variable to (#736); the dashboard is one, and reads none.
-        "dashboard": {"ENVIRONMENT"},
-        # The origins guardian allows are a list written in its settings: the
-        # overlay's value changes nothing.
-        "guardian": {"CORS_ALLOWED_ORIGINS"},
-        "identity": {"LOG_LEVEL", "REDIS_PASSWORD"},
-        "responder": {"WORKER_CONCURRENCY"},
-        "agents": {"WORKER_CONCURRENCY", "CELERY_WORKER_PREFETCH_MULTIPLIER"},
-    },
-    "docker-compose.dev.yml": {
-        "dashboard": {
-            "NEXT_PUBLIC_API_BASE_URL",
-            "NEXT_PUBLIC_IDENTITY_API_URL",
-            "NEXT_PUBLIC_GUARDIAN_API_URL",
-            "NEXT_PUBLIC_RESPONDER_API_URL",
-            "NEXT_PUBLIC_AGENTS_API_URL",
-            "NEXTAUTH_SECRET",
-            "NEXTAUTH_URL",
-        },
     },
 }
 

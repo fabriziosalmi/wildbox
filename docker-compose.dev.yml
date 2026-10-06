@@ -72,16 +72,10 @@ services:
       - "127.0.0.1:3000:3000"
       - "127.0.0.1:3001:3001"  # For Next.js HMR
     environment:
+      # The per-service NEXT_PUBLIC_*_API_URL and NEXTAUTH_* variables that
+      # used to follow are read by nothing: the dashboard calls the gateway
+      # (#559, #665).
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_BASE_URL=http://open-security-tools:8000
-      # EXCLUDED v1.0: - NEXT_PUBLIC_DATA_API_URL=http://open-security-data:8002
-      - NEXT_PUBLIC_IDENTITY_API_URL=http://open-security-identity:8001
-      - NEXT_PUBLIC_GUARDIAN_API_URL=http://open-security-guardian:8013
-      # EXCLUDED v1.0: - NEXT_PUBLIC_SENSOR_API_URL=http://open-security-sensor:8004
-      - NEXT_PUBLIC_RESPONDER_API_URL=http://open-security-responder:8018
-      - NEXT_PUBLIC_AGENTS_API_URL=http://open-security-agents:8006
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
-      - NEXTAUTH_URL=http://localhost:3000
     # No `volumes:` here: docker-compose.yml already bind-mounts src/ and
     # public/. Mounting the whole checkout over /app made next dev fail with
     # EACCES on next-env.d.ts unless the checkout was owned by uid 1001.

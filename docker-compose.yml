@@ -480,11 +480,12 @@ services:
       - ./open-security-dashboard/src:/app/src
       - ./open-security-dashboard/public:/app/public
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
+      # No ENVIRONMENT, NEXT_PUBLIC_DEBUG or NEXTAUTH_* here: the dashboard
+      # reads none of them (#665). Its sessions are identity's tokens; it
+      # has no NextAuth.
       # This stack runs the Next.js dev server (Dockerfile.dev -> next dev),
       # so NODE_ENV must be development; production here breaks dev-mode CSP/HMR.
       - NODE_ENV=${NODE_ENV:-development}
-      - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-false}
       - NEXT_PUBLIC_USE_GATEWAY=true
       # Empty by default: the browser opens the dashboard through the gateway
       # (https://localhost) and calls the API on that same origin, whatever
@@ -496,8 +497,6 @@ services:
       - NEXT_PUBLIC_GATEWAY_URL=${NEXT_PUBLIC_GATEWAY_URL:-}
       # Internal URLs for server-side requests within Docker network
       - INTERNAL_GATEWAY_URL=http://open-security-gateway:8080
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXTAUTH_URL=http://localhost:3000
     networks:
       wildbox:
         aliases:
@@ -522,7 +521,6 @@ services:
     container_name: wildbox-postgres
     restart: unless-stopped
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-identity}
@@ -648,8 +646,10 @@ services:
       - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
       - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
       - DEBUG=${DEBUG:-false}
+      # No LOG_FILE: guardian logs to the console only (guardian/settings.py),
+      # and the guardian_logs volume that was mounted for it stayed empty
+      # (#665).
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - LOG_FILE=/app/logs/guardian.log
       - ALLOWED_HOSTS=localhost,127.0.0.1,open-security-guardian
       # How many days a user stays one of a team's users without acting in
       # it, 1 to 365, default 30 (#676). The same value on guardian,
@@ -664,7 +664,6 @@ services:
       # and beat do not need it.
       - GUARDIAN_RATE_LIMIT_USER=${GUARDIAN_RATE_LIMIT_USER:-}
     volumes:
-      - guardian_logs:/app/logs
       # Generated reports: guardian-worker writes them, guardian serves
       # their downloads (#548).
       - guardian_media:/app/media
@@ -1190,8 +1189,8 @@ services:
       # each recreation would appear as a new sensor.
       - SENSOR_DATA_LAKE_SENSOR_ID=${SENSOR_DATA_LAKE_SENSOR_ID:-open-security-sensor}
       - PYTHONPATH=/app
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # No DEBUG or LOG_LEVEL: the sensor reads neither. Its log level is
+      # SENSOR_LOGGING_LEVEL above (#665).
     volumes:
       - ./open-security-sensor/config.yaml.example:/etc/security-sensor/config.yaml:ro
       - sensor_logs:/var/log/security-sensor
@@ -1250,7 +1249,6 @@ services:
       # name. Matches tools-flower (also 127.0.0.1).
       - "127.0.0.1:5678:5678"
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:?set it in .env to production, or to development for a development stack}
       # No N8N_BASIC_AUTH_*: n8n 1.x has no basic auth and ignores them
       # (#714). The editor is protected by the owner account created on
       # first start.
@@ -1477,7 +1475,6 @@ volumes:
   prometheus_data:
   alertmanager_data:
   wildbox_redis_data:
-  guardian_logs:
   guardian_media:
   # Service-specific volumes
   sensor_logs:
