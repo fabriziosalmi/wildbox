@@ -4,6 +4,11 @@
 class of the exception (``"error": "ValueError"``): a fact about the
 service's internals for whoever asks. The cause is in the log, with its
 traceback; the body has the status and a fixed word.
+
+These tests asserted 200 next to ``unhealthy``, and ``degraded`` for a
+connection error, which is what the route answered. It answers 503 with
+``unhealthy`` for both now (#766, test_health_status.py); what they are
+here for has not changed: nothing of the cause is in the body.
 """
 
 import logging
@@ -45,7 +50,7 @@ def test_a_failed_check_is_a_status_and_not_an_exception_class(
     with caplog.at_level(logging.ERROR):
         response = client.get("/health")
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 503, response.text
     body = response.json()
     assert body["status"] == "unhealthy"
     assert body["checks"] == {"api": "unhealthy", "error": "Health check failed"}
@@ -57,7 +62,7 @@ def test_a_failed_check_is_a_status_and_not_an_exception_class(
     assert any(record.exc_info for record in caplog.records)
 
 
-def test_a_dependency_that_cannot_be_reached_is_degraded_without_its_address(
+def test_a_dependency_that_cannot_be_reached_is_unhealthy_without_its_address(
     client, monkeypatch, caplog
 ):
     monkeypatch.setattr(main, "redis_client", Raises(ConnectionError(MARKER)))
@@ -65,11 +70,12 @@ def test_a_dependency_that_cannot_be_reached_is_degraded_without_its_address(
     with caplog.at_level(logging.ERROR):
         response = client.get("/health")
 
-    assert response.status_code == 200, response.text
-    assert response.json()["status"] == "degraded"
+    assert response.status_code == 503, response.text
+    assert response.json()["status"] == "unhealthy"
     assert response.json()["checks"] == {
-        "api": "degraded",
-        "error": "Service connection issue",
+        "redis": "unhealthy",
+        "celery": "unknown",
+        "api": "healthy",
     }
     assert MARKER not in response.text
     assert "ConnectionError" not in response.text

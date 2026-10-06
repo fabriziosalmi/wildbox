@@ -1203,6 +1203,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/api/v1/guardian/...` too. `open-security-gateway/test/redirect_tests.sh`
   checks the three forms of `Location` against the production image, in the
   Gateway Tests workflow.
+- **cspm's check catalog and per-scan compliance report answer, instead
+  of 500** (#766). `GET /api/v1/cspm/checks` answered 500
+  (`Failed to list checks`) as soon as one check matched: its response
+  model requires `remediation` of every check, and the catalog the runner
+  returned left it out, with `references`. Every check declares both; the
+  catalog now carries them, so the route lists the 22 checks with their
+  own remediation text, the one a result of the check carries. The
+  `provider` filter compares without regard to case, like `category` and
+  `severity`, and a value that matches no check gives an empty list: a
+  provider other than `aws`, `gcp` and `azure` answered 500.
+  `GET /api/v1/cspm/scans/{id}/compliance` answered 500
+  (`Failed to generate compliance report`) for every completed scan: the
+  handler gave a datetime to `generated_at`, declared a string, which
+  pydantic does not convert. The field is a datetime, written in UTC
+  without an offset like the service's other times. No test called
+  either route: a test now takes every route from the application, sends
+  it a request on scans the API and the worker's own task made, and
+  validates the answer against the model the route declares. A route
+  added without a request, or without a model, fails it.
+- **A report names the scan it belongs to** (#766). The runner gave each
+  report an id of its own making, so `GET /api/v1/cspm/scans/{id}/report`
+  answered a `scan_id` other than the one asked for, and every entry of
+  `GET /api/v1/cspm/compliance/findings` carried that id in `scan_id` and
+  `finding_id`: an id no route knows. Found by the test above; the tests
+  that read reports had written them by hand, with the right id. The
+  worker gives the runner the scan's id, and a report stored earlier is
+  read with the id of the scan it is stored under.
+- **cspm cancels only a scan that is still in progress** (#766).
+  `DELETE /api/v1/cspm/scans/{id}` revoked the task and recorded
+  `cancelled` whatever the scan's state: a completed scan then read
+  `cancelled`, with no completion time, while its report still read
+  `completed` and kept counting in the team's summaries, and a failed
+  scan lost its failure the same way. A scan that already completed,
+  failed or was canceled now answers 409 and is left as it is; so does
+  one the worker finishes while the cancellation is on its way, which
+  used to be overwritten with what the route had read before. And a scan
+  canceled before a worker took it is not run: Celery keeps a revocation
+  in the memory of the workers that received it, so with no worker up,
+  or after a worker restart, the queued task was delivered all the same
+  and the account was scanned after `Scan cancelled successfully`. The
+  worker now reads the scan's stored status before it opens a session,
+  and the route deletes the scan's encrypted credentials from Redis
+  instead of leaving them the rest of their five minutes.
+- **cspm answers 503 when Redis cannot be reached, and `/health` says
+  with its status what it says in its body** (#766). The routes caught
+  the builtin `ConnectionError` and `TimeoutError`; the Redis client
+  raises `redis.exceptions.ConnectionError` and `TimeoutError`, and
+  Celery raises its own `OperationalError`, none of which derives from
+  them. With Redis down every route answered 500, `POST /scans`
+  included, whose own 503 could not fire, and the scan status route had
+  a clause that answered a connection error with 404 `Scan not found`.
+  One handler answers them now for every route: 503 in the shared error
+  body, `Scan store or task queue temporarily unavailable`, with the
+  cause in the log. `GET /health` answered 200 with
+  `"status": "unhealthy"`, so the Compose health check, `make health`
+  and `scripts/wait-for-services.sh`, which read the code, took a failed
+  check for a healthy service; with Redis down it answered 500 in the
+  error body. It answers 503 with its own body when it is `unhealthy`:
+  Redis cannot be reached, or the check itself failed. It stays 200 for
+  `degraded`, which is Redis answering and no worker answering, so the
+  API container does not read unhealthy while its worker starts. With
+  Redis down the workers are not asked (`"celery": "unknown"`): asking
+  held the probe for the six seconds the broker client retries.
+- **An integration test no longer fails on a correct answer once in two
+  hundred runs** (#766). `test_responder_guardian_actions.py` asserted
+  that `301` appeared nowhere in a run's error, which names the asset
+  twice by its random id: about one id in two hundred holds `301`. It
+  looks for the status where the connector writes it, `answered 404`
+  and not `answered 301`.
 - **The sensor no longer loses the event it had just taken when it
   stops** (#754). Before it stops its pipeline the sensor waits for the
   events already collected to reach the sender. It decided that nothing

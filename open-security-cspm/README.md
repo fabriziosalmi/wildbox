@@ -71,12 +71,10 @@ There are 22 AWS checks, one class per file under `app/checks/aws/`:
 | SQS | `AWS_SQS_001` queue encryption |
 | VPC | `AWS_VPC_001` flow logs, `AWS_VPC_002` default security group, `AWS_VPC_003` security groups open to the internet |
 
-`GET /api/v1/checks` is meant to return this catalog, and answers 500
-(`Failed to list checks`) whenever at least one check matches the request:
-the entries the runner returns (`get_available_checks` in
-`app/checks/runner.py`) lack the `remediation` field its response model
-requires (`CheckMetadataSchema` in `app/schemas.py`). The number of checks is
-in `GET /api/v1/providers`. A scan runs every check in every requested
+`GET /api/v1/checks` returns each check's metadata: title, description,
+service, category, severity, compliance frameworks, references and
+remediation (see [Check catalog](#check-catalog)). The number of checks is
+also in `GET /api/v1/providers`. A scan runs every check in every requested
 region; without `regions` it uses `us-east-1`, `us-west-2` and `eu-west-1`.
 
 ### Compliance frameworks
@@ -134,16 +132,16 @@ Service paths; through the gateway, replace `/api/v1/` with
 | POST | `/api/v1/scans` | Start a scan (202) |
 | GET | `/api/v1/scans/{scan_id}` | Scan status |
 | GET | `/api/v1/scans/{scan_id}/report` | Full report of a completed scan |
-| GET | `/api/v1/scans/{scan_id}/compliance` | Per-framework results of one scan; optional `framework` filter. Answers 500 for every completed scan: the handler gives `generated_at` a date where the response model declares a string |
-| DELETE | `/api/v1/scans/{scan_id}` | Cancel a scan |
+| GET | `/api/v1/scans/{scan_id}/compliance` | Per-framework results of one scan; optional `framework` filter |
+| DELETE | `/api/v1/scans/{scan_id}` | Cancel a queued or running scan; 409 for one that already ended |
 | POST | `/api/v1/batch/scans` | Start several scans |
 | GET | `/api/v1/providers` | Providers that can be scanned |
-| GET | `/api/v1/checks` | Check catalog; optional `provider`, `category`, `severity` filters. Answers 500 when a check matches; see [Checks](#checks) |
+| GET | `/api/v1/checks` | Check catalog; optional `provider`, `category`, `severity` filters |
 | GET | `/api/v1/dashboard/summary` | Team summary; `days` 1 to 365, default 30 |
 | GET | `/api/v1/compliance/summary` | Team compliance; `days`, `provider` |
 | GET | `/api/v1/compliance/findings` | Check verdicts; `framework`, `severity`, `status`, `days`, `provider`, `limit`, `offset` |
-| GET | `/health` | Redis and Celery status |
-| GET | `/health/live` | Liveness |
+| GET | `/health` | Redis and Celery status; 503 when unhealthy (see [Health](#health)) |
+| GET | `/health/live` | Liveness: 200 while the process runs |
 
 `scan_id` must be a UUID. The interactive documentation (`/docs`, `/redoc`,
 `/openapi.json`) is served only when `ENVIRONMENT` is `development`, on the
@@ -339,6 +337,107 @@ Every error has this body, the one all Wildbox FastAPI services share
 also carries the reason as data, in `error.details.code`
 (`GATEWAY_AUTH_REQUIRED`, `GATEWAY_SECRET_REQUIRED`,
 `INVALID_GATEWAY_HEADERS`).
+
+### Check catalog
+
+**GET** `/api/v1/checks`
+
+Every loaded check with what it declares: `check_id`, `title`,
+`description`, `provider`, `service`, `category`, `severity`,
+`compliance_frameworks`, `references`, `remediation` and `enabled`, with
+`total_checks` and the `providers` and `categories` of the checks listed,
+both sorted. `remediation` is the check's own text, the one a result of the
+check carries. The filters `provider`, `category` and `severity` compare
+without regard to case; a value that matches no check, such as
+`provider=gcp`, gives an empty list.
+
+### Compliance report of one scan
+
+**GET** `/api/v1/scans/{scan_id}/compliance`
+
+```json
+{
+  "scan_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "account_id": "123456789012",
+  "generated_at": "2026-10-03T10:45:02.118204",
+  "frameworks": [
+    {
+      "framework": "SOC 2",
+      "total_checks": 4,
+      "passed_checks": 1,
+      "failed_checks": 2,
+      "compliance_percentage": 25.0
+    }
+  ],
+  "overall_score": 25.0,
+  "recommendations": ["Configure S3 bucket to block public access"]
+}
+```
+
+One entry per framework the scan's results are tagged with, or only the one
+named by `framework`. `total_checks` counts every result tagged with the
+framework, whatever its status, as `summary.compliance_frameworks` in the
+report does, so `passed_checks` and `failed_checks` add up to less when a
+check errored. `generated_at` is UTC without an offset, like every other
+time in these answers. A scan that has not completed answers as the report
+route does.
+
+### Cancel a scan
+
+**DELETE** `/api/v1/scans/{scan_id}`
+
+Revokes the task of a scan that is `queued` or `running`, terminating it if
+a worker is running it, and records the scan as `cancelled`:
+
+```json
+{ "message": "Scan cancelled successfully" }
+```
+
+A scan that already completed, failed or was cancelled answers 409
+(`Scan is already completed and cannot be cancelled`) and is left as it is:
+its status, its times and its report. So does one the worker finished while
+the cancellation was on its way (`Scan finished before it could be
+cancelled`).
+
+A cancelled scan is not run, whether or not the revocation reached a
+worker: Celery keeps revocations in the memory of the workers that were up,
+so the worker reads the scan's stored status before it opens a session, and
+the route deletes the scan's encrypted credentials from Redis.
+
+### Health
+
+`GET /health` answers with the status code what its body says, for the
+probes that read only the code (`curl -f` in the Compose health check,
+`make health`):
+
+| `status` | Code | When |
+| --- | --- | --- |
+| `healthy` | 200 | Redis answers and a worker does |
+| `degraded` | 200 | Redis answers and no worker does: the API reads and queues, scans wait. `checks.celery` is `unhealthy` |
+| `unhealthy` | 503 | Redis cannot be reached (`checks.redis` is `unhealthy`; the workers are not asked, and `checks.celery` is `unknown`), or the check itself failed |
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-10-03T10:30:00.670356",
+  "version": "0.1.6",
+  "uptime_seconds": 3600.3,
+  "checks": { "redis": "healthy", "celery": "healthy", "api": "healthy" }
+}
+```
+
+`degraded` stays 200 on purpose: the worker is another container with its
+own health check, and the API container must not read unhealthy while its
+worker starts or restarts. Compose marks an unhealthy container and does
+not restart it; no service waits for cspm to be healthy.
+
+### When Redis cannot be reached
+
+Every route that reads or writes Redis, and every scan the broker cannot
+take, answers 503 in the error body above, with the message
+`Scan store or task queue temporarily unavailable`. The cause is in the
+service's log. `GET /api/v1/providers` and `GET /api/v1/checks` read nothing
+from Redis and answer as usual.
 
 ## Configuration
 

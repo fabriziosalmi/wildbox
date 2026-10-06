@@ -12,7 +12,8 @@ import uuid
 import redis
 import json
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Request, Path, Header, Query
+from celery.exceptions import OperationalError as BrokerOperationalError
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Request, Response, Path, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -22,11 +23,10 @@ from open_security_shared.api_docs import api_docs_urls
 from open_security_shared.gateway_auth import get_user_from_gateway_headers
 from .worker import celery_app, run_cspm_scan_task, get_available_checks_task, health_check_task
 from .checks.runner import check_runner
-from .checks.framework import CloudProvider
 from . import schemas
 from . import scan_store
 from . import providers
-from open_security_shared.errors import error_response, get_request_id
+from open_security_shared.errors import error_response, get_request_id, http_exception_handler
 from .utils import (
     _estimate_scan_duration, _summarize_compliance, _compliance_findings,
     _count_failed_by_severity,
@@ -71,6 +71,48 @@ app.add_middleware(
 
 # Redis client for caching
 redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+
+
+# --- Redis or the task queue cannot be reached: 503 ---------------------------
+# What the Redis client and Celery raise when they cannot reach Redis or the
+# broker. The first three are not the builtin ConnectionError and
+# TimeoutError: redis.exceptions.ConnectionError and TimeoutError derive from
+# RedisError, and Celery's OperationalError (kombu's) from KombuError. The
+# routes caught the builtins only, so with Redis down none of their clauses
+# matched: every route answered 500, POST /api/v1/scans included, whose 503
+# could not fire, and so did /health (#766).
+DEPENDENCY_UNAVAILABLE = (
+    redis.exceptions.ConnectionError,
+    redis.exceptions.TimeoutError,
+    BrokerOperationalError,
+    ConnectionError,
+    TimeoutError,
+)
+
+DEPENDENCY_UNAVAILABLE_MESSAGE = "Scan store or task queue temporarily unavailable"
+
+
+async def dependency_unavailable_handler(request: Request, exc: Exception):
+    """503, in the canonical error body, for a request Redis could not serve.
+
+    Registered for each class of DEPENDENCY_UNAVAILABLE, so no route has to
+    catch them, and a route added later answers the same way. The cause is
+    in the log, for the operator; the answer says only that it is temporary.
+    """
+    logger.error(
+        "Redis or the task queue cannot be reached: %s: %s", type(exc).__name__, exc
+    )
+    return await http_exception_handler(
+        request,
+        HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=DEPENDENCY_UNAVAILABLE_MESSAGE,
+        ),
+    )
+
+
+for _unavailable in DEPENDENCY_UNAVAILABLE:
+    app.add_exception_handler(_unavailable, dependency_unavailable_handler)
 
 
 # --- Scan records (tenancy, retention) ----------------------------------------
@@ -145,7 +187,7 @@ def _submit_scan(
     # logs; model_dump() ignores repr, so serialisation needed its own
     # protection. Encryption is envelope-style with a service-held key: an
     # attacker with the Redis volume gets ciphertext.
-    cred_key = f"scan:{scan_id}:creds"
+    cred_key = scan_store.credentials_key(scan_id)
     redis_client.setex(
         cred_key,
         300,  # 5 minute TTL
@@ -239,49 +281,71 @@ async def liveness():
     return {"status": "alive"}
 
 
-@app.get("/health", response_model=schemas.HealthCheckResponse)
-async def health_check():
-    """Health check endpoint."""
+def _redis_health() -> str:
+    """Whether Redis answers a PING: ``healthy``, or ``unhealthy``."""
     try:
-        # Check Redis connectivity
-        redis_status = "healthy" if redis_client.ping() else "unhealthy"
-        
-        # Check Celery worker status
-        celery_inspect = celery_app.control.inspect()
-        active_workers = celery_inspect.active()
-        celery_status = "healthy" if active_workers else "unhealthy"
-        
-        # Calculate uptime
-        uptime = (datetime.utcnow() - app_start_time).total_seconds()
-        
-        overall_status = "healthy" if all([
-            redis_status == "healthy",
-            celery_status == "healthy"
-        ]) else "degraded"
-        
-        return schemas.HealthCheckResponse(
-            status=overall_status,
-            timestamp=datetime.utcnow(),
-            version=settings.app_version,
-            uptime_seconds=uptime,
-            checks={
-                "redis": redis_status,
-                "celery": celery_status,
-                "api": "healthy"
-            }
-        )
-    except (ConnectionError, TimeoutError) as e:
-        logger.error(f"Health check connection error: {e}")
-        return schemas.HealthCheckResponse(
-            status="degraded",
-            timestamp=datetime.utcnow(),
-            version=settings.app_version,
-            checks={
-                "api": "degraded",
-                "error": "Service connection issue"
-            }
-        )
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        return "healthy" if redis_client.ping() else "unhealthy"
+    except DEPENDENCY_UNAVAILABLE as e:
+        logger.error(f"Health check: Redis cannot be reached: {type(e).__name__}: {e}")
+        return "unhealthy"
+
+
+def _celery_health() -> str:
+    """Whether a worker answers on the broker: ``healthy``, or ``unhealthy``."""
+    try:
+        return "healthy" if celery_app.control.inspect().active() else "unhealthy"
+    except DEPENDENCY_UNAVAILABLE as e:
+        logger.error(f"Health check: the task queue cannot be reached: {type(e).__name__}: {e}")
+        return "unhealthy"
+
+
+@app.get(
+    "/health",
+    response_model=schemas.HealthCheckResponse,
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": schemas.HealthCheckResponse,
+            "description": "Unhealthy: Redis cannot be reached, or the check itself failed",
+        }
+    },
+)
+async def health_check(response: Response):
+    """Readiness: Redis and the Celery workers.
+
+    The status code says what the body says, so a probe that reads only the
+    code (`curl -f` in the Compose health check, `make health`) is told the
+    truth:
+
+    - ``healthy``, 200: Redis answers and a worker does.
+    - ``degraded``, 200: Redis answers and no worker does. The API reads and
+      queues; scans wait for a worker. The worker has a health check of its
+      own in Compose, and this container is not the one to restart for it.
+    - ``unhealthy``, 503: Redis cannot be reached, without which no route
+      of the API can answer, or the check itself failed. The body is still
+      this route's body, not the error body.
+
+    It answered 200 with ``unhealthy`` in the body, and 500 when Redis was
+    down, whose errors the route did not catch (#766).
+    """
+    uptime = (datetime.utcnow() - app_start_time).total_seconds()
+    try:
+        redis_status = _redis_health()
+        # The workers are asked through the broker, in the stack the same
+        # Redis: with Redis down the answer is already unhealthy, and asking
+        # would hold this probe for the seconds the broker client retries.
+        celery_status = _celery_health() if redis_status == "healthy" else "unknown"
+        if redis_status != "healthy":
+            overall_status = "unhealthy"
+        elif celery_status != "healthy":
+            overall_status = "degraded"
+        else:
+            overall_status = "healthy"
+        checks = {
+            "redis": redis_status,
+            "celery": celery_status,
+            "api": "healthy"
+        }
+    except Exception as e:
         # The cause is the operator's, in the log with its traceback. The
         # body said the class of the exception ("ValueError", "KeyError") to
         # whoever asked; the route needs no credential. It says the status
@@ -289,15 +353,21 @@ async def health_check():
         logger.error(
             f"Health check unexpected error: {type(e).__name__}: {e}", exc_info=True
         )
-        return schemas.HealthCheckResponse(
-            status="unhealthy",
-            timestamp=datetime.utcnow(),
-            version=settings.app_version,
-            checks={
-                "api": "unhealthy",
-                "error": "Health check failed"
-            }
-        )
+        overall_status = "unhealthy"
+        checks = {
+            "api": "unhealthy",
+            "error": "Health check failed"
+        }
+
+    if overall_status == "unhealthy":
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return schemas.HealthCheckResponse(
+        status=overall_status,
+        timestamp=datetime.utcnow(),
+        version=settings.app_version,
+        uptime_seconds=uptime,
+        checks=checks
+    )
 
 
 # #182 policy: starting/cancelling a scan is an operational action, member-
@@ -319,6 +389,8 @@ async def start_scan(
     This endpoint accepts scan configuration and starts an asynchronous scan job.
     The scan will be executed by Celery workers in the background.
     A provider cspm cannot scan is refused with 400 (see GET /api/v1/providers).
+    With Redis or the broker unreachable the answer is 503, from
+    dependency_unavailable_handler, as for every other route.
     """
     _refuse_unsupported_providers([scan_request])
     try:
@@ -339,12 +411,6 @@ async def start_scan(
             )
         )
         
-    except (ConnectionError, TimeoutError) as e:
-        logger.error(f"Task queue connection error starting scan: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Task queue temporarily unavailable"
-        )
     except ValueError as e:
         logger.error(f"Invalid scan configuration: {e}")
         raise HTTPException(
@@ -434,7 +500,7 @@ async def get_scan_status(
         
     except HTTPException:
         raise
-    except (ConnectionError, KeyError) as e:
+    except KeyError as e:
         logger.error(f"Failed to get scan status for {scan_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -493,7 +559,7 @@ async def get_scan_report(
 
     except HTTPException:
         raise
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Failed to get scan report: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -518,23 +584,31 @@ async def list_checks(
     severity: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """List available security checks."""
+    """List available security checks.
+
+    The three filters compare without regard to case, and a value that
+    matches no check gives an empty list. A ``provider`` other than ``aws``,
+    ``gcp`` and ``azure`` used to answer 500, where ``gcp``, which has no
+    check either, answered an empty list (#766).
+    """
     try:
         # Get available checks
-        provider_enum = CloudProvider(provider) if provider else None
-        checks = check_runner.get_available_checks(provider_enum)
-        
+        checks = check_runner.get_available_checks()
+
         # Apply filters
+        if provider:
+            checks = [c for c in checks if c["provider"].lower() == provider.lower()]
+
         if category:
             checks = [c for c in checks if c["category"].lower() == category.lower()]
-        
+
         if severity:
             checks = [c for c in checks if c["severity"].lower() == severity.lower()]
-        
+
         # Get unique values for metadata
-        providers = list(set(c["provider"] for c in checks))
-        categories = list(set(c["category"] for c in checks))
-        
+        providers = sorted(set(c["provider"] for c in checks))
+        categories = sorted(set(c["category"] for c in checks))
+
         return schemas.ChecksListResponse(
             total_checks=len(checks),
             checks=[schemas.CheckMetadataSchema(**check) for check in checks],
@@ -542,7 +616,7 @@ async def list_checks(
             categories=categories
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Failed to list checks: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -609,7 +683,7 @@ async def get_compliance_report(
         
     except HTTPException:
         raise
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Failed to generate compliance report: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -617,12 +691,19 @@ async def get_compliance_report(
         )
 
 
-@app.delete("/api/v1/scans/{scan_id}")
+@app.delete("/api/v1/scans/{scan_id}", response_model=schemas.ScanCancelResponse)
 async def cancel_scan(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Cancel a running scan."""
+    """Cancel a scan that is queued or running.
+
+    A scan that already completed, failed or was cancelled answers 409 and
+    is left as it is: its status, its times and its report. This route
+    wrote "cancelled" over any scan, so a completed one then read
+    ``cancelled`` with no completion time while its report still read
+    ``completed``, and its task, long finished, was revoked (#766).
+    """
     try:
         # Check if scan exists and user has access
         metadata_json = redis_client.get(f"scan:{scan_id}:metadata")
@@ -641,21 +722,40 @@ async def cancel_scan(
                 detail="Access denied"
             )
         
+        # Only a scan in progress can be cancelled. The status is one of
+        # scan_store.FINAL_STATUSES, so the message holds no caller's value.
+        final_status = metadata.get("status")
+        if final_status in scan_store.FINAL_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Scan is already {final_status} and cannot be cancelled"
+            )
+
         # Revoke the Celery task
         celery_app.control.revoke(scan_id, terminate=True)
-        
-        # Update metadata
-        metadata["status"] = "cancelled"
-        metadata["cancelled_at"] = datetime.utcnow().isoformat()
-        scan_store.save_metadata(redis_client, metadata)
-        
+
+        # Record it, unless the scan reached a final status in the meantime
+        # (scan_store.cancel_scan reads the metadata again).
+        if not scan_store.cancel_scan(
+            redis_client, scan_id, datetime.utcnow().isoformat()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Scan finished before it could be cancelled"
+            )
+
+        # A scan no worker took yet still has its credentials waiting in
+        # Redis. Nothing will use them now: the worker does not run a scan
+        # recorded as cancelled, whether or not the revocation reached it.
+        redis_client.delete(scan_store.credentials_key(scan_id))
+
         logger.info(f"Cancelled scan {scan_id}")
-        
+
         return {"message": "Scan cancelled successfully"}
         
     except HTTPException:
         raise
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Failed to cancel scan: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -705,7 +805,7 @@ async def get_dashboard_summary(
             **_count_failed_by_severity(_compliance_findings(reports, catalog)),
         )
 
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Failed to get dashboard summary: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -752,7 +852,7 @@ async def start_batch_scans(
             started_at=datetime.utcnow()
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Failed to start batch scans: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -812,7 +912,7 @@ async def get_compliance_summary(
             "summary_period_days": days,
             "provider_filter": provider,
         }
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Failed to get compliance summary: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -855,7 +955,7 @@ async def get_compliance_findings(
             "offset": offset,
             "has_more": (offset + limit) < total_count
         }
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Failed to get compliance findings: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
