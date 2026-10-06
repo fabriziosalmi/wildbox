@@ -152,7 +152,7 @@ To contribute API documentation:
 
 ## Related Resources
 
-- [API Reference Hub](../api-reference.html) - Interactive documentation portal
+- [API reference page](../api-reference.html) - One-page overview of the services and their references
 - [Security Policy](../security/policy.md) - Authentication and security requirements
 - [Quickstart Guide](../guides/quickstart.md) - Getting started with APIs
 - [Deployment Guide](../guides/deployment.md) - Production deployment info

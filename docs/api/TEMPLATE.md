@@ -32,12 +32,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **Obtaining a Token**:
 
 ```bash
-curl -X POST http://localhost:[PORT]/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "your-password"
-  }'
+curl -s --cacert open-security-gateway/ssl/wildbox.crt \
+  -X POST https://<host>/auth/jwt/login \
+  --data-urlencode "username=user@example.com" \
+  --data-urlencode "password=your-password"
 ```
 
 ---
@@ -93,13 +91,12 @@ curl -X GET "http://localhost:[PORT]/v1/resource?limit=10&offset=0" \
 }
 ```
 
-**Error Response (401 Unauthorized)**:
+**Error Response (401 Unauthorized)**, answered by the gateway:
 
 ```json
 {
-  "error": "Unauthorized",
-  "message": "Invalid or missing authentication token",
-  "status": "error"
+  "error": "authentication_required",
+  "message": "Valid authentication token required"
 }
 ```
 
@@ -154,15 +151,18 @@ curl -X POST http://localhost:[PORT]/v1/resource \
 }
 ```
 
-**Error Response (400 Bad Request)**:
+**Error Response (422 Unprocessable Entity)**:
 
 ```json
 {
-  "error": "Bad Request",
-  "message": "Field 'name' is required",
-  "status": "error",
-  "validation_errors": {
-    "name": "This field is required"
+  "error": {
+    "code": 422,
+    "message": "Request validation failed",
+    "type": "ValidationError",
+    "request_id": "<request id>",
+    "details": [
+      {"type": "missing", "loc": ["body", "name"], "msg": "Field required"}
+    ]
   }
 }
 ```
@@ -284,15 +284,23 @@ The API uses standard HTTP status codes and returns error details in JSON format
 
 ### Error Response Format
 
+The FastAPI services answer the shared Wildbox error body
+(`open-security-shared/errors.py`):
+
 ```json
 {
-  "error": "Error Code",
-  "message": "Human-readable error message",
-  "status": "error",
-  "request_id": "req-12345",
-  "timestamp": "2024-11-07T10:45:00Z"
+  "error": {
+    "code": 404,
+    "message": "Resource not found",
+    "type": "HTTPException",
+    "request_id": "<request id>"
+  }
 }
 ```
+
+`error.code` is the HTTP status. A `422` carries the field errors in
+`error.details`, each with `type`, `loc` and `msg`. The gateway's own
+refusals are flat: `{"error": "<code>", "message": "..."}`.
 
 ---
 
@@ -333,12 +341,10 @@ When rate limit is exceeded, the API returns:
 **1. Login and get token**:
 
 ```bash
-TOKEN=$(curl -X POST http://localhost:[PORT]/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "password"
-  }' | jq -r '.data.token')
+TOKEN=$(curl -s --cacert open-security-gateway/ssl/wildbox.crt \
+  -X POST https://<host>/auth/jwt/login \
+  --data-urlencode "username=user@example.com" \
+  --data-urlencode "password=your-password" | jq -r .access_token)
 ```
 
 **2. Create resource**:
@@ -377,19 +383,6 @@ curl -X PUT http://localhost:[PORT]/v1/resource/resource-id \
 curl -X DELETE http://localhost:[PORT]/v1/resource/resource-id \
   -H "Authorization: Bearer $TOKEN"
 ```
-
----
-
-## SDKs and Libraries
-
-Official SDKs coming soon for:
-
-- Python
-- JavaScript/TypeScript
-- Go
-- Java
-
-Check [GitHub releases](https://github.com/fabriziosalmi/wildbox/releases) for SDK availability.
 
 ---
 

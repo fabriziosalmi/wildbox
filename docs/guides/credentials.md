@@ -22,7 +22,7 @@ the main ones are:
 | `INITIAL_ADMIN_PASSWORD` | Password of the first administrator |
 | `JWT_SECRET_KEY` | Signs the JWTs issued by the identity service |
 | `API_KEY_HASH_SECRET` | Keys the HMAC of stored API-key digests |
-| `GATEWAY_INTERNAL_SECRET` | Authenticates the gateway to the identity service |
+| `GATEWAY_INTERNAL_SECRET` | Proves to identity and to every backend service that a request came through the gateway; identity also presents it to the gateway's purge endpoint and to guardian |
 | `POSTGRES_PASSWORD` | PostgreSQL superuser password |
 | `REDIS_PASSWORD` | Redis password |
 | `GUARDIAN_SECRET_KEY`, `CSPM_SECRET_KEY`, `DATA_SECRET_KEY` | Per-service secret keys |

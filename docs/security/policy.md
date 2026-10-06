@@ -49,7 +49,6 @@ and what it protects. The most sensitive are:
 | `INITIAL_ADMIN_PASSWORD` | Password of the first administrator | **CRITICAL** |
 | `POSTGRES_PASSWORD`, `REDIS_PASSWORD` | Datastore passwords | **CRITICAL** |
 | `CSPM_CREDENTIAL_KEY` | Encrypts stored cloud credentials | **CRITICAL** |
-| `API_KEY` | Static key for the tools API | **CRITICAL** |
 
 ### 3. Password Security Requirements
 
@@ -252,7 +251,7 @@ repository's [Dependabot alerts](https://github.com/fabriziosalmi/wildbox/securi
 
 ### 2. API Security
 
-- Restricted CORS (environment-configured, never wildcard)
+- Restricted CORS at the gateway (the origins in `CORS_ORIGINS`, never a wildcard)
 - Security headers: HSTS, X-Frame-Options, X-Content-Type-Options, CSP
 - Input validation on all endpoints
 - Parameterized queries (no SQL injection)

@@ -104,7 +104,7 @@ configuration that calls `authenticate()` without declaring the variables.
 | --- | --- |
 | `X-Wildbox-User-ID` | The caller's user ID (UUID) |
 | `X-Wildbox-Team-ID` | The caller's team ID (UUID) |
-| `X-Wildbox-Role` | The caller's role in the team: `owner`, `admin`, `member` or `viewer` |
+| `X-Wildbox-Role` | The caller's role in the team: `owner`, `admin` or `member`, the roles identity has (the shared dependency also accepts `viewer`, which identity never assigns) |
 | `X-Gateway-Secret` | The shared `GATEWAY_INTERNAL_SECRET`: the proof that the request came from the gateway |
 
 There is no plan or subscription header.
@@ -180,8 +180,10 @@ The other routes rely on the gateway's check alone: reading tools and
 tasks (`tools:read`), and everything in the agents, responder and CSPM
 services. The agents and responder services use the shared dependency, so
 their `GatewayUser` carries `auth_type` and `scopes` and a route can add
-`require_scope`; CSPM reads the identity headers with code of its own and
-does not read the credential headers.
+`require_scope`; CSPM calls the shared dependency through an adapter of its
+own (`get_current_user` in `open-security-cspm/app/main.py`) that passes the
+identity headers and the secret only, so it does not read the credential
+headers.
 
 ## Using it in a FastAPI service
 
