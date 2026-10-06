@@ -86,9 +86,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attempts in one task. It now takes one port or a range of at most 1,024
   ports from 1 to 65535, and ends `refused`, with nothing dialed, for
   anything else. No route passes the argument (#775).
-
-### Documentation
-
 - An IPv4 entry of `GUARDIAN_ALLOWED_INTERNAL_TARGETS` or
   `TOOLS_ALLOWED_INTERNAL_TARGETS` does not cover the same range written
   as IPv4-mapped IPv6 addresses (`::ffff:10.20.3.4`), by design. The
