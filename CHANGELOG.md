@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CELERY_RESULT_BACKEND` still replace the limits of that client. The
   worker keeps Celery's own waits: it waits on its broker connection for
   as long as no scan is queued.
+- **cspm's `/health` no longer stops the service while it waits**
+  (#778). The route asked Redis and then the workers with synchronous
+  clients inside the event loop. The workers are given a second to reply
+  on every probe, so for that second, every 30 seconds for the Compose
+  health check alone, the API answered nothing else, its liveness route
+  included; a slow Redis held it longer. Both checks now run in a
+  thread. The route also has a deadline of 4 seconds, inside the 5
+  seconds `make health` waits and the 10 of the Compose health check: a
+  check that has not answered by then
+  is reported `unhealthy` (503 for Redis, `degraded` for the workers),
+  where an answer that came after the probe stopped waiting told it
+  nothing.
 
 ## [0.12.0] - 2026-10-06
 

@@ -431,6 +431,13 @@ own health check, and the API container must not read unhealthy while its
 worker starts or restarts. Compose marks an unhealthy container and does
 not restart it; no service waits for cspm to be healthy.
 
+The workers are given a second to reply, on every probe. The route waits
+for Redis and for them in a thread, so the service answers its other
+requests in the meantime, and until a deadline of 4 seconds
+(`HEALTH_DEADLINE_SECONDS` in `app/main.py`), inside the 5 seconds
+`make health` waits and the 10 of the Compose health check: a check that
+has not answered by then is `unhealthy` in `checks`.
+
 ### When Redis cannot be reached
 
 Every route that reads or writes Redis, and every scan the broker cannot

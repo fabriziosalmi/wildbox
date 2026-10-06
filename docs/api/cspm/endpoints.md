@@ -769,7 +769,12 @@ The status code says what the body says, so a probe that reads only the code
 - Compose marks an unhealthy container and does not restart it, and no service
   waits for `cspm` to be healthy.
 - The route waits one second for the workers' replies, so it takes about that long
-  whenever Redis answers.
+  whenever Redis answers. It waits in a thread: the service answers other requests,
+  `/health/live` included, in the meantime.
+- It answers within 4 seconds whatever Redis and the broker do, inside the 5
+  seconds `make health` waits and the 10 of the Compose health check. A check that
+  has not answered by then is `unhealthy` in `checks`: `503` for Redis, `degraded`
+  for the workers.
 - A Redis that accepts the connection and never answers (a paused container, a host
   that stopped) is `unhealthy` after 3 seconds: the API gives Redis 2 seconds to
   accept a connection and 3 to send a reply. See

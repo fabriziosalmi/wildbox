@@ -6,6 +6,7 @@ import asyncio
 import hmac
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import uuid
@@ -303,6 +304,41 @@ def _celery_health() -> str:
         return "unhealthy"
 
 
+# Seconds /health takes at most, whatever Redis and the broker do. Under the
+# 5 seconds `make health` waits for an answer (scripts/lib/health_endpoints.sh)
+# and the 10 of the Compose health check: an answer that comes after the
+# probe stopped waiting is no answer, and the probe then reads a hung service
+# where the body would have said which dependency is away.
+HEALTH_DEADLINE_SECONDS = 4.0
+
+
+async def _checked_off_the_loop(check, deadline: float) -> str:
+    """Run one of the two checks in a thread and wait for it until ``deadline``.
+
+    Both checks are synchronous clients waiting on a socket. Called in the
+    route they held the event loop, so for the second the workers are given
+    to reply on every probe, and for as long as a Redis that does not answer
+    took, the process served nothing else: no other route, no liveness
+    probe (#778). In a thread they hold only themselves.
+
+    A check that has not answered by the deadline is ``unhealthy``: the
+    route answers in time, and the thread ends on its own when the client's
+    timeout does (app.connections), so they do not pile up.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return "unhealthy"
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(check), remaining)
+    except asyncio.TimeoutError:
+        logger.error(
+            "Health check: %s did not answer within %s seconds",
+            "Redis" if check is _redis_health else "the task queue",
+            HEALTH_DEADLINE_SECONDS,
+        )
+        return "unhealthy"
+
+
 @app.get(
     "/health",
     response_model=schemas.HealthCheckResponse,
@@ -330,14 +366,22 @@ async def health_check(response: Response):
 
     It answered 200 with ``unhealthy`` in the body, and 500 when Redis was
     down, whose errors the route did not catch (#766).
+
+    The two checks run in a thread, and the route waits for them until
+    HEALTH_DEADLINE_SECONDS: a check still waiting then is ``unhealthy``
+    (#778, _checked_off_the_loop).
     """
     uptime = (datetime.utcnow() - app_start_time).total_seconds()
+    deadline = time.monotonic() + HEALTH_DEADLINE_SECONDS
     try:
-        redis_status = _redis_health()
+        redis_status = await _checked_off_the_loop(_redis_health, deadline)
         # The workers are asked through the broker, in the stack the same
         # Redis: with Redis down the answer is already unhealthy, and asking
         # would hold this probe for the seconds the broker client retries.
-        celery_status = _celery_health() if redis_status == "healthy" else "unknown"
+        if redis_status == "healthy":
+            celery_status = await _checked_off_the_loop(_celery_health, deadline)
+        else:
+            celery_status = "unknown"
         if redis_status != "healthy":
             overall_status = "unhealthy"
         elif celery_status != "healthy":
