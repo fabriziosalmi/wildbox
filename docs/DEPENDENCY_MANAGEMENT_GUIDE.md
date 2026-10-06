@@ -151,8 +151,8 @@ Monday and opens or refreshes one pull request on the
 
 Dependabot handles GitHub Actions, npm, the base images of the Dockerfiles
 (`docker`) and the images the Compose files run without building them
-(`docker-compose`): PostgreSQL, Redis, n8n, Prometheus, Alertmanager, nginx,
-curl and alpine. Those are pinned by tag and by the digest of the image index,
+(`docker-compose`): PostgreSQL, Redis, n8n, Prometheus, Alertmanager, nginx
+and alpine. Those are pinned by tag and by the digest of the image index,
 and Dependabot proposes the new digest when a tag is published again, and
 newer minor and patch tags. A new major is ignored there and decided by hand,
 as is a minor of Prometheus, which stays on its long-term support line.

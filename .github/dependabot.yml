@@ -78,7 +78,7 @@ updates:
           - "*"
 
   # The images the Compose files run without building them: PostgreSQL, Redis,
-  # n8n, Prometheus, Alertmanager, nginx, curl, alpine. Each is pinned by tag
+  # n8n, Prometheus, Alertmanager, nginx, alpine. Each is pinned by tag
   # and by the digest of its image index (`redis:7-alpine@sha256:...`), which
   # scripts/check_container_hygiene.py requires. Nothing moved them before: a
   # tag was whatever the registry served on the day of the pull, and the

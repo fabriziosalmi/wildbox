@@ -811,6 +811,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing `.env`, `fix-db` called a script that is not in the
   repository, and `clean` pruned every unused Docker volume and network
   of the host, not only this stack's.
+- **Scripts that nothing ran, and that could not have worked** (#665).
+  No workflow, Makefile target or page told anyone to run them, and each
+  was written for a stack that no longer exists:
+  - `scripts/setup.sh`, a "one-command deployment" that copied
+    `.env.example` to `.env` with its placeholders, needed the
+    `docker-compose` v1 binary, and ended by printing `admin123` as the
+    administrator's password and `http://localhost:8080` as the
+    gateway's address. Use `make generate-secrets` and `make start`, as
+    the [quickstart](docs/guides/quickstart.md) says.
+  - In `tests/`: `test_all_pages.sh`, `test_integration.sh`,
+    `verify_all_endpoints.sh`, `verify_endpoints.sh`, `verify_auth.sh`,
+    `test_dashboard_auth_fix.sh`, `test_gateway_auth_complete.sh` and five
+    `.js` files. They called the services on their own ports without the
+    gateway's identity headers, or the gateway over plain HTTP on paths
+    it does not serve. The `integration-tester` service of
+    `docker-compose.dev.yml` goes with `test_integration.sh`: it mounted
+    that Bash script into an image without Bash, where `localhost` is
+    the container itself.
+  - `scripts/shell-scripts/security_validation.sh` (superseded by
+    `security_validation_v2.sh`, which CI runs) and
+    `final_auth_verification.sh`.
+  - identity: `setup.sh`, `scripts/setup.sh` and `demo.py`, with the
+    `setup` target of its `Makefile`. `scripts/setup.sh` began with
+    `docker-compose down -v`, deleting the database volume without a
+    question.
+  - guardian: `setup_dev.sh`, which stopped at
+    `manage.py setup_guardian --demo-data`, an option the command does
+    not have.
+  - dashboard: `setup.sh`, which ran `npm install` for packages by name
+    and so rewrote `package.json`, and `test_auth_integration.sh`.
+
+  Two hints that pointed at a page that is not served were corrected
+  where the file stays: `open-security-cspm/Makefile` and
+  `open-security-responder/Makefile` printed a `/docs` URL, which answers
+  `404` unless `ENVIRONMENT=development`.
 
 ### Fixed
 
