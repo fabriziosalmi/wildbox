@@ -528,6 +528,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **gateway: five variables Compose passed it and nothing read** (#756).
+  `docker-compose.yml` gave the gateway `ENVIRONMENT`, `WILDBOX_ENV`,
+  `GATEWAY_LOG_LEVEL` and `NGINX_ENVSUBST_OUTPUT_DIR`, and
+  `docker-compose.prod.yml` `ENVIRONMENT` and `LOG_LEVEL`. No nginx
+  directive, Lua module or script of the gateway reads any of them: the
+  error log level is `warn` in `nginx.conf`, and the last is a setting of
+  the official nginx image's entrypoint, which this image does not use.
+  They are no longer passed, and the gateway's entries are gone from the
+  list of unread variables in
+  `tests/scripts/test_compose_variables_are_read.py`.
+- **gateway: the Compose file of its own, which could not start, and
+  what drove it** (#756). `open-security-gateway/docker-compose.yml`
+  started the gateway and a Redis it does not use on a network of their
+  own, where nginx stopped with `host not found in upstream
+  "open-security-identity:8001"`: the gateway resolves every service's
+  name when it starts. Removed with it: the `Makefile`,
+  `scripts/setup.sh` and `test/integration_test.sh`, which started that
+  file; `scripts/test_config.sh`, which reported the configuration valid
+  after checking one it had written itself; and the directory's
+  `.env.example`, which only that file read. The gateway runs in the root
+  stack; its README says how the harness runs it against stand-ins.
+- **gateway: the `per_ip` rate-limit zone** (#756), 10 MB of shared
+  memory that no location used, and a commented-out `limit_req` on the
+  tools route that said rate limiting was disabled there. It is not: the
+  server-wide limit applies to that route as to the others.
 - **`ENABLE_METRICS` for identity in `docker-compose.prod.yml`, and
   `ENABLE_METRICS` and `METRICS_PORT` in `.env.example`** (#743). No
   code reads the first, and no Compose file passed the other two to a
@@ -1923,6 +1948,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The gateway's per-address rate limits are settings** (#756).
+  `GATEWAY_RATE_LIMIT_PER_SECOND` (100), `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND`
+  (5) and `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` (500) are the requests a
+  second the gateway accepts from one client address: on every route, on
+  the login, registration and forgotten-password routes, and for the
+  dashboard's static assets. The defaults are the rates that were written
+  in `nginx.conf`, so a deployment that sets nothing is limited as before;
+  the bursts are unchanged. An operator whose users all arrive from one
+  address, behind a NAT or another proxy, can now raise a rate without
+  editing the configuration. nginx takes a zone's rate as a literal, so
+  the entrypoint writes the zones before it starts nginx
+  (`scripts/render_rate_limits.sh`). A value that is not a whole number
+  from 1 to 100000 stops the gateway at start with a message that names
+  the setting, as `RATE_LIMIT_PER_HOUR` does, and the gateway logs the
+  rates it runs with. The limits are counted by the address of the
+  connection: nothing a client sends changes them. The deployment guide
+  and the gateway's README say what each protects.
 - **The dashboard has an AI analysis page** (#727). `/ai-analysis`, in
   the sidebar, submits an indicator to the agents service and follows
   the task: queued, running with the worker's progress, failed with the
@@ -2017,6 +2059,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The integration and Playwright suites no longer meet the gateway's
+  per-address rate limit** (#756). The gateway allows one address 100
+  requests a second with a burst of 10, and 5 a second on the login and
+  registration routes. Every request of a suite comes from the runner,
+  one after another, and the stack answers in a few milliseconds: at one
+  request every 7 ms the 35th of a run got nginx's `429`, whatever the
+  test was about (`test_guardian_pagination_links`, then
+  `test_api_key_scopes_backends`). The Integration Tests, Production
+  Stack and E2E Full-Stack jobs now start their stack with the three
+  rates at 10000, and the suite checks before its first test that the
+  gateway lets its pace through, failing the run by name if it does not.
+  What had been added to live with the limit is removed: the 25 ms pause
+  between requests in the pagination test's fixture, the retry of a `429`
+  in `test_password_policy`, the same retry in the Playwright helpers for
+  login, logout and registration, which also retried identity's `429` for
+  a locked account, and the 450 ms pause between iterations of the logout
+  race spec. No test paces itself or retries a `429` for the gateway any
+  more. The chaos job keeps a deployment's rates: its load experiment
+  takes a `429` as an answer.
+- **The gateway harness tests the per-address limits at the rates a
+  deployment has** (#756). Nothing did: the suites only ever met them by
+  accident. `open-security-gateway/test/rate_limit_tests.py` runs against
+  the production image with none of the settings: a volley from one
+  address is refused past the burst and a stream is held to the rate, in
+  the `global` zone and in the `auth` zone, with bounds a rate of half or
+  twice the default fails; a refusal is nginx's `429` and the count the
+  client receives is the count nginx logs for that zone; requests
+  without a credential are counted and the ones let through answered
+  `401`; a refused method, a preflight, `/health` and an unknown API path
+  are not counted; login and registration share one counter; static
+  assets are not under the global limit; and a gateway started with the
+  rates the suites set lets through the sequences refused at the
+  defaults. `startup_config_tests.sh` checks, in the test image and the
+  production one, that a rate that is not a whole number in range stops
+  the gateway.
 - **Path-filtered workflows follow what they build and run** (#736).
   Docker Build Validation was triggered by `open-security-*/app/**`, the
   lock, the Dockerfile, `pyproject.toml` and `manage.py`: a change to

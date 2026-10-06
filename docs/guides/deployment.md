@@ -180,6 +180,49 @@ figure (at least one request a minute), and reports it on every response in
 `RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start. Restart
 the gateway after changing it (`docker compose up -d gateway`).
 
+### The gateway's per-address rate limits
+
+Before it authenticates anything, the gateway limits how fast one client
+address may send. Past the limit it answers nginx's own `429`, an HTML page
+without `Retry-After`. Three settings in `.env` hold the rates, in requests
+per second:
+
+| Setting | Default | Applies to | Burst |
+|---------|---------|------------|-------|
+| `GATEWAY_RATE_LIMIT_PER_SECOND` | `100` | every route that has no limit of its own | 10 |
+| `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` | `5` | login (`/auth/jwt/`), registration and forgotten password, counted together | 3, 2 and 2 |
+| `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` | `500` | the dashboard's static assets | 200 |
+
+The defaults are the limits the gateway always had; a deployment that sets
+nothing keeps them. What they protect: the first keeps one address from
+flooding the gateway and, behind it, identity, since a request without a
+valid credential is refused here before anything is asked of identity; the
+second slows password guessing, mass registration and forgotten-password
+requests from one address (identity also locks an account after repeated
+failed logins, whatever this rate is); the third only keeps one address
+from hammering the assets.
+
+These are operator settings. The gateway counts by the address of the
+connection, never by a header, so nothing a client sends changes a limit or
+moves it to another counter. That also means that behind a NAT, a load
+balancer or another reverse proxy every user reaches the gateway from one
+address and shares one allowance: that is when to raise a rate. Raising the
+second gives a client that guesses passwords that many more attempts a
+second.
+
+Each value must be a whole number from 1 to 100000, in digits only. With
+any other value the gateway logs
+`GATEWAY_RATE_LIMIT_PER_SECOND must be a whole number of requests per second between 1 and 100000 ...`
+(with the name of the setting at fault) and does not start. At start it logs
+the rates it runs with:
+`Per-address request limits: global 100 r/s, auth 5 r/s, static assets 500 r/s.`
+Restart the gateway after changing one (`docker compose up -d gateway`); an
+nginx reload does not read them.
+
+The repository's test suites send every request from one address, faster
+than these defaults allow, so the stacks CI starts for them set the three
+rates to 10000. Do not copy that into a deployment.
+
 ### Guardian's per-user rate limit
 
 Under the gateway's limit, guardian allows each user
