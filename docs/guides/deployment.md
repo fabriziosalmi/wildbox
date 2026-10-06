@@ -146,10 +146,10 @@ without the overlay's settings.
 Optional services:
 
 ```bash
-PROD="-f docker-compose.yml -f docker-compose.prod.yml"
-docker compose $PROD --profile automations up -d   # n8n workflows
-docker compose $PROD --profile monitoring up -d    # Prometheus and Alertmanager (section 7)
-docker compose $PROD --profile backup up -d        # scheduled PostgreSQL and Redis backups
+export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+docker compose --profile automations up -d   # n8n workflows
+docker compose --profile monitoring up -d    # Prometheus and Alertmanager (section 7)
+docker compose --profile backup up -d        # scheduled PostgreSQL and Redis backups
 ```
 
 ### The dashboard's browser settings
