@@ -21,7 +21,7 @@ dev: ## Start development environment
 	docker-compose up -d
 	@echo "$(GREEN)Services started:$(NC)"
 	@echo "  - Responder API: http://localhost:8018"
-	@echo "  - API Documentation: http://localhost:8018/docs"
+	@echo "  - API reference: ../docs/api/responder/endpoints.md (/docs is served only with ENVIRONMENT=development)"
 	@echo "  - Redis: localhost:6381"
 
 test: ## Run tests

@@ -1409,7 +1409,9 @@ def test_every_compose_image_is_pinned_by_tag_and_digest():
     # #726: the tags were versions and nothing more, so `redis:7-alpine` was
     # whatever the registry served on the day of the pull.
     images = [image for group in compose_images().values() for image in group]
-    assert len(images) >= 20, images
+    # 21 until #665 removed the gateway's standalone file, which could not
+    # start, and the curl image of a test container that could not run.
+    assert len(images) >= 19, images
     pinned = re.compile(r"^[\w./-]+:[\w.-]*\d[\w.-]*@sha256:[0-9a-f]{64}$")
     for image in images:
         assert pinned.match(image), image

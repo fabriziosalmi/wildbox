@@ -364,9 +364,6 @@ class IntegrationLog(models.Model):
     record_id = models.UUIDField(null=True, blank=True, help_text="Related Guardian record ID")
     external_id = models.CharField(max_length=200, blank=True, help_text="Related external record ID")
     
-    # Request/Response
-    request_data = models.JSONField(default=dict, blank=True)
-    response_data = models.JSONField(default=dict, blank=True)
     response_time_ms = models.PositiveIntegerField(null=True, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)

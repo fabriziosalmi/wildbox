@@ -22,11 +22,6 @@ sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 alembic==1.12.1
 aiohttp==3.14.3
-aiofiles==23.2.0
-pandas==2.1.4
-numpy==1.25.2
-redis==5.0.1
-hiredis==2.2.3
 feedparser==6.0.10
 # Pydantic was pinned to 2.5.0 (November 2023). That single pin held FastAPI at
 # 0.125 and Starlette at 0.50 in this service's lock, while the other services
@@ -34,17 +29,11 @@ feedparser==6.0.10
 # with the ASGI behaviour and the security fixes differing between them
 # (WILDBO-DEP-01). Ranged so the whole platform converges on one resolution.
 pydantic>=2.10.0,<3.0.0
-pydantic-settings>=2.6.0,<3.0.0
-python-dateutil==2.8.2
-pytz==2023.3
 click==8.3.3
-cryptography==50.0.2
-passlib[bcrypt]==1.7.4
 # The shared package's `metrics` extra (install_observability) requires
 # prometheus-client 0.20 or later; the image build resolves the extra
 # against this lock and fails below that floor (#722).
 prometheus-client>=0.20,<1.0.0
-structlog==23.2.0
 pytest==9.0.3
 pytest-asyncio==1.3.0
 pytest-cov==4.1.0
@@ -53,16 +42,3 @@ black==26.3.1
 flake8==6.1.0
 mypy==1.7.1
 pre-commit==3.6.0
-gunicorn==23.0.0
-plotly==5.17.0
-scikit-learn==1.5.0
-spacy==3.7.2
-geoip2==4.8.0
-maxminddb==2.6.2
-dnspython==2.6.1
-python-whois==0.8.0
-pyasn==1.6.2
-openpyxl==3.1.2
-tabulate==0.9.0
-pyyaml==6.0.1
-python-dotenv==1.2.2

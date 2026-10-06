@@ -2,8 +2,7 @@
 #
 # The one table of health URLs for the Wildbox stack, and the one way to
 # probe them. Sourced by scripts/shell-scripts/comprehensive_health_check.sh
-# (`make health`), scripts/shell-scripts/system_monitor.sh,
-# scripts/wait-for-services.sh and tests/test_all_pages.sh, so they cannot
+# (`make health`) and scripts/wait-for-services.sh, so they cannot
 # drift apart again. tests/scripts/test_health_checks.py checks the table
 # against docker-compose.yml and docs/guides/ports.md.
 #

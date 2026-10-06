@@ -35,9 +35,9 @@ for the build backend.
 ## The Shared Package
 
 `open-security-shared` has no dependency of its own. Its
-`pyproject.toml` defines one extra per group of modules (`fastapi`, `auth`,
-`metrics`, `events`, `tracing`) and a table, `[tool.wildbox.module-extras]`,
-that says which module needs which. A service's Dockerfile installs the
+`pyproject.toml` defines one extra per group of modules (`fastapi` and
+`metrics`) and a table, `[tool.wildbox.module-extras]`, that says which
+module needs which. A service's Dockerfile installs the
 package after the lock, with the extras of the modules the service imports and
 without `--no-deps`:
 
@@ -88,10 +88,13 @@ version that is needed, and it stays until one does:
   `@tanstack/react-query-devtools` brings in, declares `~1.5.4` for both, and
   the two advisories of October 2026 (GHSA-p6vx-979v-rg4c, GHSA-jp82-f5mq-hwhp)
   are fixed from 1.6.2 and 1.6.3 only. The two packages are released together,
-  so they are overridden together. Remove both entries when
-  `npm view solid-js dependencies` shows a range that admits `seroval` 1.6.3
-  or later, or when the devtools no longer depend on solid-js 1.x, then run
-  `npm install` and check `npm ls seroval`.
+  so they are overridden together. The devtools are a development dependency
+  (the page renders them under `next dev` only, and `npm audit --omit=dev`
+  does not count them), but `npm ci` installs them for every build, and
+  without the override `npm audit` reports the two advisories again. Remove
+  both entries when `npm view solid-js dependencies` shows a range that admits
+  `seroval` 1.6.3 or later, or when the devtools no longer depend on solid-js
+  1.x, then run `npm install` and check `npm ls seroval`.
 
 ## Compiling the Locks
 
@@ -151,8 +154,8 @@ Monday and opens or refreshes one pull request on the
 
 Dependabot handles GitHub Actions, npm, the base images of the Dockerfiles
 (`docker`) and the images the Compose files run without building them
-(`docker-compose`): PostgreSQL, Redis, n8n, Prometheus, Alertmanager, nginx,
-curl and alpine. Those are pinned by tag and by the digest of the image index,
+(`docker-compose`): PostgreSQL, Redis, n8n, Prometheus, Alertmanager, nginx
+and alpine. Those are pinned by tag and by the digest of the image index,
 and Dependabot proposes the new digest when a tag is published again, and
 newer minor and patch tags. A new major is ignored there and decided by hand,
 as is a minor of Prometheus, which stays on its long-term support line.

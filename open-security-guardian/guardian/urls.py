@@ -4,7 +4,6 @@ URL configuration for Open Security Guardian
 The Guardian: Proactive Vulnerability Management
 """
 
-from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from drf_spectacular.views import (
@@ -16,8 +15,10 @@ from apps.core.internal_views import RevokeTeamMembershipsView
 from apps.core.views import HealthCheckView, MetricsView, TaskStatusView
 
 urlpatterns = [
-    # Admin interface
-    path('admin/', admin.site.urls),
+    # There is no admin/ route. Django's admin site was mounted here with no
+    # model of guardian registered in it, so it managed nothing, and in the
+    # image it answered 500: its pages need the static files' manifest, which
+    # the image does not build (#665). The gateway never routed to it.
 
     # Health check endpoint
     path('health/', HealthCheckView.as_view(), name='health'),
@@ -64,8 +65,3 @@ if settings.DEBUG:
         urlpatterns = [
             path('__debug__/', include(debug_toolbar.urls)),
         ] + urlpatterns
-
-# Custom admin site headers
-admin.site.site_header = "Open Security Guardian"
-admin.site.site_title = "Guardian Admin"
-admin.site.index_title = "Vulnerability Management Administration"

@@ -39,9 +39,13 @@ docker compose up -d --build api tools-worker
 API and Redis without the gateway, identity service or Celery worker. Without
 the gateway, every tool and task route answers `401`, so these files are only
 useful to check that the service starts and to read its health and schema
-endpoints (see [Unauthenticated endpoints](#unauthenticated-endpoints)). Their
-default `API_KEY` values fail the validation in `app/config.py`, so set a valid
-`API_KEY` (see [Configuration](#configuration)) before starting them.
+endpoints (see [Unauthenticated endpoints](#unauthenticated-endpoints)). Both
+require `API_KEY` (see [Configuration](#configuration)) and say so when it is
+not set:
+
+```bash
+API_KEY="$(openssl rand -hex 32)" docker compose up --build
+```
 
 ## Authentication
 
@@ -478,8 +482,7 @@ open-security-tools/
     security/                # Authorization manager and input validators
     tools/                   # One package per tool, plus wordlists/
     utils/                   # Shared helpers for tools
-  config/                    # JSON configuration for the security components
-  scripts/                   # Helper scripts
+  config/                    # Examples of the two authorization files
   tests/unit/                # Unit tests
   Dockerfile                 # Production image (Python 3.11)
   Dockerfile.dev             # Development image with --reload

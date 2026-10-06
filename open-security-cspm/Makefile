@@ -21,7 +21,7 @@ install: ## Install Python dependencies
 dev: docker-up ## Start development environment
 	@echo "$(GREEN)CSPM Services started:$(NC)"
 	@echo "  - CSPM API: http://localhost:8019"
-	@echo "  - API Documentation: http://localhost:8019/docs"
+	@echo "  - API reference: README.md (/docs is served only with ENVIRONMENT=development)"
 	@echo "  - Flower (Celery Monitor): http://localhost:5558"
 	@echo "  - Redis: localhost:6385"
 
@@ -128,7 +128,7 @@ monitor: ## View monitoring info
 	@echo "$(GREEN)Monitoring Information:$(NC)"
 	@echo "Health Check: curl http://localhost:8019/health"
 	@echo "Flower UI: http://localhost:5558"
-	@echo "API Docs: http://localhost:8019/docs"
+	@echo "API reference: README.md (/docs is served only with ENVIRONMENT=development)"
 
 # Production deployment helpers
 production-build: ## Build for production

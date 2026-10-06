@@ -193,7 +193,6 @@ def _seed():
             system=system,
             operation="api_call",
             message="m",
-            request_data={"headers": {"Authorization": "Bearer s3cr3t-request"}},
         ),
         "integrations/notifications": NotificationChannel.objects.create(
             team_id=TEAM_ID,

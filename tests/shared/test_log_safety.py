@@ -5,9 +5,11 @@
 * the URL of each request an HTTP client library sends, which httpx logs at
   INFO;
 * the detail of an HTTP error, which the shared handler put in its record:
-  a detail is the answer to the caller and often names what they sent;
-* the values of a request's headers, which the request-logging middleware
-  recorded for every header but three, X-Gateway-Secret among the rest.
+  a detail is the answer to the caller and often names what they sent.
+
+The package's request-logging middleware, which recorded the values of a
+request's headers, was fixed with these and then removed: no service
+installed it (#665).
 
 The access-log filter is also tested against a running uvicorn, in the unit
 suites of the services, with the uvicorn each of them pins: this suite does
@@ -22,7 +24,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from open_security_shared import log_safety
 from open_security_shared.errors import install_error_handlers
-from open_security_shared.security_middleware import RequestLoggingMiddleware
 
 SECRET = "do-not-log-" + uuid.uuid4().hex
 # uvicorn's own format and argument order (uvicorn/protocols/http/*_impl.py).
@@ -195,45 +196,3 @@ def test_the_detail_of_an_http_error_is_answered_and_not_logged(caplog):
     assert records[0].request_id == "req-1"
     assert records[0].status_code == 400
     assert records[0].path == "/refused"
-
-
-# --- the headers of a request ----------------------------------------------------
-
-
-def test_the_request_log_names_the_headers_and_holds_no_value(caplog):
-    app = FastAPI()
-    app.add_middleware(RequestLoggingMiddleware)
-
-    @app.get("/ok")
-    def ok():
-        return {}
-
-    with caplog.at_level(
-        logging.DEBUG, logger="open_security_shared.security_middleware"
-    ):
-        TestClient(app).get(
-            f"/ok?q={SECRET}",
-            headers={
-                "X-Gateway-Secret": SECRET,
-                "X-Wildbox-User-ID": SECRET,
-                "Authorization": f"Bearer {SECRET}",
-                "X-Custom": SECRET,
-            },
-        )
-
-    records = [
-        r
-        for r in caplog.records
-        if r.name == "open_security_shared.security_middleware"
-    ]
-    assert records
-    for record in records:
-        assert SECRET not in str(record.__dict__)
-        assert not hasattr(record, "headers")
-    assert {
-        "x-gateway-secret",
-        "x-wildbox-user-id",
-        "authorization",
-        "x-custom",
-    } <= set(records[0].header_names)
-    assert records[0].path == "/ok"

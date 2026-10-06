@@ -62,7 +62,7 @@ validate-secrets:
 # docker-compose.override.yml is Compose's automatic overlay: it applied with no
 # flag, so `make start` silently merged a file headed "Development Integration"
 # -- and dropped the prod overlay's restart: always, log rotation and resource
-# limits -- on every restart after setup.sh had done the right thing
+# limits -- on every restart after the first start had done the right thing
 # (WILDBO-OPS-01). Both paths are now named in the command that is typed.
 COMPOSE_DEV  := -f docker-compose.yml -f docker-compose.dev.yml
 COMPOSE_PROD := -f docker-compose.yml -f docker-compose.prod.yml

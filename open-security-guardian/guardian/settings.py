@@ -454,25 +454,15 @@ LOGGING = {
     },
 }
 
-# =============================================================================
-# WILDBOX INTEGRATION SETTINGS
-# =============================================================================
-
-WILDBOX_SETTINGS = {
-    'API_URL': os.getenv('WILDBOX_API_URL', 'http://localhost:8000'),
-    'API_KEY': os.getenv('WILDBOX_API_KEY', ''),
-    'DATA_URL': os.getenv('WILDBOX_DATA_URL', 'http://localhost:8001'),
-    'DATA_API_KEY': os.getenv('WILDBOX_DATA_API_KEY', ''),
-}
-
-# No SCANNER_SETTINGS, TICKETING_SETTINGS, COMPLIANCE_SETTINGS,
-# RISK_CALCULATION_SETTINGS or PERFORMANCE_SETTINGS, and no Slack or Teams
-# entry under NOTIFICATION_SETTINGS: they read some forty variables
-# (NESSUS_PASSWORD, JIRA_API_TOKEN, SLACK_WEBHOOK_URL, CVSS_WEIGHT,
-# MAX_CONCURRENT_SCANS...) into dictionaries no code read (#665). A scanner,
-# a ticketing system and a notification channel are records of the team
-# that owns them, made through the API, and guardian stores no credential
-# for any of them (#728).
+# No WILDBOX_SETTINGS, SCANNER_SETTINGS, TICKETING_SETTINGS,
+# COMPLIANCE_SETTINGS, RISK_CALCULATION_SETTINGS or PERFORMANCE_SETTINGS,
+# and no Slack or Teams entry under NOTIFICATION_SETTINGS: they read some
+# forty-four variables (WILDBOX_API_KEY, NESSUS_PASSWORD, JIRA_API_TOKEN,
+# SLACK_WEBHOOK_URL, CVSS_WEIGHT, MAX_CONCURRENT_SCANS...) into
+# dictionaries no code read (#665). A scanner, a ticketing system and a
+# notification channel are records of the team that owns them, made
+# through the API, and guardian stores no credential for any of them
+# (#728).
 
 # =============================================================================
 # NOTIFICATION SETTINGS

@@ -155,7 +155,6 @@ def record_failure(client, task_id: str, code: str) -> bool:
     ttl = settings.task_result_expires
     if not client.set(f"task:{task_id}:error", code, nx=True, ex=ttl):
         return False
-    client.setex(f"task:{task_id}:status", ttl, "failed")
     count_today(client, FAILED)
     return True
 
@@ -238,13 +237,6 @@ def _run_threat_enrichment(task, task_id: str, ioc: Dict[str, Any]) -> Dict[str,
         meta={"progress": "Initializing AI agent...", "started_at": started_at}
     )
 
-    # Update Redis with task status
-    redis_client.setex(
-        f"task:{task_id}:status",
-        settings.task_result_expires,
-        "running"
-    )
-
     # Without a model key nothing can be analyzed. Say so, instead of
     # letting the first call to the model fail on its authentication.
     if not model_configured():
@@ -270,13 +262,6 @@ def _run_threat_enrichment(task, task_id: str, ioc: Dict[str, Any]) -> Dict[str,
 
     # Set the task_id in the result
     result["task_id"] = task_id
-
-    # Update Redis with completion
-    redis_client.setex(
-        f"task:{task_id}:status",
-        settings.task_result_expires,
-        "completed"
-    )
 
     # Update stats
     count_today(redis_client, COMPLETED)

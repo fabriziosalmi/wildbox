@@ -56,24 +56,18 @@ def _read_requirements():
 
 requirements = _read_requirements()
 
-# Platform-specific requirements
-extra_requirements = {
-    'dev': [
-        'pytest>=7.2.0',
-        'pytest-asyncio>=0.20.3',
-        'pytest-cov>=4.0.0',
-        'black>=22.10.0',
-        'flake8>=6.0.0',
-        'mypy>=0.991'
-    ],
-    'windows': [
-        'pywin32>=304',
-        'wmi>=1.5.1'
-    ],
-    'macos': [
-        'pyobjc-framework-Cocoa>=9.0'
-    ]
-}
+# No extras and no console scripts.
+#
+# The `windows` and `macos` extras named pywin32, wmi and pyobjc, which no
+# module of the sensor imports: it reads the Windows event log and the macOS
+# unified log by running the system's own commands. The `dev` extra repeated
+# the test tools requirements.in already pins.
+#
+# `security-sensor` and `ossensor` pointed at `main:main`, and main.py is not
+# part of what this file packages (find_packages() finds `sensor` only): after
+# `pip install .` both failed with "No module named 'main'". They only worked
+# in the image, whose editable install puts /app on the path, and the image
+# starts `python main.py`, as the README tells an operator to (#665).
 
 setup(
     name='open-security-sensor',
@@ -88,13 +82,6 @@ setup(
     include_package_data=True,
     python_requires='>=3.8',
     install_requires=requirements,
-    extras_require=extra_requirements,
-    entry_points={
-        'console_scripts': [
-            'security-sensor=main:main',
-            'ossensor=main:main',
-        ],
-    },
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: System Administrators',

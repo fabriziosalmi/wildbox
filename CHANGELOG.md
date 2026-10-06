@@ -955,6 +955,203 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MalwareBazaar (401 without an abuse.ch key), AbuseIPDB and URLVoid
   (offered with a placeholder for a key). Their collectors are still
   registered, for a source that is given what its feed asks for.
+  route answers 404 and its serializer is gone. The table, unused, is
+  dropped by a later change (#665, below).
+- **shared: the tracing module, which could not be imported** (#665).
+  `open-security-shared/tracing.py` imported the Jaeger Thrift exporter,
+  whose last release (1.21.0) does not import under a current
+  OpenTelemetry SDK, and no image installed OpenTelemetry at all. Every
+  FastAPI service still tried it at start-up, through
+  `install_observability()`, and logged that tracing was not set up. The
+  module, the `tracing` extra of the package and the `enable_tracing`
+  argument of `install_observability()` are removed; that log line no
+  longer appears. Nothing traced before, so nothing stops tracing. The
+  observability roadmap now says what tracing needs (an OTLP exporter,
+  locked requirements, a collector) instead of showing the Jaeger
+  example, and the page on architectural patterns loses the section that
+  described the module as written.
+- **agents: the `task:<id>:status` key in Redis** (#665). The worker
+  wrote `running`, `completed` or `failed` under it for every analysis,
+  and nothing read it: the API takes a task's status from Celery and
+  the reason of a failure from `task:<id>:error`. The three writes are
+  removed. A key already in Redis expires when its task does.
+- **sensor: the `security-sensor` and `ossensor` console scripts, and
+  the `dev`, `windows` and `macos` extras of `setup.py`** (#665). Both
+  scripts pointed at `main:main`, and `main.py` is not part of what
+  `setup.py` packages: after `pip install .` each failed with
+  `ModuleNotFoundError: No module named 'main'`. They answered only
+  inside the image, where an editable install puts `/app` on the path,
+  and nothing ran them there: the image starts `python main.py`, which
+  is also what the README tells an operator to run. The extras named
+  `pywin32`, `wmi` and `pyobjc-framework-Cocoa`, which no module of the
+  sensor imports. Start the sensor with `python main.py --config <file>`.
+- **Seventy requirements that no line of code imported** (#665). Seven
+  of the eight `requirements.in` files declared packages their service
+  never imports, and each was built into the image, scanned for
+  advisories and upgraded for them: `multidict` and `yarl` were in the
+  cspm and guardian images only because of an `aiohttp` and a
+  `pytenable` nobody used. Removed, with what only they brought in:
+  - data (124 packages locked, now 67): `spacy`, `scikit-learn`,
+    `pandas`, `numpy`, `plotly`, `openpyxl`, `tabulate`, `geoip2`,
+    `maxminddb`, `pyasn`, `dnspython`, `python-whois`, `redis` and
+    `hiredis` (the service uses no Redis), `passlib[bcrypt]`,
+    `cryptography`, `pydantic-settings`, `structlog`, `gunicorn`, `pytz`,
+    `python-dateutil`, `pyyaml`, `python-dotenv`, and `aiofiles` 23.2.0,
+    a release yanked from PyPI;
+  - guardian (138, now 83): the clients of systems it does not contact
+    (`pytenable`, `qualysapi`, `python-libnmap`, `atlassian-python-api`,
+    `servicenow-api`), `django-oauth-toolkit`, `pandas`, `numpy`,
+    `pydantic`, `httpx`, `cryptography`, `structlog`, `psutil`,
+    `python-magic`, `validators`, `netaddr`, `factory-boy`, `freezegun`,
+    and `ipaddress`, a Python 2 backport of a module of the standard
+    library;
+  - cspm (73, now 49): `google-auth` and `azure-identity`, which the
+    worker stopped importing when the service became AWS-only (#624),
+    `aiohttp`, `jinja2`, `structlog`, `gunicorn`, and the direct pins of
+    `click` and `python-dateutil`, which Celery and botocore still bring;
+  - sensor (50, now 36): `asyncio-mqtt`, `feedparser`, `jsonschema`,
+    `watchdog`, `structlog`, `certifi`, `python-dateutil`, `pysystemd`
+    and the Windows and macOS pins (`pywin32`, `wmi`,
+    `pyobjc-framework-Cocoa`): the sensor reads those systems' logs by
+    running their own commands;
+  - tools (79, now 72): `beautifulsoup4`, `slowapi`, `psutil`;
+  - identity (66, now 63): `passlib[bcrypt]` (passwords are hashed by
+    fastapi-users' helper since #501), `psycopg2-binary` (the only
+    engine is asyncpg) and `urllib3`;
+  - responder (46, now 44): `gunicorn`, `structlog`.
+
+  No version of a package that stays has moved. Every image was rebuilt:
+  the offline install of the shared package and `pip check` pass, and
+  each service's unit tests pass on the new lock. A test now reads the
+  eight files and the code beside them: a requirement must be imported
+  by a Python file of its service or be listed with what uses it (a
+  database driver named by a URL, a Django application, a server
+  started from a command line, a pytest plugin), and the list must stay
+  exact.
+- **The standalone Compose files of the gateway and the dashboard, and
+  what drove them** (#665).
+  - `open-security-gateway/docker-compose.yml` started the gateway and a
+    Redis and nothing else, and the gateway cannot start that way: nginx
+    exits with `host not found in upstream
+    "open-security-identity:8001"`. Its `Makefile`, `scripts/setup.sh`
+    and `test/integration_test.sh` all ran that file, and
+    `scripts/generate_certs.sh` was called by those two only (the image's
+    entrypoint writes the development certificate).
+    `scripts/test_config.sh`, the `make config` check, wrote an nginx
+    configuration of its own,
+    with an upstream for the automations route removed in #714, and
+    tested that one, not the files in `nginx/`. The gateway runs from the
+    root `docker-compose.yml`, and is tested without the stack as
+    `.github/workflows/gateway-tests.yml` does.
+  - `open-security-dashboard/docker-compose.yml` passed service URLs and
+    `NEXTAUTH_*` variables the dashboard does not read, and checked its
+    health with `curl` on `/api/health`: the image has no `curl` and the
+    dashboard no such route. The dashboard's `Makefile` wrapped that file
+    and an `npm run test` script that does not exist.
+- **tools: the files beside the service that nothing read** (#665).
+  `audit_tools.py`, `setup_security.sh`, `test_security_integration.sh`,
+  `scripts/setup.sh`, `scripts/health-check.sh`, and
+  `scripts/security_scanner.py` with the `security_scan_report.json` it
+  once wrote: no workflow, image or page ran them. Three files of
+  `config/` (`logging_config.json`, `rate_limiting.json`,
+  `security_config.json`) that no code opened; the two
+  `*.json.example` files stay, they are the format of the
+  authorization files the service does read. The `Makefile`, which no
+  page mentioned: its `dev` target copied `.env.example` over an
+  existing `.env`, `fix-db` called a script that is not in the
+  repository, and `clean` pruned every unused Docker volume and network
+  of the host, not only this stack's.
+- **Scripts that nothing ran, and that could not have worked** (#665).
+  No workflow, Makefile target or page told anyone to run them, and each
+  was written for a stack that no longer exists:
+  - `scripts/setup.sh`, a "one-command deployment" that copied
+    `.env.example` to `.env` with its placeholders, needed the
+    `docker-compose` v1 binary, and ended by printing `admin123` as the
+    administrator's password and `http://localhost:8080` as the
+    gateway's address. Use `make generate-secrets` and `make start`, as
+    the [quickstart](docs/guides/quickstart.md) says.
+  - In `tests/`: `test_all_pages.sh`, `test_integration.sh`,
+    `verify_all_endpoints.sh`, `verify_endpoints.sh`, `verify_auth.sh`,
+    `test_dashboard_auth_fix.sh`, `test_gateway_auth_complete.sh` and
+    five `.js` files. They called the services on their own ports without the
+    gateway's identity headers, or the gateway over plain HTTP on paths
+    it does not serve. The `integration-tester` service of
+    `docker-compose.dev.yml` goes with `test_integration.sh`: it mounted
+    that Bash script into an image without Bash, where `localhost` is
+    the container itself.
+  - `scripts/shell-scripts/security_validation.sh` (superseded by
+    `security_validation_v2.sh`, which CI runs) and
+    `final_auth_verification.sh`.
+  - identity: `setup.sh`, `scripts/setup.sh` and `demo.py`, with the
+    `setup` target of its `Makefile`. `scripts/setup.sh` began with
+    `docker-compose down -v`, deleting the database volume without a
+    question.
+  - guardian: `setup_dev.sh`, which stopped at
+    `manage.py setup_guardian --demo-data`, an option the command does
+    not have.
+  - dashboard: `setup.sh`, which ran `npm install` for packages by name
+    and so rewrote `package.json`, and `test_auth_integration.sh`.
+
+  Two hints that pointed at a page that is not served were corrected
+  where the file stays: `open-security-cspm/Makefile` and
+  `open-security-responder/Makefile` printed a `/docs` URL, which answers
+  `404` unless `ENVIRONMENT=development`.
+- **shared: six modules that no service imported** (#665).
+  `auth_utils`, `security_middleware`, `idempotency`, `event_sourcing`,
+  `cqrs` and `feature_flags` were libraries written ahead of a use that
+  never came: no service's code imported any of them, and no image
+  installed the `auth` and `events` extras they needed (PyJWT, passlib,
+  Redis, SQLAlchemy). They are removed with the two extras, the eight
+  names `open_security_shared` re-exported from `auth_utils`, the tests
+  of `auth_utils`, and `docs/FAANG_PATTERNS_IMPLEMENTATION.md`, the page
+  that described them as implemented. The package is now eight modules,
+  each imported by at least one service, with the `fastapi` and
+  `metrics` extras; a test fails for a module that no service imports.
+  Nothing a running service used has changed.
+- **guardian: the attachment table, the payload columns of the
+  integration log, the `/admin/` route and two blocks of code nothing
+  read** (#665).
+  - `VulnerabilityAttachment` was a model without a writer: there has
+    never been an upload route, a task or a command that creates a row,
+    and its one reader went in #724. Migration
+    `vulnerabilities.0004_drop_unused_attachments` drops the table when
+    it is empty, which is every database guardian itself has written.
+    When it has rows, written by hand, the migration refuses before it
+    changes anything, names the table and the number of rows, and
+    guardian does not start until they are dealt with. The reverse
+    creates the table again, empty.
+  - `IntegrationLog.request_data` and `response_data` were columns for
+    the raw request and response of calls guardian does not make.
+    Nothing wrote them and the API never returned them. Migration
+    `integrations.0005_drop_unwritten_log_payloads` blanks and drops
+    them, and logs how many rows held a value when any did.
+  - `/admin/` was Django's admin site with no model of guardian
+    registered. In the image its login page answered `500` (it needs
+    the static files' manifest, which the image does not build), and
+    the gateway never routed to it. The route is removed and answers
+    `404`; the deployment guide no longer says that the admin shows
+    guardian's scheduled tasks.
+  - `WILDBOX_SETTINGS` in the settings (an API URL, a data URL that
+    named identity's port, and two API keys) and `apps/core/utils.py`
+    were read and imported by nothing. `WILDBOX_API_URL` and
+    `WILDBOX_DATA_URL` leave guardian's own `docker-compose.yml`; a
+    value still set in the environment is ignored.
+- **dashboard: a rewrite to nowhere, a CORS grant nobody asked for, and
+  a guarded route without a page** (#665). `next.config.js` rewrote
+  `/api/proxy/*` to `API_BASE_URL`, which nothing sets, so to
+  `http://localhost:8000` inside the container; no page calls that path.
+  For the same proxy it answered every `/api/*` route of the dashboard
+  with `Access-Control-Allow-Origin: http://localhost:3000` (or
+  `CORS_ORIGIN`, which nothing sets either) and
+  `Access-Control-Allow-Credentials: true`, in production too. It also
+  exposed a `CUSTOM_KEY` variable that no code read. All three are
+  removed: `/api/proxy/*` answers `404`, and the dashboard's own routes
+  carry no CORS header, as a same-origin application needs none. The
+  security headers (the Content Security Policy, `X-Frame-Options`,
+  HSTS) are unchanged. `src/proxy.ts` no longer lists `/endpoints`
+  among the routes that need a session: there is no such page. The
+  `CloudAccount` type, with its `azure` and `gcp` providers, was used
+  by nothing.
 
 ### Fixed
 
@@ -2010,6 +2207,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sources enable` refuses a source whose type has no collector, and the
   scheduler disables such a source when it meets one, with the reason in
   its `last_error`.
+- **identity reads the user of an authenticated request once** (#665).
+  Two dependencies resolve the bearer token of a request to an
+  authenticated route, the route's own and the one that refuses an
+  account that must change its password, and fastapi-users makes a
+  separate dependency of each: every request asked Redis twice whether
+  the token was revoked and read the user from the database twice. The
+  token strategy, which FastAPI creates once per request, now remembers
+  what it read for that request. What a request is refused for has not
+  moved, and each case has a test: a revoked token, a token older than
+  a password change, an inactive or deleted account, an account that is
+  not a superuser, one that must change its password, and a token
+  revoked between two requests. Five `logger.debug` lines of the
+  account-deletion route were written without the `f` prefix and logged
+  their placeholders (`user_id={user_id}`); they now log the values, and
+  the caller's id where the first named the caller's e-mail address.
+  Also removed: `get_current_user` and `get_current_active_user` of
+  `app/auth.py`, a second token dependency that no route used.
+- **tools: the standalone Compose files ask for `API_KEY` instead of
+  defaulting to one the service refuses** (#665).
+  `open-security-tools/docker-compose.yml` and `docker-compose.dev.yml`
+  set `API_KEY` to a placeholder when the variable was unset, and the
+  service's own validation rejects both placeholders (one names a weak
+  pattern, the other is shorter than 32 characters): `docker compose up`
+  built the image and the API exited at once. The variable is now
+  required, and Compose says so before it builds anything. With a
+  generated key the API starts and answers `/health`.
 
 ### Changed
 
@@ -2324,6 +2547,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now reads `sent`, `sent to the team's owners and admins (no assignee
   to e-mail)` or `not sent (<reason>)`, and an assignment notification
   adds an entry of its own.
+- **dashboard: `@tanstack/react-query-devtools` is a development
+  dependency** (#665). It was under `dependencies`, although the page
+  renders it under `next dev` only, which is why the two `seroval`
+  advisories of October 2026 were reported against the production
+  dependencies. Nothing changes in what is built or shipped: the image
+  installs with `npm ci`, development packages included, as the build
+  needs them anyway, and the standalone output it copies holds the same
+  packages as before (compared file by file between the two images).
+  `npm audit --omit=dev` reports nothing. The `overrides` for `seroval`
+  and `seroval-plugins` stay: solid-js 1.9.15 still asks for `~1.5.4`,
+  and without them `npm audit` reports both advisories again.
 
 ### Added
 

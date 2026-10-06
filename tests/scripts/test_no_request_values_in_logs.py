@@ -398,10 +398,6 @@ ALLOWED = {
         "`manage.py sources list`: an operator's command prints the sources "
         "it was asked to list, to that operator's terminal"
     ),
-    ("open-security-identity/demo.py", "api_key"): (
-        "a demonstration script run by hand: it prints the ORM object of the "
-        "key it has just made, whose repr holds the prefix and no secret"
-    ),
     ("open-security-sensor/sensor/pipeline/data_forwarder.py", "ingest_url"): (
         "data_lake.ingest_url, the gateway address the operator configured "
         "the sensor to send to, logged once when its session is made; the "

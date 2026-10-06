@@ -145,9 +145,6 @@ docker compose exec sensor python main.py --config /etc/security-sensor/config.y
 The two requests go to that address only: no proxy from the environment is
 used and no redirect is followed, and the key is not printed.
 
-`setup.py` declares a `security-sensor` console script (and a shorter alias),
-both pointing at `main:main`.
-
 ## Configuration
 
 Edit the configuration file with your environment details. The
