@@ -25,7 +25,8 @@
 #   --dry-run                    only read the archives.
 #   --overwrite-live-databases   restore OVER the databases the services use.
 #                                Everything written to them since the backup
-#                                is lost. Stop the services first.
+#                                is lost, and so is every table, view and
+#                                sequence made since. Stop the services first.
 #
 # Without one of them the script refuses and says which databases it would
 # have overwritten, from which archives (#723): the destructive form used to
@@ -42,21 +43,57 @@
 # to mix runs on purpose, run the script once per database with --databases
 # and --timestamp.
 #
+# What a restore over a live database leaves (#773): what its archive holds,
+# and no other table, view, materialized view or sequence in the schemas the
+# archive holds. A relation made after the backup, by the migrations of a
+# later release for instance, is in no archive, so pg_restore --clean never
+# dropped it: it stayed, and the release that had made it then failed to
+# migrate again on `relation ... already exists`; one that depended on a
+# restored table (a view on it, a foreign key to it) made the restore fail.
+# They are now dropped in the transaction of the restore, with what depends
+# on them (DROP ... CASCADE; PostgreSQL's notices name it), and the script
+# lists them. It does not touch:
+#
+#   - what an extension owns;
+#   - the relations of a schema the archive does not hold, one made after
+#     the backup for instance. If one depends on a restored table, or would
+#     go with a relation made after the backup, the restore fails and names
+#     it. A foreign key or a column default there that refers to a relation
+#     made after the backup goes with that relation;
+#   - what is not a relation: a function or a type made after the backup
+#     stays, unless it depends on a relation that goes;
+#   - a database restored with --into-suffix: one that is already there
+#     keeps what the archive does not hold, as before.
+#
 # What a failed restore leaves (#740):
 #
 #   - Every archive is read to the end of its table of contents before any
 #     database is touched, so an unreadable archive stops the run with
 #     nothing restored.
-#   - Each database is restored in one transaction (pg_restore
-#     --single-transaction). If anything in it fails, PostgreSQL rolls the
-#     whole database back to what it was. It used to run statement by
-#     statement and carry on after an error, which left a database with
-#     some tables dropped, some reloaded and some rows twice.
+#   - Each database is restored in one transaction. If anything in it fails,
+#     PostgreSQL rolls the whole database back to what it was, the relations
+#     made after the backup included. It used to run statement by statement
+#     and carry on after an error, which left a database with some tables
+#     dropped, some reloaded and some rows twice.
+#   - The transaction is one stream to psql: BEGIN, the removal above, the
+#     archive as SQL, COMMIT. pg_restore first writes that SQL to a file, and
+#     the file is used only if pg_restore succeeded and it ends where a
+#     complete dump ends, so the stream is whole before the database sees
+#     its first statement. A stream that ends early for any other reason has
+#     no COMMIT, and a session that ends inside a transaction commits
+#     nothing. The script reports a database as restored only when the
+#     server has answered after the COMMIT.
 #   - The databases are restored one after the other, each in a transaction
 #     of its own: PostgreSQL has no transaction that spans databases. If the
 #     second of three fails, the first is restored and the other two are as
 #     they were. The script says which is which; running the same command
 #     again restores all of them, and restoring a database twice is safe.
+#
+# Room: the work directory, made under TMPDIR (/tmp by default) and removed
+# at exit, holds every archive without its outer gzip, which is about the
+# size of the backup files, and the SQL of one database at a time, gzipped,
+# which is about the size of that database's archive again. Set TMPDIR to a
+# disk with room for the backup files plus the largest of them.
 #
 # Like the backup, it runs pg_restore and psql inside the stack's postgres
 # container by default (compose mode) and connects directly with
@@ -92,7 +129,7 @@ while [ $# -gt 0 ]; do
     --latest) USE_LATEST=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --overwrite-live-databases) OVERWRITE_LIVE=true; shift ;;
-    -h|--help) sed -n '2,68p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,105p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -228,9 +265,10 @@ if [ -z "$INTO_SUFFIX" ] && [ "$DRY_RUN" != true ] && [ "$OVERWRITE_LIVE" != tru
       printf '    %-12s from %s\n' "${DB_ARRAY[$i]}" "$(basename "${ARCHIVES[$i]}")"
     done
     echo ""
-    echo "pg_restore --clean drops every object an archive holds and loads it as it"
-    echo "was when the backup was taken: everything written to these databases"
-    echo "since then is lost. Nothing was changed. Name the target:"
+    echo "It drops every object an archive holds and loads it as it was when the"
+    echo "backup was taken, and drops the tables, views and sequences made since:"
+    echo "everything written to these databases since then is lost."
+    echo "Nothing was changed. Name the target:"
     echo ""
     echo "    --into-suffix _check         restore into ${DB_ARRAY[0]}_check and so on,"
     echo "                                 next to the live databases"
@@ -315,12 +353,153 @@ report_failure() {
   } >&2
 }
 
+# archive_as_sql DB: write the staged archive of DB as SQL, gzipped, to
+# $WORKDIR/DB.sql.gz. It fails unless pg_restore succeeded AND the file ends
+# where a complete dump ends: an exit status alone would let through a file
+# that was cut short on its way to the disk.
+archive_as_sql() {
+  local sql="$WORKDIR/${1}.sql.gz" last
+  wb_pg_stdin pg_restore --no-owner --no-privileges --clean --if-exists -f - \
+    < "$WORKDIR/${1}.dump" | gzip -1 > "$sql" || return 1
+  last=$(gunzip -c "$sql" | tail -n 12) || return 1
+  grep -qx -- '-- PostgreSQL database dump complete' <<< "$last"
+}
+
+# removal_sql DB: the statements that drop the relations of the database
+# the archive of DB does not hold (#773). The archive's table of contents
+# goes to the server as data, and the server compares it with its catalog and
+# quotes the names: no identifier is put together in this shell.
+#
+# A relation is one the archive holds when the table of contents has an
+# entry of its kind, schema and name; a schema is one the archive holds when
+# the table of contents has the schema itself or a relation in it. What an
+# extension owns is left alone, and so is a sequence that belongs to a
+# column, which goes with its table.
+#
+# DROP ... CASCADE takes what depends on a relation with it. That is wanted
+# for a restored table that came to refer to a later one, and it must not
+# reach a schema the archive does not hold: if a relation of such a schema
+# is gone after the drops, the transaction fails and names it.
+removal_sql() {
+  cat <<'SQL' || return 1
+CREATE TEMP TABLE wildbox_restore_toc (entry text) ON COMMIT DROP;
+COPY pg_temp.wildbox_restore_toc (entry) FROM STDIN;
+SQL
+  # COPY's text format: a backslash and a tab are written escaped.
+  sed -e '/^[0-9]/!d' -e 's/\\/\\\\/g' -e $'s/\t/\\\\t/g' "$WORKDIR/${1}.toc" || return 1
+  cat <<'SQL' || return 1
+\.
+-- The relations the archive does not hold: to drop where it holds their
+-- schema, to keep where it does not.
+CREATE TEMP TABLE wildbox_restore_relation ON COMMIT DROP AS
+WITH toc AS (
+  -- An entry reads "<id>; <catalog> <oid> <KIND> <schema> <name> <owner>":
+  -- without its three numbers it begins with the kind, the schema, the name.
+  SELECT pg_catalog.regexp_replace(entry, '^[0-9]+; [0-9]+ [0-9]+ ', '') AS entry
+  FROM pg_temp.wildbox_restore_toc
+), relation AS (
+  SELECT c.oid AS relid, n.nspname, c.relname,
+         CASE c.relkind
+           WHEN 'v' THEN 'VIEW'
+           WHEN 'm' THEN 'MATERIALIZED VIEW'
+           WHEN 'S' THEN 'SEQUENCE'
+           WHEN 'f' THEN 'FOREIGN TABLE'
+           ELSE 'TABLE'
+         END AS kind
+  FROM pg_catalog.pg_class c
+  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+  WHERE c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
+    AND n.nspname !~ '^pg_'
+    AND n.nspname <> 'information_schema'
+    AND NOT EXISTS (
+      SELECT FROM pg_catalog.pg_depend d
+      WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass
+        AND d.objid = c.oid
+        AND (d.deptype = 'e'
+             OR (c.relkind = 'S' AND d.deptype IN ('a', 'i')
+                 AND d.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass)))
+)
+SELECT r.relid, r.kind, r.nspname, r.relname,
+       EXISTS (
+         SELECT FROM toc, pg_catalog.unnest(ARRAY[
+           'SCHEMA -', 'TABLE', 'VIEW', 'MATERIALIZED VIEW', 'SEQUENCE', 'FOREIGN TABLE'
+         ]) AS held (kind)
+         WHERE pg_catalog.strpos(toc.entry, held.kind || ' ' || r.nspname || ' ') = 1
+       ) AS schema_held
+FROM relation r
+WHERE NOT EXISTS (
+        SELECT FROM toc
+        WHERE pg_catalog.strpos(
+          toc.entry, r.kind || ' ' || r.nspname || ' ' || r.relname || ' ') = 1);
+DO $wildbox$
+DECLARE
+  extra record;
+  lost text;
+BEGIN
+  FOR extra IN
+    SELECT * FROM pg_temp.wildbox_restore_relation WHERE schema_held
+  LOOP
+    -- One dropped with another before its turn is not there any more.
+    IF EXISTS (SELECT FROM pg_catalog.pg_class c WHERE c.oid = extra.relid) THEN
+      EXECUTE pg_catalog.format(
+        'DROP %s %I.%I CASCADE', extra.kind, extra.nspname, extra.relname);
+    END IF;
+  END LOOP;
+  SELECT pg_catalog.string_agg(
+           pg_catalog.format('%s %I.%I', r.kind, r.nspname, r.relname), ', ')
+  INTO lost
+  FROM pg_temp.wildbox_restore_relation r
+  WHERE NOT r.schema_held
+    AND NOT EXISTS (SELECT FROM pg_catalog.pg_class c WHERE c.oid = r.relid);
+  IF lost IS NOT NULL THEN
+    RAISE EXCEPTION
+      'removing the relations made after the backup would also drop, from a schema the archive does not hold: %', lost
+      USING HINT = 'A restore leaves such a schema alone. Drop what is named, or its schema, and run the restore again.';
+  END IF;
+END
+$wildbox$;
+SELECT 'wildbox-restore: removed ' || kind || ' '
+       || pg_catalog.format('%I.%I', nspname, relname)
+FROM pg_temp.wildbox_restore_relation
+WHERE schema_held
+ORDER BY 1;
+SQL
+}
+
+# What psql prints last when the transaction of a restore has committed. It
+# is read from a setting made inside the transaction, which the session
+# keeps only if the transaction commits: a COMMIT that ended a failed
+# transaction is a rollback, and prints nothing of the kind.
+COMMITTED="wildbox-restore: committed"
+
+# restore_stream DB: the one transaction that restores DB, for psql's stdin.
+# The COMMIT is written only after the SQL of the archive has been written
+# to its end.
+restore_stream() {
+  printf 'BEGIN;\n' || return 1
+  if [ "$OVERWRITE_LIVE" = true ]; then
+    removal_sql "$1" || return 1
+  fi
+  gunzip -c "$WORKDIR/${1}.sql.gz" || return 1
+  printf '%s\n' \
+    "SET wildbox.restore = 'committed';" \
+    "COMMIT;" \
+    "SELECT 'wildbox-restore: ' || pg_catalog.current_setting('wildbox.restore', true);"
+}
+
 echo ""
 for i in "${!DB_ARRAY[@]}"; do
   db="${DB_ARRAY[$i]}"
-  STAGED="$WORKDIR/${db}.dump"
   TARGET_DB="${db}${INTO_SUFFIX}"
   echo "Restoring $db from $(basename "${ARCHIVES[$i]}")"
+
+  # The whole archive as SQL, before the database is touched: an archive
+  # whose data cannot be read stops here.
+  if ! archive_as_sql "$db"; then
+    echo "  FAILED: $(basename "${ARCHIVES[$i]}") could not be read to its end; '$TARGET_DB' was not touched" >&2
+    report_failure "$TARGET_DB"
+    exit 1
+  fi
 
   created=false
   exists=$(wb_psql postgres "SELECT 1 FROM pg_database WHERE datname = '${TARGET_DB}'")
@@ -331,12 +510,16 @@ for i in "${!DB_ARRAY[@]}"; do
     created=true
   fi
 
-  # One transaction: everything the archive drops and loads, or nothing.
-  # --single-transaction also stops at the first error instead of carrying
-  # on with the statements after it.
-  if ! wb_pg_stdin pg_restore -d "$TARGET_DB" \
-      --no-owner --no-privileges --clean --if-exists --single-transaction \
-      < "$STAGED"; then
+  # One transaction: everything that is dropped and loaded, or nothing.
+  # ON_ERROR_STOP ends psql at the first error instead of carrying on with
+  # the statements after it. psql is not given --single-transaction: it
+  # would send a COMMIT of its own when its input ends, wherever that is.
+  # Its exit status is not enough either: it is 0 for an input that ended
+  # before the COMMIT.
+  OUT="$WORKDIR/${db}.out"
+  if ! restore_stream "$db" \
+        | wb_pg_stdin psql -d "$TARGET_DB" -v ON_ERROR_STOP=1 -X -q -tA > "$OUT" \
+      || ! grep -qx -- "$COMMITTED" "$OUT"; then
     echo "  FAILED: the restore of '$TARGET_DB' was rolled back" >&2
     if [ "$created" = true ]; then
       # It did not exist before this run, and it holds nothing.
@@ -346,6 +529,13 @@ for i in "${!DB_ARRAY[@]}"; do
     exit 1
   fi
   RESTORED+=("$TARGET_DB")
+  rm -f "$WORKDIR/${db}.sql.gz"
+
+  REMOVED=$(sed -n 's/^wildbox-restore: removed /    /p' "$OUT")
+  if [ -n "$REMOVED" ]; then
+    echo "  removed, made after the backup (the archive does not hold them):"
+    printf '%s\n' "$REMOVED"
+  fi
 
   COUNT=$(wb_psql "$TARGET_DB" \
     "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
