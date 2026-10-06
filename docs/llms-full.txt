@@ -51,7 +51,7 @@ The gateway is the only service published on all interfaces. Every other publish
 | gateway | 443, 80, 8080 (8081 internal, not published) | OpenResty ingress, TLS, authentication, rate limiting, routing; port 8081 takes identity's auth-cache purge on the Compose network |
 | identity | 127.0.0.1:8001 | Users, JWT login and revocation, API keys, teams (FastAPI, fastapi-users) |
 | api (tools) | 127.0.0.1:8000 | Runs 52 security tools through an API; Celery workers (`tools-worker`), Flower on 127.0.0.1:5555 |
-| data | 127.0.0.1:8002 | Threat intelligence (IOCs, denylists) collected from 7 public feeds by `data-scheduler` |
+| data | 127.0.0.1:8002 | Threat intelligence (IOCs, denylists) collected by `data-scheduler` from the sources in the database: collectors for seven public feeds; a new database has no source, and `manage.py sources add-defaults` adds the one feed that needs no key (abuse.ch Feodo Tracker) |
 | sensor | 127.0.0.1:8004 | Endpoint telemetry with osquery, posted in batches through the gateway to the data service's ingest endpoint with a team member's API key (`SENSOR_DATA_LAKE_API_KEY`, scope `data:ingest`); data stores telemetry and sensors per team. Without a key the sensor runs and forwards nothing |
 | agents | 127.0.0.1:8006 | Optional AI-assisted IOC analysis with the Anthropic API (Claude) |
 | guardian | 127.0.0.1:8013 | Assets, vulnerabilities, remediation, compliance, reporting (Django REST) |

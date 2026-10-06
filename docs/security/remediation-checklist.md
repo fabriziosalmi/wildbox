@@ -367,7 +367,7 @@ docker-compose --env-file .env.production up
 
 ### [ ] 7. Remove Plaintext Password Logging
 
-**File 1**: `open-security-identity/demo.py` (line 22)
+**File 1**: `open-security-identity/demo.py` (line 22; the file has since been removed)
 
 Replace:
 

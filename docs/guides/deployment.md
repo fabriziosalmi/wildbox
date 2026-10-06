@@ -64,6 +64,10 @@ than secrets:
   from these origins and names them in its responses, and only them; the
   production overlay passes the setting to the gateway and to identity,
   tools, guardian, responder and agents, and `docker-compose.yml` to data.
+  guardian receives it as `CORS_ALLOWED_ORIGINS` and reads it by the
+  gateway's rules (`guardian/cors.py`): origins separated by commas, or a
+  JSON list of them, and an entry that is not an origin (a wildcard, a path,
+  a trailing slash) stops guardian at start-up with a message naming it.
   Each entry is an origin: a scheme, a host and an optional port, with no
   path and no wildcard. The gateway does not start with an entry that is
   not one. A JSON list is accepted too. It can be left empty when the
@@ -72,7 +76,7 @@ than secrets:
   requests need none
 - `ENVIRONMENT=production` (the template default). Required: Compose refuses
   to start without it, and `docker-compose.prod.yml` sets `production` on
-  every service whatever `.env` says. Only `development` serves the API
+  every service that reads it, whatever `.env` says. Only `development` serves the API
   schemas and skips the start-up checks for secrets
 - `NEXT_PUBLIC_GATEWAY_URL`: leave it empty. The gateway serves the
   dashboard, and an empty value makes the dashboard call the API on the

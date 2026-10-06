@@ -79,7 +79,7 @@ pytest tests/integration/ -v -s
 pytest tests/integration/test_agents_ai.py::TestAgentsAI::test_service_health -v
 ```
 
-**Some of the integration tests** (`ls tests/integration/test_*.py` shows all 46):
+**Some of the integration tests** (`ls tests/integration/test_*.py` shows all of them):
 
 - `test_agents_ai.py` - AI-powered security analysis
 - `test_automations_workflow.py` - n8n workflow automation

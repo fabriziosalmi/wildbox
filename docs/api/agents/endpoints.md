@@ -121,8 +121,10 @@ do not travel with the call. The tools service then applies the caller's own
 team scope and role.
 
 There is no service-wide key. The `INTERNAL_API_KEY` that the client used to
-send as `X-API-Key` is no longer read: the tools service stopped accepting it
-in #566, and the fallback was removed in #567. If the caller identity or
+send as `X-API-Key` is not a setting any more (`app/config.py`): the tools
+service stopped accepting it in #566, and the fallback was removed in #567.
+A `.env` file in the service's own directory that still names it stops the
+service at start. If the caller identity or
 `GATEWAY_INTERNAL_SECRET` is missing, the tool call fails in the agents
 service instead of reaching the tools service.
 

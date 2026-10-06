@@ -921,10 +921,11 @@ An event leaves the sensor unsent, and is counted, in these cases only:
 | `events_dropped_oversize` | Serialized, it is larger than a batch may be (8 MiB, or `buffer_max_bytes` if that is less) |
 | `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN) |
 | `events_dropped_unconfigured` | No API key is set: everything collected is discarded |
-| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues, or in the processor's hands) are in no counter: the sensor's last log lines say how many there were |
+| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped, and its collector cannot produce it again (an osquery answer, a unified-log entry, or any event collected without `data_dir`). An event its collector reads again after the restart is counted under `events_returned_to_source` instead, which is not a drop. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues, or in the processor's hands) are in no counter: the sensor's last log lines say how many there were |
 
 `events_dropped` is their sum, and `events_received` equals
-`events_forwarded` plus `events_dropped` plus the events in the buffer. The
+`events_forwarded` plus `events_dropped` plus `events_returned_to_source`
+(0 until the sensor stops) plus the events in the buffer. The
 counters, the buffer's fill and bounds and the time of the next attempt are
 under `data_forwarder` in `GET /api/v1/components`. The sensor logs each
 refused batch, each oversize or unserializable event, and once a minute the
@@ -939,7 +940,8 @@ The sender sends one batch at a time and the next one when the gateway has
 answered, at least 20 ms after the previous request. What limits it is the
 gateway:
 
-- nginx admits 100 requests a second from one address; 20 ms between
+- nginx admits 100 requests a second from one address
+  (`GATEWAY_RATE_LIMIT_PER_SECOND`, the gateway's default); 20 ms between
   requests keeps a sensor at half of that.
 - The gateway counts every request of a **team** against one budget,
   `RATE_LIMIT_PER_HOUR` (10,000 by default), enforced per minute: 166

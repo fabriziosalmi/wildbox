@@ -16,7 +16,7 @@
 
 The Open Security Data Service is a FastAPI-based security data lake providing threat intelligence, IOCs, and security-related data aggregation, analysis, and reporting. The service handles:
 
-- **Threat Intelligence Collection**: Automated collection from 50+ public sources
+- **Threat Intelligence Collection**: Scheduled collection from the sources in the database; `manage.py sources add-defaults` adds the default one
 - **Data Aggregation**: Centralized repository for security indicators
 - **Per-type fields**: the IP version, a domain's TLD, apex domain and subdomain, and a hash's algorithm, derived from the value; no geographic, ASN or WHOIS lookup is made
 - **Real-time Feeds**: Live threat intelligence streaming
@@ -534,16 +534,18 @@ within its team.
 {
   "batch_id": "uuid",
   "events_received": 100,
-  "events_ingested": 98,
-  "errors": [
-    "Event 15: Invalid timestamp format"
-  ],
+  "events_ingested": 100,
+  "errors": [],
   "ingested_at": "2025-11-07T20:30:00Z"
 }
 ```
 
-If the database refuses the batch, nothing is stored and the service answers
-503 with `Retry-After: 5`, so that the sensor sends it again.
+A batch is stored whole or not at all. A 200 means every event was stored,
+so `events_ingested` equals `events_received` and `errors` is empty. A batch
+with an invalid event answers 422 for the whole batch, naming the event by
+its index; a database error that may pass answers 503 with `Retry-After: 5`,
+so that the sensor sends the batch again. The answers are listed in
+[the data reference](api/data/endpoints.md).
 
 ---
 
@@ -608,7 +610,7 @@ Counts cover the caller's team's telemetry only.
 
 - `time_window_hours` (int): Analysis period
 - `total_events` (int): Total events in window
-- `active_sensors` (int): Sensors with events
+- `active_sensors` (int): The team's active sensors last seen within the window, whatever `sensor_id` is
 - `events_by_type` (object): Count breakdown by type
 - `query_time` (datetime): Query execution time
 
@@ -1022,18 +1024,18 @@ Use `total` to calculate:
 
 **Multi-Source Collection:**
 
-- 50+ public threat intelligence sources
-- Automated scheduled collection with configurable intervals
-- Support for feed, API, file, and custom source types
-- Rate limiting and retry mechanisms
+- Collectors for seven feeds (`app/collectors/sources.py`): Malware Domain List, AbuseIPDB, URLVoid, PhishTank, Feodo Tracker, MalwareBazaar and ThreatFox. A source's `source_type` names its collector; a type without one is not collected
+- One default source, Feodo Tracker (`app/collectors/defaults.py`), which needs no key
+- Scheduled collection, at each source's own interval
+- Per-source rate limiting; no retry
 
 **Data Processing Pipeline:**
 
 1. Raw data collection from sources
 2. Validation against defined schemas
 3. Normalization for consistency
-4. Deduplication using fingerprints
-5. Enrichment (geo, ASN, WHOIS)
+4. Deduplication by source, indicator type and normalized value
+5. The per-type row derived from the value (IP version; TLD, apex domain and subdomain; hash algorithm)
 6. Storage in PostgreSQL
 
 **Configuration:**
@@ -1133,7 +1135,7 @@ and read by no code.
 **Batch Processing:**
 
 - Configurable batch size (default: 1000)
-- Partial success handling (returns errors per item)
+- A batch is stored whole or not at all; an invalid event is named by its index in a 422
 - Automatic sensor metadata creation
 
 **Sensor Management:**
@@ -1350,7 +1352,7 @@ DB_POOL_TIMEOUT=30
 API_HOST=0.0.0.0
 API_PORT=8002
 CORS_ENABLED=true
-CORS_ORIGINS=*
+CORS_ORIGINS=http://localhost:3000   # comma-separated; empty allows no origin
 ```
 
 ### Security

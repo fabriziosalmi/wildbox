@@ -4,7 +4,7 @@
 
 ## 🏗️ Architecture Overview
 
-Wildbox is a microservices-based security operations platform with **11 containerized services** orchestrated through Docker Compose. The gateway acts as the intelligent entry point, routing all requests through OpenResty/Nginx with Lua-based authentication and rate limiting.
+Wildbox is a microservices-based security operations platform: ten services and an optional n8n, run as **18 containers** by the default Docker Compose stack. The gateway acts as the intelligent entry point, routing all requests through OpenResty/Nginx with Lua-based authentication and rate limiting.
 
 ### Service Communication Pattern
 
@@ -166,6 +166,11 @@ docker compose restart [service-name]
        proxy_pass http://identity_service;
    }
    ```
+
+   Then add a row for the path to `ROUTE_SCOPES` in
+   `nginx/lua/auth_handler.lua`: a path without one requires the `admin`
+   scope. `test/route_scope_tests.sh` and `test/upstream_header_tests.sh`
+   fail until the new location is pinned and classified.
 
 3. **Frontend client** (update `src/lib/api-client.ts`):
 
@@ -342,7 +347,7 @@ docker compose down -v      # Stop and remove volumes (destructive)
 3. **Clear gateway headers** before forwarding to prevent spoofing (handled in Lua)
 4. **API keys are team-scoped** - check team_id matches
 5. **Passwords are hashed with Argon2id** (legacy bcrypt hashes still verify) - use `password_helper` from `app/auth.py`
-6. **Rate limiting enforced** at gateway based on subscription plan
+6. **Rate limiting enforced** at the gateway: per team (`RATE_LIMIT_PER_HOUR`) and per client address (`GATEWAY_RATE_LIMIT_PER_SECOND`, `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND`, `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND`); there are no plans
 
 ## 🎯 Common Tasks Quick Reference
 

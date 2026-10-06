@@ -346,6 +346,13 @@ Settings are in `guardian/settings.py`. The root compose file passes:
   on `wildbox-redis` unless overridden by the `GUARDIAN_*` equivalents.
 - `GATEWAY_INTERNAL_SECRET`, shared with the gateway.
 - `DEBUG` (default `false`), `LOG_LEVEL`, `ALLOWED_HOSTS`.
+- `CORS_ALLOWED_ORIGINS`, on `guardian` under the production overlay only,
+  from `CORS_ORIGINS` in `.env`: the origins a browser may call guardian
+  from, separated by commas or as a JSON list, read by the gateway's rules
+  (`guardian/cors.py`). Empty or `[]` allows nobody; an entry that is not an
+  origin stops guardian at start-up. When the variable is not set at all,
+  as in the development stack, guardian allows eight local development
+  origins.
 - `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS`, on all three containers: how many
   days a user stays one of a team's users without acting in it, 1 to 365, 30
   when empty. Any other value stops Guardian at start-up

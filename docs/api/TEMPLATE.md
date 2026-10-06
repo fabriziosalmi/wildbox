@@ -51,7 +51,7 @@ Retrieve a list of resources.
 **Method**: `GET`
 **Path**: `/v1/resource`
 **Authentication**: Required (Bearer Token)
-**Rate Limit**: 100 requests/minute
+**Rate Limit**: the gateway's (see [Rate Limiting](#rate-limiting)); name the service's own limit if it has one
 
 **Query Parameters**:
 
@@ -306,31 +306,39 @@ refusals are flat: `{"error": "<code>", "message": "..."}`.
 
 ## Rate Limiting
 
-API endpoints are rate limited to prevent abuse.
+The gateway applies two limits to every service; say here only what the
+service adds of its own.
 
-**Rate Limits**:
+- **Per team**, on every route the gateway authenticates:
+  `RATE_LIMIT_PER_HOUR` requests an hour (10000 by default), enforced in
+  fixed 60-second windows of one sixtieth of that (166 by default).
+- **Per client address**, before authentication:
+  `GATEWAY_RATE_LIMIT_PER_SECOND` (100 by default, burst 10), and
+  `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` (5 by default) for login,
+  registration and forgotten password.
 
-- **Standard endpoints**: 100 requests/minute per user
-- **Analysis endpoints**: 10 requests/minute per user
-- **Authentication endpoints**: 5 requests/minute per IP
-
-**Rate Limit Headers**:
+**Rate Limit Headers** (the per-team limit, for the current minute):
 
 ```yaml
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
+X-RateLimit-Limit: 166
+X-RateLimit-Remaining: 161
 X-RateLimit-Reset: 1730963100
+X-RateLimit-Policy: 10000;w=3600
 ```
 
-When rate limit is exceeded, the API returns:
+Over the per-team limit the gateway answers `429` with `Retry-After` and:
 
 ```json
 {
-  "error": "Too Many Requests",
-  "message": "Rate limit exceeded. Try again in 45 seconds.",
-  "status": "error"
+  "error": "rate_limit_exceeded",
+  "message": "Rate limit exceeded",
+  "limit_per_hour": 10000,
+  "retry_after_seconds": 45
 }
 ```
+
+Over a per-address limit the answer is nginx's own `429`, an HTML page
+without `Retry-After`.
 
 ---
 

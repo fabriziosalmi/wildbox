@@ -382,7 +382,7 @@ Environment variables:
 | `WILDBOX_DATA_URL` | Data service URL | `http://open-security-data:8002` |
 | `WILDBOX_GUARDIAN_URL` | Guardian URL | `http://open-security-guardian:8013` |
 | `WILDBOX_AGENTS_URL` | Agents service URL | `http://open-security-agents:8006` |
-| `DEBUG` | Enable debug mode | `false` |
+| `DEBUG` | Turns on the reloader when the service is started with `python -m app.main`; the image and `make run-local` do not read it | `false` |
 
 The URL defaults are the services' addresses in the main
 `docker-compose.yml`, which also sets them. Each must be an absolute

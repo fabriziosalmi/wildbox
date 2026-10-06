@@ -161,5 +161,8 @@ basic auth before, which n8n 1.x answers with 401.
 ## Standalone development
 
 `docker-compose.yml` in this directory runs n8n on its own, for working on
-workflows; its settings are in `.env.example`. The supported deployment is
+workflows; its settings are in `.env.example`. It does not start as it is:
+it needs a Docker network named `wildbox-net` to exist
+(`docker network create wildbox-net`) and `REDIS_PASSWORD` set in its
+`.env`, which `.env.example` leaves empty. The supported deployment is
 the `automations` profile of the root `docker-compose.yml`.

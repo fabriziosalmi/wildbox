@@ -110,7 +110,7 @@ How login, tokens and logout work is described in
 | Login returns 400 | Wrong email or password | The first administrator is `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` from the `.env` in use when identity **first** started; editing `.env` later does not change the account |
 | Login returns 429 with `Retry-After: 900` | 5 failed logins locked the email for 15 minutes, even for the right password | Wait, or delete the lock from Redis as shown in [Failed-login lockout](https://www.wildbox.io/guides/authentication/#failed-login-lockout) |
 | 403 `PASSWORD_CHANGE_REQUIRED` on every call after a successful login | A team owner or admin created the account with an initial password, which must be changed first | Change it in the dashboard, or with `POST /api/v1/identity/admin/me/change-password` (`current_password`, `new_password`), then use the token that call returns; see [Accounts that must change their password](https://www.wildbox.io/guides/authentication/#accounts-that-must-change-their-password) |
-| Login returns 429 without `Retry-After` | The gateway's rate limit on `/auth/jwt/` (5 requests per second per address) | Slow down the client |
+| Login returns 429 without `Retry-After` | The gateway's rate limit on `/auth/jwt/` (5 requests per second per address unless `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` says otherwise) | Slow down the client |
 | 401 on every call after 30 minutes | The token expired; there is no refresh | Log in again |
 | 401 right after logging out | The token was revoked, as intended | Log in again |
 | Logout returns 400, "Token carries no jti" | The token was issued before the release that added `jti` | Nothing: it expires within 30 minutes |

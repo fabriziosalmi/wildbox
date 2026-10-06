@@ -105,7 +105,6 @@ fim:
     - "*.cache"
     - "*.pid"
     - "*.lock"
-  recursive: true
   max_depth: 10
   # The most files watched, all paths together. Beyond it files are not
   # watched, and the monitor's status says how many.

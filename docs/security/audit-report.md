@@ -191,7 +191,7 @@ async def analyze_ioc(request: Request, ...):
 
 **Files**:
 
-- `open-security-identity/demo.py` (Line 22)
+- `open-security-identity/demo.py` (Line 22; the file has since been removed)
 - `open-security-identity/auth.py` (Line 291)
 
 **Severity**: HIGH

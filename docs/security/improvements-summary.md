@@ -186,6 +186,10 @@ app = FastAPI(
 - `open-security-shared/auth_utils.py`
 - `open-security-shared/security_middleware.py`
 
+> **Superseded.** `auth_utils.py` and `security_middleware.py` were imported
+> by no service and have been removed. The services authenticate with
+> `open-security-shared/gateway_auth.py`.
+
 **Features:**
 
 - Centralized authentication utilities

@@ -333,8 +333,9 @@ exposition format.
 - **Prometheus and Alertmanager:** the `monitoring` Compose profile
   (`monitoring/prometheus.yml`, `monitoring/alert_rules.yml`). There is no
   Grafana in the stack.
-- **Structured logging:** `structlog` in cspm, data, guardian, responder and
-  the sensor
+- **Logging:** the standard library's `logging` in every service; no log
+  line holds what a request carried (`open_security_shared.log_safety`,
+  `tests/scripts/test_no_request_values_in_logs.py`)
 
 ---
 
