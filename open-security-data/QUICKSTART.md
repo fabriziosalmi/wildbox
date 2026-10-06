@@ -30,16 +30,16 @@ docker compose exec data python manage.py sources add-defaults
 docker compose exec data python manage.py sources list
 ```
 
-The default sources are Malware Domain List, PhishTank, Feodo Tracker,
-AbuseIPDB Blacklist and URLVoid Reputation. AbuseIPDB and URLVoid need an API
-key in their source configuration before they collect anything.
+The default set is the sources that can be collected as they are: today
+one, Feodo Tracker, whose feed needs no key. The collectors for feeds that
+need a key are listed in the [README](README.md#collectors).
 
-Enable, disable or run a source once:
+Run a source once, disable it or enable it again:
 
 ```bash
-docker compose exec data python manage.py sources disable "Malware Domain List"
-docker compose exec data python manage.py sources enable "Malware Domain List"
 docker compose exec data python manage.py sources test "Feodo Tracker"
+docker compose exec data python manage.py sources disable "Feodo Tracker"
+docker compose exec data python manage.py sources enable "Feodo Tracker"
 ```
 
 `data-scheduler` runs each enabled source when its collection interval

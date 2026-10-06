@@ -42,8 +42,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # Application
-    debug: bool = False
+    # Application. There is no DEBUG setting: one was declared and read by
+    # nothing (#665). The API schema pages follow ENVIRONMENT (app/main.py).
     log_level: str = "INFO"
     
     # Anthropic / Claude Configuration (optional — the worker imports without it;
@@ -97,10 +97,8 @@ class Settings(BaseSettings):
         return value.rstrip("/")
 
     # Security
-    # No longer read (#567): the client sent it as X-API-Key when it had no
-    # caller identity, and the tools service stopped accepting that in #566.
-    # Kept only so that a .env file which still sets INTERNAL_API_KEY loads.
-    internal_api_key: str = ""
+    # There is no INTERNAL_API_KEY: nothing has read it since #567, and it
+    # was kept only so that a .env file which still set it loaded (#665).
     # REQUIRED. Proof-of-origin secret sent with the caller's gateway identity
     # (X-Wildbox-* headers) on every internal call (#175); without it internal
     # tool calls fail.
@@ -149,7 +147,8 @@ class Settings(BaseSettings):
 
     # Analysis Settings
     max_analysis_time_minutes: int = 10
-    max_concurrent_tasks: int = 5
+    # No MAX_CONCURRENT_TASKS: it was read by nothing (#665). The worker's
+    # concurrency is the one scripts/entrypoint.sh starts it with.
     
     # Task Settings
     task_result_expires: int = 3600  # 1 hour

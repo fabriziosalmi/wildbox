@@ -4,7 +4,7 @@ API Schema definitions using Pydantic
 
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
 from uuid import UUID
 
@@ -27,8 +27,9 @@ class IndicatorBase(BaseModel):
     description: Optional[str] = Field(None, description="Human-readable description")
     tags: List[str] = Field(default=[], description="Associated tags")
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 class IndicatorResponse(IndicatorBase):
     """Indicator response schema"""
@@ -197,8 +198,31 @@ class TelemetryEventBase(BaseModel):
     tags: List[str] = Field(default=[], description="Event tags")
 
 class TelemetryEventCreate(TelemetryEventBase):
-    """Schema for creating telemetry events"""
-    pass
+    """One event of an ingest batch: what the database can hold of it.
+
+    The base schema is also the shape of an event that is read back; these
+    are the limits of one that is written. Each is a limit of a column of
+    ``telemetry_events`` (and of ``sensor_metadata``, which takes the sensor
+    ID and the host name): 255 characters for ``sensor_id`` and
+    ``source_host``, and no NUL character in a text column, which
+    PostgreSQL cannot store. An event that broke one of them used to pass
+    here and fail in the database, with the rest of its batch: as a 503
+    "send it again" for a value too long, and as a 200 with
+    ``events_ingested: 0`` for a NUL (#755). Refused here, it is a 422 that
+    names the event by its place in the batch, which is what a sensor
+    splits a batch on.
+    """
+    sensor_id: str = Field(..., max_length=255, description="Unique sensor identifier")
+    source_host: Optional[str] = Field(None, max_length=255, description="Source host/system")
+
+    @field_validator('sensor_id', 'source_host', 'raw_data')
+    @classmethod
+    def _no_nul_character(cls, value):
+        # The message does not repeat the value (see field_errors in the
+        # shared package: a validator's message is returned as written).
+        if isinstance(value, str) and '\x00' in value:
+            raise ValueError('must not contain a NUL character')
+        return value
 
 class TelemetryEvent(TelemetryEventBase):
     """Schema for telemetry event response"""
@@ -209,8 +233,9 @@ class TelemetryEvent(TelemetryEventBase):
     processed: bool = Field(..., description="Processing status")
     processed_at: Optional[datetime] = Field(None, description="Processing timestamp")
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 class TelemetryBatch(BaseModel):
     """Schema for batch telemetry ingestion"""
@@ -247,8 +272,9 @@ class SensorMetadata(SensorMetadataBase):
     total_events: int = Field(..., description="Total events received")
     last_event_at: Optional[datetime] = Field(None, description="Last event timestamp")
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 # Update exports - only include actually defined classes
 __all__ = [

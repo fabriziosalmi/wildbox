@@ -222,6 +222,18 @@ def _error_detail(response: httpx.Response, limit: int = 300) -> str:
     return str(body)[:limit]
 
 
+def _logged(error: httpx.HTTPError) -> str:
+    """An httpx error for the log: its class, and the status if it has one.
+
+    Not ``str(error)``: it ends with the URL that was called, and for a
+    search that URL holds the indicator, or whatever the model asked the
+    data service for, in its query string (#755).
+    """
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"{type(error).__name__} ({error.response.status_code})"
+    return type(error).__name__
+
+
 def _service_error(service: str, error: httpx.HTTPError) -> Dict[str, Any]:
     """The error result of a call the service refused or never received.
 
@@ -358,7 +370,7 @@ class WildboxAPIClient:
         # paths. Reject anything not in the fixed endpoint map.
         endpoint_name = self.TOOL_ENDPOINT_MAP.get(tool_name)
         if endpoint_name is None:
-            logger.warning(f"Rejected unmapped tool '{tool_name}' (not in allowlist)")
+            logger.warning("Rejected a tool name that is not in the allowlist")
             return {"error": f"Unknown tool: {tool_name}", "success": False}
 
         url = f"{self.api_url}/api/tools/{endpoint_name}"
@@ -391,7 +403,7 @@ class WildboxAPIClient:
                 logger.debug(f"Tool '{endpoint_name}' completed")
                 return result
         except httpx.HTTPError as e:
-            logger.error(f"Tool '{endpoint_name}' failed: {type(e).__name__}: {e}")
+            logger.error(f"Tool '{endpoint_name}' failed: {_logged(e)}")
             return _service_error("tools service", e)
         except ValueError as e:
             logger.error(f"Tool '{endpoint_name}' answered something that is not JSON: {e}")
@@ -420,7 +432,7 @@ class WildboxAPIClient:
             response.raise_for_status()
             body = response.json()
         except httpx.HTTPError as e:
-            logger.error(f"Call to the {service} failed: {type(e).__name__}: {e}")
+            logger.error(f"Call to the {service} failed: {_logged(e)}")
             return _service_error(service, e)
         except ValueError as e:
             logger.error(f"The {service} answered something that is not JSON: {e}")

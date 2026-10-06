@@ -48,7 +48,7 @@ import os
 from typing import Callable, Optional, Tuple
 
 from fastapi import Depends, Header, HTTPException, Request, status
-from pydantic import UUID4, BaseModel
+from pydantic import UUID4, BaseModel, ConfigDict
 
 from .scopes import (
     GatewayCredentialError,
@@ -81,8 +81,9 @@ class GatewayUser(BaseModel):
     # scopes, or a key that holds no scope at all.
     scopes: Optional[Tuple[str, ...]] = None
 
-    class Config:
-        frozen = True  # Immutable for security
+    model_config = ConfigDict(
+        frozen=True,  # Immutable for security
+    )
 
     def has_scope(self, required: str) -> bool:
         """Whether this caller's credential may do what needs ``required``.

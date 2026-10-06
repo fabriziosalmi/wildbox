@@ -13,84 +13,15 @@ from sqlalchemy.orm import Session
 from app.config import get_config
 from app.models import Source, Base
 from app.utils.database import get_db_session, create_tables, drop_tables
-from app.collectors.sources import (
-    MalwareDomainListCollector, PhishTankCollector, FeodoTrackerCollector,
-    ThreatFoxCollector, MalwareBazaarCollector
-)
+from app.collectors import CollectorRegistry
+# Importing the module registers the collectors that can run.
+import app.collectors.sources  # noqa: F401
+# The default sources: one list, of sources that can be collected.
+from app.collectors.defaults import DEFAULT_SOURCES
 
 config = get_config()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# Default sources configuration
-DEFAULT_SOURCES = [
-    {
-        "name": "Malware Domain List",
-        "description": "Community-maintained list of malicious domains",
-        "url": "http://www.malwaredomainlist.com/hostslist/hosts.txt",
-        "source_type": "txt",
-        "enabled": True,
-        "collection_interval": 86400,  # Daily
-        "config": {},
-        "headers": {},
-        "auth_config": {}
-    },
-    {
-        "name": "PhishTank",
-        "description": "Collaborative clearing house for phishing URLs",
-        "url": "http://data.phishtank.com/data/online-valid.json",
-        "source_type": "json",
-        "enabled": True,
-        "collection_interval": 3600,  # Hourly
-        "config": {},
-        "headers": {},
-        "auth_config": {}
-    },
-    {
-        "name": "Feodo Tracker",
-        "description": "Tracks botnet C&C servers",
-        "url": "https://feodotracker.abuse.ch/downloads/ipblocklist.json",
-        "source_type": "json",
-        "enabled": True,
-        "collection_interval": 3600,  # Hourly
-        "config": {},
-        "headers": {},
-        "auth_config": {}
-    },
-    {
-        "name": "AbuseIPDB Blacklist",
-        "description": "Database of abusive IP addresses",
-        "url": "https://api.abuseipdb.com/api/v2/blacklist",
-        "source_type": "json",
-        "enabled": False,  # Requires API key
-        "collection_interval": 3600,
-        "config": {
-            "api_key": "CONFIGURE_VIA_ENV"
-        },
-        "headers": {
-            "Accept": "application/json"
-        },
-        "auth_config": {
-            "type": "api_key",
-            "header": "Key",
-            "key": "CONFIGURE_VIA_ENV"
-        }
-    },
-    {
-        "name": "URLVoid Reputation",
-        "description": "URL reputation checking service",
-        "url": "http://api.urlvoid.com/1000/",
-        "source_type": "json",
-        "enabled": False,  # Requires API key and domain list
-        "collection_interval": 14400,  # Every 4 hours
-        "config": {
-            "api_key": "CONFIGURE_VIA_ENV",
-            "domains": []  # List of domains to check
-        },
-        "headers": {},
-        "auth_config": {}
-    }
-]
 
 def init_database():
     """Initialize database tables"""
@@ -118,6 +49,19 @@ def reset_database():
 
 def add_default_sources():
     """Add default threat intelligence sources"""
+    # A source is offered only if it can be collected. This created five
+    # sources of types whose collector could not be instantiated (#665).
+    unable = [
+        f"{source_config['name']} ({source_config['source_type']})"
+        for source_config in DEFAULT_SOURCES
+        if not CollectorRegistry.can_collect(source_config["source_type"])
+    ]
+    if unable:
+        logger.error(
+            "No default source was added: no collector for " + ", ".join(unable)
+        )
+        return False
+
     db = get_db_session()
     try:
         added_count = 0
@@ -125,8 +69,31 @@ def add_default_sources():
         for source_config in DEFAULT_SOURCES:
             # Check if source already exists
             existing = db.query(Source).filter(Source.name == source_config["name"]).first()
-            if existing:
+            if existing and CollectorRegistry.can_collect(existing.source_type):
                 logger.info(f"Source '{source_config['name']}' already exists, skipping")
+                continue
+            if existing:
+                # A default an earlier release created with a type nothing
+                # collects ("json" for Feodo Tracker): it never ran. Make it
+                # the default it was meant to be, in place, so that what
+                # refers to the row still does.
+                was = existing.source_type
+                existing.source_type = source_config["source_type"]
+                existing.url = source_config["url"]
+                existing.description = source_config["description"]
+                existing.collection_interval = source_config["collection_interval"]
+                existing.config = source_config["config"]
+                existing.headers = source_config["headers"]
+                existing.auth_config = source_config["auth_config"]
+                existing.enabled = source_config["enabled"]
+                existing.status = "active"
+                existing.last_error = None
+                existing.error_count = 0
+                added_count += 1
+                logger.info(
+                    f"Repaired source: {source_config['name']} "
+                    f"(source type '{was}' had no collector)"
+                )
                 continue
             
             # Create new source
@@ -149,7 +116,7 @@ def add_default_sources():
             logger.info(f"Added source: {source_config['name']}")
         
         db.commit()
-        logger.info(f"Added {added_count} new sources")
+        logger.info(f"Added or repaired {added_count} sources")
         return True
         
     except Exception as e:
@@ -176,6 +143,8 @@ def list_sources():
             status_icon = "✓" if source.enabled else "✗"
             print(f"{status_icon} {source.name}")
             print(f"   Type: {source.source_type}")
+            if not CollectorRegistry.can_collect(source.source_type):
+                print("   Cannot be collected: no collector for this type")
             print(f"   URL: {source.url}")
             print(f"   Status: {source.status}")
             print(f"   Interval: {source.collection_interval}s")
@@ -196,7 +165,16 @@ def enable_source(source_name: str):
         if not source:
             logger.error(f"Source '{source_name}' not found")
             return False
-        
+
+        # An enabled source is one the scheduler collects. One it cannot
+        # collect would be counted as an active feed and never run.
+        if not CollectorRegistry.can_collect(source.source_type):
+            logger.error(
+                f"Source '{source_name}' cannot be enabled: no collector for "
+                f"source type '{source.source_type}'"
+            )
+            return False
+
         source.enabled = True
         source.status = "active"
         db.commit()
@@ -232,8 +210,6 @@ def disable_source(source_name: str):
 
 def test_collection(source_name: str):
     """Test collection from a specific source"""
-    from app.collectors import CollectorRegistry
-    
     db = get_db_session()
     try:
         source = db.query(Source).filter(Source.name == source_name).first()

@@ -25,7 +25,10 @@ list). What they assert happens through the gateway, as for any client:
     (#725);
   * a sensor whose key is revoked keeps what it reads, says that it is not
     authorized, and delivers every line once when it has a valid key again
-    (#745).
+    (#745);
+  * an event the data service refuses costs that event and no other: the
+    batch is answered 422 with nothing stored, the forwarder splits it, and
+    the count the data service answers is the count it lists (#755).
 
 Deterministic: one batch per step, no retries, and no waiting except for the
 log forwarder to look at its file and, in the restart test, for the gateway
@@ -372,6 +375,49 @@ async def main():
     finally:
         shutil.rmtree(directory, ignore_errors=True)
     print(json.dumps({"refused": refused, "restored": restored, "log": log}))
+
+
+asyncio.run(main())
+"""
+
+
+# Runs in the sensor container (#755). Holds the events it is given and
+# flushes until the buffer is empty or the flushes run out: what the running
+# sender does with a batch the data service refuses, without its pauses.
+FORWARD_ALL = r"""
+import asyncio, json, os, sys
+
+request = json.load(sys.stdin)
+os.environ["SENSOR_DATA_LAKE_API_KEY"] = request["key"]
+
+from sensor.core.config import load_config
+from sensor.pipeline.data_forwarder import DataForwarder
+
+
+async def main():
+    config = load_config("/etc/security-sensor/config.yaml")
+    config.data_lake.sensor_id = request["sensor_id"]
+    forwarder = DataForwarder(config, asyncio.Queue())
+    forwarder.min_request_interval = 0
+    await forwarder._init_session()
+    outcomes = []
+    try:
+        for event in request["events"]:
+            forwarder.accept(event)
+        for _ in range(request["flushes"]):
+            if not forwarder.buffer:
+                break
+            outcomes.append(await forwarder._flush_batch())
+            # Well under nginx's limit per address.
+            await asyncio.sleep(0.05)
+    finally:
+        await forwarder.session.close()
+    print(json.dumps({
+        "held": len(forwarder.buffer),
+        "outcomes": outcomes,
+        "delivery": forwarder.get_status()["delivery"],
+        "stats": forwarder.stats,
+    }))
 
 
 asyncio.run(main())
@@ -751,3 +797,105 @@ def test_a_revoked_key_loses_no_line_and_a_valid_one_delivers_them_once(teams):
         for event in _listed(token, sensor_id)
     ]
     assert sorted(stored) == sorted(lines), stored
+
+
+def _event(marker, number, hostname="ingest-test-host"):
+    """One log event as the sensor's data processor emits it."""
+    return {
+        "id": f"{marker}-{number}",
+        "timestamp": "2026-10-06T10:00:00+00:00",
+        "source": "log_forwarder",
+        "type": "log.auth",
+        "data": {"line": f"line {number}", "marker": marker},
+        "host": {"hostname": hostname, "platform": "Linux"},
+    }
+
+
+def test_an_event_the_data_service_refuses_costs_that_event_and_no_other(teams):
+    """The data service and the forwarder agree on what a refusal is (#755).
+
+    One event of five names a host of 300 characters, which the data
+    service cannot store. It used to answer 503 "send it again" for the
+    whole batch, and the forwarder obeyed: the batch stayed in the buffer
+    for good, with the four events nothing was wrong with. It answers 422
+    now, with nothing stored, and the forwarder splits the batch until the
+    event is alone: that one is dropped, and the other four are stored.
+    """
+    sensor_id = f"refused-{uuid.uuid4().hex[:8]}"
+    marker = uuid.uuid4().hex
+    events = [_event(marker, number) for number in (1, 2)]
+    events.append(_event(marker, 3, hostname="h" * 300))
+    events += [_event(marker, number) for number in (4, 5)]
+
+    result = _in_sensor(
+        FORWARD_ALL,
+        teams["key"]["key"],
+        sensor_id=sensor_id,
+        events=events,
+        flushes=30,
+    )
+
+    stats = result["stats"]
+    assert result["held"] == 0, result
+    assert result["outcomes"][0] == "refused", result
+    assert "retry" not in result["outcomes"], result
+    assert stats["events_forwarded"] == 4, stats
+    assert stats["events_dropped_refused"] == 1, stats
+    assert stats["events_dropped"] == 1, stats
+
+    listed = _listed(teams["a"], sensor_id)
+    lines = sorted(event["event_data"]["data"]["line"] for event in listed)
+    assert lines == ["line 1", "line 2", "line 4", "line 5"], listed
+    assert all(event["source_host"] == "ingest-test-host" for event in listed)
+    # What the data service says it stored is what it lists.
+    sensor = requests.get(
+        f"{DATA_API}/sensors/{sensor_id}", headers=_bearer(teams["a"]), timeout=TIMEOUT
+    )
+    assert sensor.status_code == 200, sensor.text[:200]
+    assert sensor.json()["total_events"] == 4, sensor.json()
+
+
+def test_a_batch_with_an_event_the_schema_refuses_is_stored_not_at_all(teams):
+    """The answer itself, as any client of the route sees it (#755)."""
+    sensor_id = f"all-or-none-{uuid.uuid4().hex[:8]}"
+
+    def body(*hosts):
+        return {
+            "events": [
+                {
+                    "sensor_id": sensor_id,
+                    "event_type": "security_event",
+                    "timestamp": "2026-10-06T10:00:00+00:00",
+                    "source_host": host,
+                    "event_data": {"n": number},
+                }
+                for number, host in enumerate(hosts)
+            ]
+        }
+
+    def ingest(payload):
+        return requests.post(
+            f"{DATA_API}/ingest",
+            json=payload,
+            headers={"X-API-Key": teams["key"]["key"]},
+            timeout=TIMEOUT,
+        )
+
+    refused = ingest(body("web-1", "web-2\u0000", "web-3"))
+
+    assert refused.status_code == 422, refused.text[:300]
+    error = refused.json()["error"]
+    assert error["type"] == "ValidationError", error
+    assert [item["loc"] for item in error["details"]] == [
+        ["body", "events", 1, "source_host"]
+    ], error
+    assert "events_ingested" not in refused.text
+    assert _listed(teams["a"], sensor_id) == []
+
+    stored = ingest(body("web-1", "web-3"))
+
+    assert stored.status_code == 200, stored.text[:300]
+    assert stored.json()["events_received"] == 2
+    assert stored.json()["events_ingested"] == 2
+    assert stored.json()["errors"] == []
+    assert len(_listed(teams["a"], sensor_id)) == 2

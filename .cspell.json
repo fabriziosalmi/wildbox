@@ -317,7 +317,11 @@
     "htmlcov",
     "HTTP",
     "HTTPS",
+    "httpcore",
     "httpx",
+    "Referer",
+    "referer",
+    "unacked",
     "huggingface",
     "husky",
     "Hystrix",
@@ -828,7 +832,8 @@
     "pytenable",
     "pytz",
     "pywin",
-    "qualysapi"
+    "qualysapi",
+    "ENVSUBST"
   ],
   "ignoreWords": [
     "APIKEY",

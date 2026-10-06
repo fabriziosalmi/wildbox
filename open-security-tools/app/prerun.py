@@ -53,9 +53,16 @@ class InvalidToolInput(ValueError):
     than a validation error.
     """
 
-    def __init__(self, errors: Optional[List[Dict[str, Any]]] = None):
+    def __init__(
+        self,
+        errors: Optional[List[Dict[str, Any]]] = None,
+        declared: Any = (),
+    ):
         super().__init__(INPUT_INVALID)
         self.errors = errors
+        # The names the tool's model declares: what a log line may repeat of
+        # an error's location (see refusal_log).
+        self.declared = frozenset(declared)
 
 
 # What a caller is refused for before a run exists.
@@ -100,7 +107,10 @@ def check_tool_input(tool_name: str, tool_module: Any, input_data: Any) -> ToolR
     try:
         validated = input_model(**input_data)
     except ValidationError as error:
-        raise InvalidToolInput(input_field_errors(error)) from None
+        raise InvalidToolInput(
+            input_field_errors(error),
+            declared=getattr(input_model, "model_fields", ()),
+        ) from None
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError):
         raise InvalidToolInput() from None
 
@@ -120,8 +130,13 @@ def check_tool_request(
     return check_tool_input(tool_name, module, input_data)
 
 
-def refusal_log(refusal: Exception) -> str:
-    """A refusal for the log: for invalid input, the fields and not the values."""
+def refusal_text(refusal: Exception) -> str:
+    """A refusal as the caller reads it: in the task's result, as in the 4xx.
+
+    For invalid input, the fields and what is wrong with each, not the
+    values. A refused target is named: the answer goes back to the caller
+    who sent it, and says which of their targets the policy refuses.
+    """
     if isinstance(refusal, InvalidToolInput) and refusal.errors is not None:
         fields = ", ".join(
             f"{'.'.join(str(part) for part in item['loc'])}: {item['type']}"
@@ -129,6 +144,40 @@ def refusal_log(refusal: Exception) -> str:
         )
         return f"{refusal} ({fields})"
     return str(refusal)
+
+
+UNDECLARED_FIELD = "(undeclared field)"
+TARGET_REFUSED = "Target refused by the target policy"
+
+
+def refusal_log(refusal: Exception) -> str:
+    """A refusal for the log: what kind, and which fields; nothing they held.
+
+    The text of a refused target quotes the target, and the location of a
+    validation error can be a key of the caller's own making (a field the
+    model does not declare, a key of a dictionary). So the log has the kind
+    of refusal, and for invalid input the declared field each error is under
+    and pydantic's name for it (#755). The caller still reads the whole
+    refusal in the answer (``refusal_text``, ``http_error``).
+    """
+    if isinstance(refusal, TargetRefused):
+        return TARGET_REFUSED
+    if isinstance(refusal, InvalidToolInput) and refusal.errors is not None:
+        fields = ", ".join(
+            f"{_declared_field(item, refusal.declared)}: {item.get('type', 'invalid')}"
+            for item in refusal.errors
+        )
+        return f"{refusal} ({fields})"
+    if isinstance(refusal, (UnknownTool, InvalidToolInput)):
+        return str(refusal)
+    return type(refusal).__name__
+
+
+def _declared_field(item: Dict[str, Any], declared: frozenset) -> str:
+    """The model's field an error is under, or a fixed word for any other."""
+    location = item.get("loc") or ()
+    first = location[0] if location else None
+    return first if isinstance(first, str) and first in declared else UNDECLARED_FIELD
 
 
 def http_error(refusal: Exception) -> HTTPException:

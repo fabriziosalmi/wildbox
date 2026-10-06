@@ -189,7 +189,8 @@ fim:
 
 # Performance Tuning
 performance:
-  query_interval: 10
+  query_interval: 10        # seconds between two osquery cycles
+  inventory_interval: 3600  # and between two runs of the inventory queries
   max_memory_mb: 128    # thresholds of a warning and of over_limits in the
   max_cpu_percent: 5    # statistics: nothing is limited or slowed down
 ```
@@ -395,7 +396,14 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
 - An orderly stop is SIGTERM or SIGINT. The sensor then stops its
   collectors, gives what they had collected up to 2 seconds to reach the
   sender, spends up to 10 seconds sending what its buffer holds, writes the
-  positions and only then exits. The compose files give it 30 seconds
+  positions and only then exits. It does not wait the 2 seconds out: each
+  of the two queues counts an event from the moment it is put there until
+  its reader has finished with it, and the wait ends when both counts are
+  at zero. An event that has not reached the sender by then (the buffer is
+  full, or a reverse DNS lookup is still running) is not sent: the
+  processor's workers are stopped with what they hold, and the last log
+  lines say how many events that was, and how many of them will be read
+  again from their log source. The compose files give it 30 seconds
   (`stop_grace_period`); under Docker's default of 10 it can be killed
   before it has finished, which costs a second sending of the last lines,
   never a line.
@@ -578,14 +586,18 @@ the host, and never `/`.
 ## What osquery collects
 
 Every `performance.query_interval` seconds (10 by default) the sensor runs
-each query of the enabled packs through `osqueryi`, one at a time, and sends
-each answer that has rows as one event, of type `<pack>.<query>`:
+the queries of the enabled packs through `osqueryi`, one at a time, and sends
+each answer that has rows as one event, of type `<pack>.<query>`. The
+queries of the `system_inventory` pack run when the sensor starts and then
+every `performance.inventory_interval` seconds (3600 by default), each
+counted from its own last answer; one that fails is asked again at the next
+cycle. Set it to 0 to run them at every cycle:
 
 | Setting under `collection` | Pack | Queries |
 | :--- | :--- | :--- |
 | `process_events` | `process_events` | `process_tree`: the running processes, with their user |
 | `network_connections` | `network` | `process_open_sockets`: the open sockets, with their process |
-| `user_events` | `user_events` | `logged_in_users`; on Linux `sudoers`; on Windows `logon_events`, which reads an event table and was never run on a Windows host |
+| `user_events` | `user_events` | `logged_in_users`; on Linux `sudoers` |
 | `system_inventory` | `system_inventory` | `system_info`, `os_version`, `installed_applications`, `startup_items`, `system_services`; on Linux `kernel_info`, `kernel_modules` |
 
 Each answer is a picture of the host at the moment of the query. The sensor
@@ -594,7 +606,16 @@ a process that starts and ends between two cycles, or a connection opened
 and closed between two, is not seen. osquery's event tables
 (`process_events`, `socket_events`, `user_events`) are not queried: through
 `osqueryi`, in the sensor's image, they answer no row and say `is
-event-based but events are disabled`. The sensor starts no `osqueryd`.
+event-based but events are disabled`. The sensor starts no `osqueryd`. On
+Windows the pack no longer has `logon_events`: it read `windows_events`,
+which is an event table too, and filtered on a `channel` column that table
+does not have. Read logons with a log source of type `windows_event` on the
+`Security` log (see [Windows event logs](#windows-event-logs)).
+
+The inventory is not asked at every cycle because it does not change at
+that pace and is the bulk of what a cycle produces: in the sensor's image
+its seven answers were 36.0 of a cycle's 36.9 kB, and six of them were
+identical ten seconds later.
 
 In the container the pictures are the container's: its own processes and
 sockets (see [Security notes](#security-notes)).
@@ -835,13 +856,21 @@ or not at the right address keeps the batch, as an outage does.
 
 | The answer | It means | What happens to the batch |
 | :--- | :--- | :--- |
-| 200 or 201 | Stored | It leaves the buffer; `events_forwarded` counts the events the data service says it stored (`events_ingested`), and any it says it did not are counted as dropped |
-| A network error, 5xx | The gateway, identity or the data service is unreachable (`unavailable`) | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). No number of attempts gives it up |
+| 200 or 201 | Stored, every event of it: the data service stores a batch whole or answers an error | It leaves the buffer; `events_forwarded` counts the events the data service says it stored (`events_ingested`) |
+| A network error, 5xx | The gateway, identity or the data service is unreachable, or the data service could not store the batch (`unavailable`) | It stays in the buffer, whole and in its place, and is sent again after `retry_delay` seconds, then twice as long after each further failure, up to `retry_max_delay` (each delay up to a fifth shorter, so that sensors do not return together). No number of attempts gives it up |
 | 429 | The team's request budget, or nginx's limit per address (`rate_limited`) | Kept, as above; the delay is at least the answer's `Retry-After`, or 10 seconds |
 | 401, or the gateway's 400 `invalid_token` | The key is invalid, expired or revoked (`unauthorized`) | Kept, as above |
 | 403 | The key lacks the `data:ingest` scope, its member left the team or has not changed the initial password (`forbidden`) | Kept, as above |
 | A redirect, 404, another 4xx | The request did not reach the ingest route (`misconfigured`) | Kept, as above |
-| 413, 422, the data service's 400, a 200 that stored nothing | The payload is not acceptable | The batch is split in halves, each sent in its turn, until the event at fault is alone: that one is dropped and counted in `events_dropped_refused`, the others are delivered. A batch refused for its size is delivered in parts and loses nothing |
+| 413, 422, the data service's 400 | The payload is not acceptable: the batch is too large, or the data service refuses one of its events | The batch is split in halves, each sent in its turn, until the event at fault is alone: that one is dropped and counted in `events_dropped_refused`, the others are delivered. A batch refused for its size is delivered in parts and loses nothing |
+
+The data service answers each of these for one reason, listed with the
+route in the [data API reference](../docs/api/data/endpoints.md#post-apiv1dataingest),
+and `tests/shared/ingest_answer_vectors.json` holds its answers for the
+tests of both services. A data service of release 0.11 or earlier could also answer
+200 for a batch it had stored a part of, or none of. The sensor still reads
+the count: events such an answer does not count are counted as dropped,
+and a 200 that stored nothing is taken for a refusal of the batch.
 
 While batches are kept the sensor is **not delivering**, and says so:
 
@@ -885,7 +914,7 @@ An event leaves the sensor unsent, and is counted, in these cases only:
 | `events_dropped_oversize` | Serialized, it is larger than a batch may be (8 MiB, or `buffer_max_bytes` if that is less) |
 | `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN) |
 | `events_dropped_unconfigured` | No API key is set: everything collected is discarded |
-| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues) are in no counter: the sensor's last log lines say how many there were |
+| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues, or in the processor's hands) are in no counter: the sensor's last log lines say how many there were |
 
 `events_dropped` is their sum, and `events_received` equals
 `events_forwarded` plus `events_dropped` plus the events in the buffer. The
@@ -1029,7 +1058,7 @@ since the sensor started:
 | `events_filtered` | Events the processor filtered out (no data, noisy system processes) |
 | `events_forwarded` | Events the gateway accepted |
 | `events_dropped` | Events that left the sensor unsent; the reasons are counted under `data_forwarder` in `GET /api/v1/components` |
-| `events_in_pipeline` | Events waiting in the queues and in the sender's buffer |
+| `events_in_pipeline` | Events waiting in the queues and in the sender's buffer, and those in hand between them: the ones the processor is working on, and the one the sender holds while its buffer is full |
 | `errors` | Errors of the processor and of the sender (network errors, error answers of the gateway) |
 | `last_activity` | When the last event was collected; `null` before the first |
 | `uptime_seconds` | Seconds since the sensor started |
@@ -1037,8 +1066,9 @@ since the sensor started:
 | `timestamp` | When the answer was made |
 
 `events_collected` equals `events_forwarded` + `events_dropped` +
-`events_filtered` + `events_in_pipeline`, give or take the few events a
-worker is handling at that instant.
+`events_filtered` + `events_in_pipeline`. An event that failed in the
+processor is in none of the four: it is logged, and counted under `errors`
+with the sender's.
 
 `GET /api/v1/dashboard/metrics` answers `online_endpoints`, `alerts` (1 for
 errors, 1 more while the sensor is over its resource limits), `last_activity`

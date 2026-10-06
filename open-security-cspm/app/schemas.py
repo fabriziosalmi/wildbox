@@ -5,8 +5,9 @@ Pydantic schemas for CSPM API
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
+from . import __version__
 from .checks.framework import CloudProvider, CheckSeverity, CheckStatus
 
 
@@ -30,7 +31,8 @@ class AWSCredentials(BaseModel):
     role_arn: Optional[str] = Field(None, description="IAM role ARN for assume role auth")
     external_id: Optional[str] = Field(None, description="External ID for assume role")
 
-    @validator('auth_method')
+    @field_validator('auth_method')
+    @classmethod
     def validate_auth_method(cls, v):
         allowed_methods = ['access_key', 'assume_role']
         if v not in allowed_methods:
@@ -45,7 +47,8 @@ class GCPCredentials(BaseModel):
     service_account_key: Optional[Dict[str, Any]] = Field(None, description="Service account key JSON", repr=False)
     service_account_file: Optional[str] = Field(None, description="Path to service account key file")
 
-    @validator('service_account_file')
+    @field_validator('service_account_file')
+    @classmethod
     def validate_service_account_path(cls, v):
         if v is not None:
             import os
@@ -77,8 +80,8 @@ class ScanRequest(BaseModel):
     check_ids: Optional[List[str]] = Field(None, description="Specific check IDs to run (runs all if not specified)")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "provider": "aws",
                 "credentials": {
@@ -95,7 +98,8 @@ class ScanRequest(BaseModel):
                     "requested_by": "security_team"
                 }
             }
-        }
+        },
+    )
 
 
 class ScanResponse(BaseModel):
@@ -108,8 +112,8 @@ class ScanResponse(BaseModel):
     started_at: datetime = Field(..., description="Scan start timestamp")
     estimated_duration_minutes: Optional[int] = Field(None, description="Estimated scan duration")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000",
                 "status": "started",
@@ -118,7 +122,8 @@ class ScanResponse(BaseModel):
                 "started_at": "2024-01-15T10:30:00Z",
                 "estimated_duration_minutes": 15
             }
-        }
+        },
+    )
 
 
 class ScanMetadata(BaseModel):
@@ -134,7 +139,8 @@ class ScanMetadata(BaseModel):
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
     
-    @validator('started_at', 'completed_at', 'cancelled_at', pre=True)
+    @field_validator('started_at', 'completed_at', 'cancelled_at', mode="before")
+    @classmethod
     def parse_datetime_from_isoformat(cls, v):
         if isinstance(v, str):
             return datetime.fromisoformat(v)
@@ -152,8 +158,8 @@ class ScanStatusResponse(BaseModel):
     completed_at: Optional[datetime] = Field(None, description="Scan completion time")
     progress: Optional[Dict[str, Any]] = Field(None, description="Scan progress information")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000",
                 "status": "running",
@@ -166,7 +172,8 @@ class ScanStatusResponse(BaseModel):
                     "current_region": "us-east-1"
                 }
             }
-        }
+        },
+    )
 
 
 class CheckResultSchema(BaseModel):
@@ -241,14 +248,15 @@ class ChecksListResponse(BaseModel):
     providers: List[str] = Field(..., description="Available providers")
     categories: List[str] = Field(..., description="Available categories")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "total_checks": 22,
                 "providers": ["aws"],
                 "categories": ["Identity and Access Management", "Storage", "Networking"]
             }
-        }
+        },
+    )
 
 
 class ProviderSchema(BaseModel):
@@ -264,10 +272,11 @@ class ProvidersResponse(BaseModel):
 
     providers: List[ProviderSchema] = Field(..., description="Supported providers")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {"providers": [{"provider": "aws", "name": "Amazon Web Services", "checks": 22}]}
-        }
+        },
+    )
 
 
 class ComplianceFrameworkSummary(BaseModel):
@@ -353,12 +362,12 @@ class HealthCheckResponse(BaseModel):
     uptime_seconds: Optional[float] = Field(None, description="Service uptime in seconds")
     checks: Dict[str, str] = Field(..., description="Individual component health")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "healthy",
                 "timestamp": "2024-01-15T10:30:00Z",
-                "version": "1.0.0",
+                "version": __version__,
                 "uptime_seconds": 3600.5,
                 "checks": {
                     "redis": "healthy",
@@ -366,7 +375,8 @@ class HealthCheckResponse(BaseModel):
                     "aws_connectivity": "healthy"
                 }
             }
-        }
+        },
+    )
 
 
 # Enhanced response schemas for new endpoints

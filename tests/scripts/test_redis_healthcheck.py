@@ -96,9 +96,10 @@ def _checked():
 def test_every_redis_health_check_requires_pong_and_names_no_password():
     checked = _checked()
     # The stack's own, and the six per-service files that have one (three
-    # more had one: data's file, which could not start, and the Redis of the
-    # sensor's, which nothing connected to, went in #726; the gateway's
-    # standalone file, which could not start either, in #665).
+    # more had one: #726 removed data's file, which could not start, and the
+    # Redis of the sensor's, which nothing connected to; #756 removed the
+    # gateway's file, which could not start and whose Redis the gateway
+    # never used).
     assert len(checked) >= 7, [name for name, _, _ in checked]
     assert "docker-compose.yml" in [name for name, _, _ in checked]
     for name, service_name, service in checked:
@@ -122,6 +123,7 @@ def test_a_redis_that_requires_a_password_gives_its_check_the_same_one():
         assert given is not None, f"{where}: the check cannot authenticate"
         # The variable the server takes, and no default that could differ.
         assert re.fullmatch(r"\$\{" + required.group(1) + r":\?[^}]*\}", given), where
+    # Six until #756 removed the gateway's own Compose file.
     assert protected >= 5
 
 

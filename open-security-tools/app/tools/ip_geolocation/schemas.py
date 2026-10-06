@@ -12,7 +12,7 @@ class IPGeolocationInput(BaseToolInput):
     """Input schema for IP geolocation lookup"""
     ip_address: str = Field(
         description="IP address to geolocate",
-        example="8.8.8.8"
+        json_schema_extra={"example": "8.8.8.8"}
     )
     include_isp_info: bool = Field(
         default=True,

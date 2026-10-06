@@ -201,9 +201,12 @@ local function validate_token_with_identity(token, token_type, config)
     if res.status == 200 then
         local auth_data, decode_err = utils.json_decode(res.body)
         if decode_err then
+            -- The size of what identity answered, not the answer: a body
+            -- that is not the JSON expected can be anything, the request
+            -- echoed back included (#755).
             utils.log("error", "Failed to decode identity response", {
                 error = decode_err,
-                body = res.body
+                body_bytes = #(res.body or "")
             })
             return nil, "invalid_response"
         end
@@ -231,7 +234,7 @@ local function validate_token_with_identity(token, token_type, config)
     else
         utils.log("error", "Identity service returned unexpected status", {
             status = res.status,
-            body = res.body,
+            body_bytes = #(res.body or ""),
             duration_ms = duration
         })
         record_circuit_breaker_failure()

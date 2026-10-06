@@ -6,8 +6,12 @@ from typing import List, Literal, Optional, Dict
 from datetime import datetime
 
 class FileUploadScannerInput(BaseToolInput):
-    target_url: str = Field(..., description="Target URL with file upload functionality", example="https://example.com/upload")
-    file_param: str = Field(default="file", description="File parameter name", example="file")
+    target_url: str = Field(
+        ...,
+        description="Target URL with file upload functionality",
+        json_schema_extra={"example": "https://example.com/upload"},
+    )
+    file_param: str = Field(default="file", description="File parameter name", json_schema_extra={"example": "file"})
     additional_params: Optional[Dict[str, str]] = Field(None, description="Additional form parameters")
     # The test groups main.py maps to test files; an unknown name was dropped
     # silently (#611).

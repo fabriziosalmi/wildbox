@@ -6,6 +6,7 @@ Revoked tokens are stored in Redis with automatic TTL expiration
 matching the token's remaining lifetime.
 """
 
+import hashlib
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -69,6 +70,16 @@ async def is_token_blacklisted(token_jti: str) -> bool:
         return False
 
 
+def account_digest(email: str) -> str:
+    """The first 12 hex digits of the SHA-256 of an address, for a log line.
+
+    ``printf %s user@example.com | shasum -a 256`` gives the same digits, so
+    a line about a lockout can be matched to an address one already knows
+    without the log holding addresses.
+    """
+    return hashlib.sha256(str(email).strip().lower().encode("utf-8")).hexdigest()[:12]
+
+
 async def record_failed_login(email: str) -> int:
     """
     Record a failed login attempt. Returns the current count.
@@ -108,7 +119,13 @@ async def is_account_locked(email: str) -> bool:
         if count and int(count) >= settings.max_failed_login_attempts:
             # Lock the account
             await r.setex(lockout_key, settings.account_lockout_minutes * 60, "locked")
-            logger.warning(f"Account locked for {email} after {count} failed attempts")
+            # Not the address: it is whatever was typed in the login form,
+            # a password pasted into the wrong field included (#755). The
+            # digest lets an operator check a known address against the line.
+            logger.warning(
+                f"Account locked after {count} failed attempts "
+                f"(account {account_digest(email)})"
+            )
             return True
         return False
     except Exception as e:

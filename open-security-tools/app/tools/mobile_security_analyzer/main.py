@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 from ...input_validation import InputSanitizer
 from ...safe_http import guarded_session
+from ...log_safety import host_of
 from .schemas import (
     MobileSecurityAnalyzerInput,
     MobileSecurityAnalyzerOutput,
@@ -174,7 +175,7 @@ async def download_app_file(url: str) -> Optional[bytes]:
                 if response.status == 200:
                     return await response.read()
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error downloading APK from {url}: {e}")
+        logger.error(f"Error downloading APK from {host_of(url)}: {type(e).__name__}")
         pass
     return None
 
@@ -200,7 +201,7 @@ def extract_app_metadata(app_data: bytes, platform: str) -> Optional[AppMetadata
         elif platform.lower() == "ios":
             return extract_ios_metadata(app_data)
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error extracting app metadata: {e}")
+        logger.error(f"Error extracting app metadata: {type(e).__name__}")
         pass
     return None
 
@@ -228,7 +229,7 @@ def extract_android_metadata(apk_data: bytes) -> Optional[AppMetadata]:
                 ]
             )
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error extracting Android metadata: {e}")
+        logger.error(f"Error extracting Android metadata: {type(e).__name__}")
         return None
 
 def extract_ios_metadata(ipa_data: bytes) -> Optional[AppMetadata]:
@@ -255,7 +256,7 @@ def extract_ios_metadata(ipa_data: bytes) -> Optional[AppMetadata]:
                     permissions=["NSLocationWhenInUseUsageDescription", "NSCameraUsageDescription"]
                 )
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error extracting iOS metadata: {e}")
+        logger.error(f"Error extracting iOS metadata: {type(e).__name__}")
         return None
 
 def analyze_permissions(app_metadata: Optional[AppMetadata], platform: str) -> List[PermissionAnalysis]:
@@ -341,9 +342,9 @@ def analyze_network_security(app_data: bytes, platform: str) -> Optional[Network
                     network_config = apk.read('res/xml/network_security_config.xml')
                     custom_ca_allowed = b'trust-anchors' not in network_config
                 except (KeyError, zipfile.BadZipFile) as e:
-                    logger.debug(f"Network security config not found or invalid: {e}")
+                    logger.debug(f"Network security config not found or invalid: {type(e).__name__}")
                 except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                    logger.error(f"Unexpected error reading network security config: {e}")
+                    logger.error(f"Unexpected error reading network security config: {type(e).__name__}")
                 
                 # Search for cleartext URLs in all files
                 for file_path in apk.namelist():
@@ -355,7 +356,7 @@ def analyze_network_security(app_data: bytes, platform: str) -> Optional[Network
                             if http_urls:
                                 uses_cleartext = True
                         except (UnicodeDecodeError, Exception) as e:
-                            logger.error(f"Error reading file {file_path} for cleartext analysis: {e}")
+                            logger.error(f"Error reading file {file_path} for cleartext analysis: {type(e).__name__}")
                             continue
         
         return NetworkSecurityAnalysis(
@@ -365,7 +366,7 @@ def analyze_network_security(app_data: bytes, platform: str) -> Optional[Network
             cleartext_endpoints=list(set(cleartext_endpoints))[:10]  # Limit to 10 examples
         )
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error analyzing network security: {e}")
+        logger.error(f"Error analyzing network security: {type(e).__name__}")
         return None
 
 def analyze_data_storage_security(app_data: bytes, platform: str) -> List[SecurityVulnerability]:
@@ -406,10 +407,10 @@ def analyze_data_storage_security(app_data: bytes, platform: str) -> List[Securi
                                     remediation="Use internal storage or encrypt data before writing to external storage"
                                 ))
                         except (UnicodeDecodeError, Exception) as e:
-                            logger.error(f"Error analyzing file {file_path} for storage vulnerabilities: {e}")
+                            logger.error(f"Error analyzing file {file_path} for storage vulnerabilities: {type(e).__name__}")
                             continue
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error analyzing storage vulnerabilities: {e}")
+        logger.error(f"Error analyzing storage vulnerabilities: {type(e).__name__}")
         pass
     
     return vulnerabilities
@@ -462,10 +463,10 @@ def analyze_code_quality(app_data: bytes, platform: str) -> List[SecurityVulnera
                                     remediation="Remove debug logging from production builds"
                                 ))
                         except (UnicodeDecodeError, Exception) as e:
-                            logger.error(f"Error analyzing file {file_path} for code quality issues: {e}")
+                            logger.error(f"Error analyzing file {file_path} for code quality issues: {type(e).__name__}")
                             continue
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error analyzing code quality vulnerabilities: {e}")
+        logger.error(f"Error analyzing code quality vulnerabilities: {type(e).__name__}")
         pass
     
     return vulnerabilities
@@ -547,10 +548,10 @@ def extract_assets(app_data: bytes, platform: str) -> List[ExtractedAsset]:
                                         description="Potential API key found hardcoded"
                                     ))
                         except (UnicodeDecodeError, Exception) as e:
-                            logger.error(f"Error extracting assets from file {file_path}: {e}")
+                            logger.error(f"Error extracting assets from file {file_path}: {type(e).__name__}")
                             continue
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error extracting assets: {e}")
+        logger.error(f"Error extracting assets: {type(e).__name__}")
         pass
     
     return assets[:20]  # Limit to first 20 assets

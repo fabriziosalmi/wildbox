@@ -22,6 +22,7 @@ from redis.exceptions import RedisError
 
 from app.auth import require_tools_execute, verify_api_key
 from app.celery_app import celery_app
+from app.log_safety import field_names
 from app.logging_config import get_logger
 from app.prerun import PRE_RUN_REFUSALS, check_tool_request, http_error, refusal_log
 from app.task_ownership import (
@@ -245,7 +246,7 @@ def submit_tool_async(
     # resolve differently by then. This handler is not a coroutine, so the
     # policy's name resolution runs in a worker thread.
     try:
-        check_tool_request(tool_name, input_data)
+        checked = check_tool_request(tool_name, input_data)
     except PRE_RUN_REFUSALS as e:
         logger.warning(
             f"Async submission refused, {tool_name!r}: {refusal_log(e)}",
@@ -290,9 +291,19 @@ def submit_tool_async(
             )
         raise _tracking_failed(e)
 
+    # As for a synchronous run: who, which tool, which fields; no values
+    # (#755). The input itself is in the task's message, which the tool
+    # needs to run; app/celery_app.py says how long Redis keeps it.
     logger.info(
         f"Async task submitted: {tool_name}",
-        extra={"tool": tool_name, "task_id": task_id, "request_id": request_id},
+        extra={
+            "tool": tool_name,
+            "task_id": task_id,
+            "user_id": user_id,
+            "team_id": str(caller.team_id),
+            "input_fields": field_names(checked.validated_input),
+            "request_id": request_id,
+        },
     )
 
     return {

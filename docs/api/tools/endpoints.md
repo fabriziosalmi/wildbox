@@ -73,6 +73,24 @@ How a refusal reaches the caller depends on the path: the synchronous run
 answers **400** with the reason in `error.message`, an asynchronous run
 ends as a task with status `failed` and the reason in `error`, and a
 `security_automation_orchestrator` step that names a refused target fails.
+
+Every failed step of a `security_automation_orchestrator` workflow has an
+`error_code` beside its `error_message`
+([#755](https://github.com/fabriziosalmi/wildbox/issues/755)):
+
+| `error_code` | The step failed because |
+| --- | --- |
+| `tool_not_available` | its tool is not one the orchestrator runs, or could not be loaded |
+| `step_refused` | the target policy refuses its target, or the tool acts for a caller and must be called through the API |
+| `invalid_parameters` | the tool's schema refuses its parameters; `error_message` names each field and why |
+| `tool_rejected_input` | the tool raised an error while it ran on its parameters |
+| `service_unavailable` | a service the tool needs could not be reached |
+| `internal_error` | of a fault in the service |
+| `step_failed` | of anything else |
+
+For the last four `error_message` is one fixed sentence per code. What was
+raised is in the service's log, by class and line, and is never part of the
+workflow's result.
 The reason names the policy, for example
 `Target '10.0.0.5' is a private, loopback, link-local, multicast, reserved or otherwise internal address (network target policy; operators can allow internal targets with TOOLS_ALLOWED_INTERNAL_TARGETS)`.
 
@@ -323,6 +341,14 @@ at that point reads status `failed` with the reason in `error`; the reason
 names the fields that failed, never their values. Whether the caller may run
 a tool that acts for them is decided when the task runs: a task the tool
 refuses reads status `refused`.
+
+A task whose tool raised an error while it ran reads status `failed` with
+`error` set to `Tool execution failed (<class of the error>)`, for example
+`Tool execution failed (ValueError)`: what the synchronous route says for
+the same failure, with the class. The text of the error is neither stored
+with the task nor logged, because a tool's error can repeat the input it was
+raised over
+([#755](https://github.com/fabriziosalmi/wildbox/issues/755)).
 
 The service records who submitted the task before queuing it. It answers
 **503** (`Asynchronous execution is unavailable`) when it cannot record the
@@ -607,7 +633,9 @@ The gateway applies two limits to tools and task requests:
   `docker-compose.yml`; it must be a whole number from 1 to 1,000,000,000,
   and any other value stops the gateway at startup.
 - **Per client IP**: the server-wide nginx `limit_req` zone `global`,
-  100 requests per second with a burst of 10, answered with 429.
+  100 requests per second with a burst of 10, answered with 429. The rate
+  is the gateway's `GATEWAY_RATE_LIMIT_PER_SECOND` setting, 100 unless the
+  operator changed it.
 
 The tools service applies no request rate limit of its own: every request
 reaches it through the gateway, already counted against the caller's team.

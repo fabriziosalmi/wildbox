@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 
 from .models import TeamRole
 from .password_policy import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
@@ -35,8 +35,9 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     # (#573); the dashboard sends such a user to change it first.
     must_change_password: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 
 class UserCreate(schemas.BaseUserCreate):
@@ -83,8 +84,9 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 
 class UserWithTeams(UserResponse):
@@ -102,8 +104,9 @@ class TeamResponse(TeamBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 
 # Team membership schemas
@@ -114,8 +117,9 @@ class TeamMembershipResponse(BaseModel):
     joined_at: datetime
     team: TeamResponse
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 
 # API Key schemas
@@ -165,8 +169,9 @@ class ApiKeyResponse(ApiKeyBase):
     last_used_at: Optional[datetime] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
 
 class ApiKeyWithSecret(ApiKeyResponse):

@@ -1,18 +1,34 @@
 """Enhanced configuration with better validation and security."""
 
 from open_security_shared.environment import is_development, production_checks_apply
-from pydantic_settings import BaseSettings
-from pydantic import Field, validator, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, SecretStr
 from typing import Optional, List, Union
-import os
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-    
-    # Security settings
+    """Application settings loaded from environment variables.
+
+    Every field here is read by the service. Nine that were not are gone
+    (#665): ``api_key_name``, ``log_format``, ``tool_result_ttl``,
+    ``enable_caching``, ``database_url``, ``enable_audit_logging``,
+    ``enable_security_headers``, ``tools_directory`` and
+    ``auto_reload_tools``, with ``get_secret_key()``, which read a field
+    that no longer existed. A variable of one of those names in the
+    environment is ignored; in a ``.env`` file in the service's directory it
+    stops the service at start, as every key the settings do not know does.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+    # Security settings. Required at start-up, and checked there. It is not
+    # a request credential: the service accepts only requests forwarded by
+    # the gateway (#565).
     api_key: SecretStr = Field(..., min_length=20, description="API key for authentication")
-    api_key_name: str = Field(default="X-API-Key", description="Header name for API key")
     # NOTE: there is deliberately no `secret_key` setting. One used to exist,
     # described as "Secret key for sessions" and defaulting to a fresh
     # secrets.token_urlsafe(32) per process -- so it differed between the API and
@@ -35,7 +51,6 @@ class Settings(BaseSettings):
     
     # Logging settings
     log_level: str = Field(default="INFO", description="Logging level")
-    log_format: str = Field(default="json", description="Log format: json or text")
     
     # CORS settings
     cors_origins: Union[List[str], str] = Field(default=["http://localhost:3000"], description="Allowed CORS origins")
@@ -66,23 +81,12 @@ class Settings(BaseSettings):
     # Tool execution settings
     tool_timeout: int = Field(default=300, ge=1, le=3600, description="Default tool execution timeout in seconds")
     max_concurrent_tools: int = Field(default=10, ge=1, le=100, description="Maximum concurrent tool executions")
-    tool_result_ttl: int = Field(default=3600, description="Tool result cache TTL in seconds")
-    
-    # Cache settings
-    redis_url: Optional[str] = Field(default=None, description="Redis URL for caching")
-    enable_caching: bool = Field(default=False, description="Enable result caching")
-    
-    # Database settings (for future use)
-    database_url: Optional[str] = Field(default=None, description="Database URL for persistence")
-    enable_audit_logging: bool = Field(default=True, description="Enable audit logging")
-    
-    # Security headers
-    enable_security_headers: bool = Field(default=True, description="Enable security headers")
-    
-    # Tool discovery
-    tools_directory: str = Field(default="app/tools", description="Directory containing security tools")
-    auto_reload_tools: bool = Field(default=True, description="Auto-reload tools on changes")
-    
+
+    # Redis: the Celery broker and result backend, the ownership and the
+    # outcomes of asynchronous runs, and each caller's hourly operation
+    # count. Nothing is cached in it.
+    redis_url: Optional[str] = Field(default=None, description="Redis URL")
+
     # Internal targets the network tools may scan (#614): comma-separated CIDR
     # ranges, IP addresses and host names. Empty by default, so private,
     # loopback, link-local and other internal targets are refused. Parsed
@@ -93,21 +97,24 @@ class Settings(BaseSettings):
         description="Internal CIDR ranges and host names the network tools may scan",
     )
 
-    @validator('tools_allowed_internal_targets')
+    @field_validator('tools_allowed_internal_targets')
+    @classmethod
     def validate_tools_allowed_internal_targets(cls, v):
         from app.target_policy import parse_allowlist
 
         parse_allowlist(v)
         return v or ""
 
-    @validator('log_level')
+    @field_validator('log_level')
+    @classmethod
     def validate_log_level(cls, v):
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
         if v.upper() not in valid_levels:
             raise ValueError(f'log_level must be one of {valid_levels}')
         return v.upper()
     
-    @validator('environment')
+    @field_validator('environment')
+    @classmethod
     def validate_environment(cls, v):
         if v is None:
             return ""  # not declared: not development, not production
@@ -116,7 +123,8 @@ class Settings(BaseSettings):
             raise ValueError(f'environment must be one of {valid_envs}')
         return v.lower()
     
-    @validator('api_key')
+    @field_validator('api_key')
+    @classmethod
     def validate_api_key(cls, v):
         if isinstance(v, SecretStr):
             key_value = v.get_secret_value()
@@ -143,7 +151,8 @@ class Settings(BaseSettings):
         
         return v
     
-    @validator('cors_origins')
+    @field_validator('cors_origins')
+    @classmethod
     def validate_cors_origins(cls, v):
         if isinstance(v, str):
             # Handle comma-separated string from environment variables
@@ -154,25 +163,9 @@ class Settings(BaseSettings):
             return v if v else ["*"]
         return ["*"]
     
-    @validator('tools_directory')
-    def validate_tools_directory(cls, v):
-        if not os.path.isabs(v):
-            return os.path.join(os.getcwd(), v)
-        return v
-
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": False
-    }
-
     def get_api_key(self) -> str:
         """Get the API key as a string."""
         return self.api_key.get_secret_value()
-    
-    def get_secret_key(self) -> str:
-        """Get the secret key as a string."""
-        return self.secret_key.get_secret_value()
     
     def production_checks_apply(self) -> bool:
         """Whether the start-up checks of app/main.py are fatal.

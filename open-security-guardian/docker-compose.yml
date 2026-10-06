@@ -72,6 +72,9 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      # Internal ranges a discovery or a port scan may reach; empty refuses
+      # every internal target (#748). The celery service gets the same value.
+      - GUARDIAN_ALLOWED_INTERNAL_TARGETS=${GUARDIAN_ALLOWED_INTERNAL_TARGETS:-}
     depends_on:
       db:
         condition: service_healthy
@@ -97,6 +100,8 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
+      # The worker is what scans: the same list as the guardian service (#748).
+      - GUARDIAN_ALLOWED_INTERNAL_TARGETS=${GUARDIAN_ALLOWED_INTERNAL_TARGETS:-}
     depends_on:
       - db
       - redis

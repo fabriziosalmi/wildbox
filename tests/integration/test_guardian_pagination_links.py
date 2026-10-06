@@ -18,7 +18,6 @@ does; every other request goes through the gateway.
 
 import os
 import secrets
-import time
 import uuid
 from urllib.parse import urljoin, urlsplit
 
@@ -37,11 +36,10 @@ ASSETS = f"{GATEWAY_URL}{ASSETS_PATH}"
 PAGE_SIZE = 50
 ROWS = PAGE_SIZE + 1
 
-# The gateway allows one address 100 requests a second with a burst of 10
-# (limit_req zone=global, nginx.conf) and answers 429 beyond it. Storing and
-# removing the rows is a hundred requests in a row, and against a fast stack
-# they come closer than 10 ms apart, so the fixture spaces them out.
-SPACING_SECONDS = 0.025
+# Storing and removing the rows is a hundred requests in a row. The fixture
+# used to space them 25 ms apart to stay under the gateway's per-address
+# limit; the stack the suite runs against is now given a rate the suite does
+# not reach, and conftest.py checks that before the first test (#756).
 
 # What a client could send to move the links elsewhere. The gateway sets
 # X-Forwarded-Host, X-Forwarded-Proto and X-Forwarded-Prefix itself, nginx
@@ -94,7 +92,6 @@ def asset_ids(owner):
     ids = []
     try:
         for number in range(ROWS):
-            time.sleep(SPACING_SECONDS)
             created = requests.post(
                 ASSETS,
                 json={
@@ -110,7 +107,6 @@ def asset_ids(owner):
         yield set(ids)
     finally:
         for asset_id in ids:
-            time.sleep(SPACING_SECONDS)
             requests.delete(f"{ASSETS}{asset_id}/", headers=owner, timeout=TIMEOUT)
 
 

@@ -5,6 +5,7 @@ Celery application configuration for async tool execution.
 from celery import Celery
 from app.config import settings
 from app.logging_config import get_logger
+from open_security_shared.log_safety import quiet_http_client_loggers
 
 logger = get_logger(__name__)
 
@@ -51,6 +52,18 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,  # One task at a time per worker
     worker_max_tasks_per_child=50,  # Restart worker after 50 tasks (prevent memory leaks)
     result_expires=3600,  # Results expire after 1 hour
+    # What Redis holds of a tool's input (#755). The task message carries it:
+    # the tool cannot run without it. The message is in the queue until a
+    # worker takes it, then in the transport's `unacked` hash until the task
+    # ends (task_acks_late), and is deleted when the task is acknowledged; a
+    # retry sends it again. It has no expiry of its own: a task no worker
+    # ever takes stays queued, input included, until someone purges the
+    # queue. The result does not carry the input: result_extended, which
+    # would store the arguments with every result for result_expires, stays
+    # off, and a test fails if it is turned on. The text of the arguments
+    # that Celery sends for logs, `inspect` and Flower leaves the input out
+    # (app/tasks.py, shown_arguments).
+    result_extended=False,
     task_acks_late=True,  # Acknowledge task after completion
     task_reject_on_worker_lost=True,
     broker_connection_retry_on_startup=True,
@@ -66,7 +79,11 @@ celery_app.conf.update(
 #     'app.tasks.execute_tool_async_high_priority': {'queue': 'tools_priority'},
 # }
 
-logger.info("Celery app configured", extra={
-    "broker": settings.redis_url,
-    "backend": settings.redis_url
-})
+# The worker imports this module and not app.main: it is where its HTTP
+# client libraries are told not to log the URL of each request a tool sends,
+# which is the caller's target (#755).
+quiet_http_client_loggers()
+
+# Not the broker and backend URLs, which this logged: REDIS_URL carries the
+# Redis password (#755).
+logger.info("Celery app configured")

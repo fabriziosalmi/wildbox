@@ -221,7 +221,6 @@ Settings are read from the environment (`app/config.py`):
 | `WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service, for `threat_intel_query_tool` |
 | `WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, for `vulnerability_search_tool`; the host must be in Guardian's `ALLOWED_HOSTS` |
 | `LOG_LEVEL` | `INFO` | Log level |
-| `DEBUG` | `false` | Debug flag |
 | `ENVIRONMENT` | none | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development`; unset or empty is not |
 | `CORS_ORIGINS` | empty | Comma-separated allowed origins |
 | `ANALYZE_RATE_LIMIT` | `5/minute` | Analyses each user may submit, in the `limits` notation (`5/minute;50/day` for several) |

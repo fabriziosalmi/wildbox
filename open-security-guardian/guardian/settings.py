@@ -295,10 +295,12 @@ REST_FRAMEWORK = {
 # API DOCUMENTATION CONFIGURATION
 # =============================================================================
 
+from guardian import __version__ as GUARDIAN_VERSION  # noqa: E402
+
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Open Security Guardian API',
     'DESCRIPTION': 'Proactive Vulnerability Management Platform',
-    'VERSION': '0.1.6',
+    'VERSION': GUARDIAN_VERSION,
     'SERVE_INCLUDE_SCHEMA': False,
     'CONTACT': {
         'name': 'Wildbox Security',
@@ -321,16 +323,15 @@ SPECTACULAR_SETTINGS = {
 # CORS CONFIGURATION
 # =============================================================================
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:80",
-    "http://localhost",
-    "http://127.0.0.1:80",
-    "http://127.0.0.1",
-]
+# The origins a browser may call guardian from: CORS_ALLOWED_ORIGINS, a
+# comma-separated list. Unset, the development origins; set and empty, none.
+# docker-compose.prod.yml has always passed the deployment's CORS_ORIGINS
+# under this name, and the list was written here, so the value did nothing
+# (#665). An entry that is not an origin stops guardian at start-up; see
+# guardian/cors.py.
+from guardian.cors import allowed_origins  # noqa: E402
+
+CORS_ALLOWED_ORIGINS = allowed_origins(os.getenv('CORS_ALLOWED_ORIGINS'))
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -397,6 +398,15 @@ from guardian.schedule import team_membership_max_age  # noqa: E402
 
 TEAM_MEMBERSHIP_MAX_AGE = team_membership_max_age()
 
+# The internal ranges a discovery or a port scan may reach (#748):
+# GUARDIAN_ALLOWED_INTERNAL_TARGETS, comma-separated CIDR ranges and IP
+# addresses, empty by default, so that nothing internal is scanned until the
+# operator names it. Parsed here: a malformed entry stops guardian and its
+# worker at start-up. See guardian/scan_targets.py.
+from guardian.scan_targets import allowed_internal_targets  # noqa: E402
+
+SCAN_ALLOWED_INTERNAL_TARGETS = allowed_internal_targets()
+
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
@@ -444,56 +454,15 @@ LOGGING = {
     },
 }
 
-# =============================================================================
-# SCANNER INTEGRATION SETTINGS
-# =============================================================================
-
-SCANNER_SETTINGS = {
-    'NESSUS': {
-        'ENABLED': os.getenv('NESSUS_ENABLED', 'false').lower() == 'true',
-        'URL': os.getenv('NESSUS_URL', ''),
-        'USERNAME': os.getenv('NESSUS_USERNAME', ''),
-        'PASSWORD': os.getenv('NESSUS_PASSWORD', ''),
-        'VERIFY_SSL': os.getenv('NESSUS_VERIFY_SSL', 'true').lower() == 'true',
-    },
-    'QUALYS': {
-        'ENABLED': os.getenv('QUALYS_ENABLED', 'false').lower() == 'true',
-        'URL': os.getenv('QUALYS_URL', ''),
-        'USERNAME': os.getenv('QUALYS_USERNAME', ''),
-        'PASSWORD': os.getenv('QUALYS_PASSWORD', ''),
-    },
-    'OPENVAS': {
-        'ENABLED': os.getenv('OPENVAS_ENABLED', 'false').lower() == 'true',
-        'URL': os.getenv('OPENVAS_URL', ''),
-        'USERNAME': os.getenv('OPENVAS_USERNAME', ''),
-        'PASSWORD': os.getenv('OPENVAS_PASSWORD', ''),
-    },
-    'RAPID7': {
-        'ENABLED': os.getenv('RAPID7_ENABLED', 'false').lower() == 'true',
-        'URL': os.getenv('RAPID7_URL', ''),
-        'API_KEY': os.getenv('RAPID7_API_KEY', ''),
-    },
-}
-
-# =============================================================================
-# TICKETING INTEGRATION SETTINGS
-# =============================================================================
-
-TICKETING_SETTINGS = {
-    'JIRA': {
-        'ENABLED': os.getenv('JIRA_ENABLED', 'false').lower() == 'true',
-        'URL': os.getenv('JIRA_URL', ''),
-        'USERNAME': os.getenv('JIRA_USERNAME', ''),
-        'API_TOKEN': os.getenv('JIRA_API_TOKEN', ''),
-        'PROJECT_KEY': os.getenv('JIRA_PROJECT_KEY', 'SEC'),
-    },
-    'SERVICENOW': {
-        'ENABLED': os.getenv('SERVICENOW_ENABLED', 'false').lower() == 'true',
-        'URL': os.getenv('SERVICENOW_URL', ''),
-        'USERNAME': os.getenv('SERVICENOW_USERNAME', ''),
-        'PASSWORD': os.getenv('SERVICENOW_PASSWORD', ''),
-    },
-}
+# No WILDBOX_SETTINGS, SCANNER_SETTINGS, TICKETING_SETTINGS,
+# COMPLIANCE_SETTINGS, RISK_CALCULATION_SETTINGS or PERFORMANCE_SETTINGS,
+# and no Slack or Teams entry under NOTIFICATION_SETTINGS: they read some
+# forty-four variables (WILDBOX_API_KEY, NESSUS_PASSWORD, JIRA_API_TOKEN,
+# SLACK_WEBHOOK_URL, CVSS_WEIGHT, MAX_CONCURRENT_SCANS...) into
+# dictionaries no code read (#665). A scanner, a ticketing system and a
+# notification channel are records of the team that owns them, made
+# through the API, and guardian stores no credential for any of them
+# (#728).
 
 # =============================================================================
 # NOTIFICATION SETTINGS
@@ -537,53 +506,6 @@ BASE_URL = public_base_url()
 # it asks nothing, and e-mails only the addresses a team typed into an
 # alert rule or a report schedule.
 TEAM_CONTACTS_URL, TEAM_CONTACTS_SECRET = team_contacts_settings()
-
-# Notification settings
-NOTIFICATION_SETTINGS = {
-    'SLACK': {
-        'ENABLED': os.getenv('SLACK_ENABLED', 'false').lower() == 'true',
-        'WEBHOOK_URL': os.getenv('SLACK_WEBHOOK_URL', ''),
-        'CHANNEL': os.getenv('SLACK_CHANNEL', '#security-alerts'),
-    },
-    'TEAMS': {
-        'ENABLED': os.getenv('TEAMS_ENABLED', 'false').lower() == 'true',
-        'WEBHOOK_URL': os.getenv('TEAMS_WEBHOOK_URL', ''),
-    },
-}
-
-# =============================================================================
-# COMPLIANCE FRAMEWORK SETTINGS
-# =============================================================================
-
-COMPLIANCE_SETTINGS = {
-    'DEFAULT_FRAMEWORKS': os.getenv('DEFAULT_COMPLIANCE_FRAMEWORKS', 
-                                  'PCI_DSS,SOX,HIPAA,ISO27001,NIST_CSF').split(','),
-}
-
-# =============================================================================
-# RISK CALCULATION SETTINGS
-# =============================================================================
-
-RISK_CALCULATION_SETTINGS = {
-    'METHOD': os.getenv('RISK_CALCULATION_METHOD', 'advanced'),
-    'WEIGHTS': {
-        'THREAT_INTEL': float(os.getenv('THREAT_INTEL_WEIGHT', '0.3')),
-        'ASSET_CRITICALITY': float(os.getenv('ASSET_CRITICALITY_WEIGHT', '0.4')),
-        'CVSS': float(os.getenv('CVSS_WEIGHT', '0.3')),
-        'EXPLOITABILITY': float(os.getenv('EXPLOITABILITY_WEIGHT', '0.2')),
-    },
-}
-
-# =============================================================================
-# PERFORMANCE SETTINGS
-# =============================================================================
-
-PERFORMANCE_SETTINGS = {
-    'MAX_CONCURRENT_SCANS': int(os.getenv('MAX_CONCURRENT_SCANS', '5')),
-    'SCAN_TIMEOUT_SECONDS': int(os.getenv('SCAN_TIMEOUT_SECONDS', '3600')),
-    'BULK_OPERATIONS_BATCH_SIZE': int(os.getenv('BULK_OPERATIONS_BATCH_SIZE', '1000')),
-    'CACHE_TIMEOUT_SECONDS': int(os.getenv('CACHE_TIMEOUT_SECONDS', '3600')),
-}
 
 # Database connection pooling
 DATABASES['default']['CONN_MAX_AGE'] = int(os.getenv('DATABASE_CONN_MAX_AGE', '300'))

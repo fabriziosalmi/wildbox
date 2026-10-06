@@ -68,7 +68,6 @@ ROTATABLE = (
     "CSPM_CREDENTIAL_KEY",
     "REDIS_PASSWORD",
     "POSTGRES_PASSWORD",
-    "NEXTAUTH_SECRET",
 )
 
 
@@ -301,7 +300,7 @@ COMPOSE_TEMPLATE = {
                 "CELERY_BROKER_URL": "redis://:${REDIS_PASSWORD}@wildbox-redis:6379/1",
             }
         },
-        "dashboard": {"environment": {"NEXTAUTH_SECRET": "${NEXTAUTH_SECRET}"}},
+        "dashboard": {"environment": {}},
         "api": {"environment": {"API_KEY": "${API_KEY}"}},
         "gateway": {"environment": {}},
         # As the stack starts it: the password is an argument of the server,
@@ -1228,12 +1227,15 @@ def test_the_api_key_message_says_what_reads_it(harness):
     assert "GATEWAY_INTERNAL_SECRET" not in result.stdout
 
 
-def test_the_nextauth_message_says_nothing_reads_it(harness):
+def test_nextauth_secret_is_not_a_secret_any_more(harness):
+    """Nothing read it (#665): the dashboard has no NextAuth. It was passed
+    to the dashboard container, generated, validated and rotatable."""
+    before = harness.values()
     result = harness.run("--secret", "NEXTAUTH_SECRET")
-    assert result.returncode == 0, result.stderr
-    assert "no code reads it" in result.stdout
-    assert "sessions" not in result.stdout
-    assert "    docker compose up -d --no-deps dashboard\n" in result.stdout
+
+    assert result.returncode == 2
+    assert "'NEXTAUTH_SECRET' is not a rotatable secret" in result.stderr
+    assert harness.values() == before
 
 
 def test_the_list_describes_each_secret_by_what_reads_it():
@@ -1244,16 +1246,15 @@ def test_the_list_describes_each_secret_by_what_reads_it():
     listing = result.stdout
     for name in ROTATABLE:
         assert re.search(rf"^  {name}\s", listing, re.M), name
-    nextauth = listing.split("NEXTAUTH_SECRET", 1)[1]
-    assert "nothing reads" in nextauth
+    assert "NEXTAUTH_SECRET" not in listing
     assert "sessions are invalidated" not in listing
-    postgres = listing.split("POSTGRES_PASSWORD", 1)[1].split("NEXTAUTH_SECRET")[0]
+    postgres = listing.split("POSTGRES_PASSWORD", 1)[1]
     assert "every" in postgres and "connection string" in postgres
     assert "Must be changed in Postgres first" not in listing
 
 
 def test_nothing_in_the_dashboard_reads_nextauth_secret():
-    """What the message claims. If this fails, the message is wrong again."""
+    """Why the secret is gone. If this fails, the dashboard needs it back."""
     source = REPO_ROOT / "open-security-dashboard"
     readers = [
         str(path.relative_to(REPO_ROOT))
@@ -1314,7 +1315,7 @@ def _renderable_env():
     return text
 
 
-@pytest.mark.parametrize("name", ["API_KEY", "NEXTAUTH_SECRET", "CSPM_CREDENTIAL_KEY"])
+@pytest.mark.parametrize("name", ["API_KEY", "CSPM_CREDENTIAL_KEY"])
 def test_the_services_to_recreate_come_from_the_real_compose_file(
     docker, tmp_path, name
 ):
@@ -1348,7 +1349,6 @@ def test_the_services_to_recreate_come_from_the_real_compose_file(
     assert listed == expected
     exactly = {
         "API_KEY": {"api", "tools-worker", "tools-flower"},
-        "NEXTAUTH_SECRET": {"dashboard"},
         "CSPM_CREDENTIAL_KEY": {"cspm", "cspm-worker"},
     }
     assert listed == exactly[name]

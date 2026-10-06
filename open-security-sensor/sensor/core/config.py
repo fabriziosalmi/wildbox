@@ -455,10 +455,20 @@ class FIMConfig:
     # and the monitor says how many.
     max_files: int = 50000
 
+
+# The longest performance.inventory_interval: a week.
+INVENTORY_INTERVAL_LIMIT = 7 * 24 * 3600
+
+
 @dataclass
 class PerformanceConfig:
     """Performance tuning configuration"""
     query_interval: int = 10
+    # Seconds between two runs of each query of the system_inventory pack
+    # (#754). The other packs are pictures of what changes by the second
+    # and run at every query_interval; what is installed does not, and its
+    # answers are the largest. 0: at every cycle, as before.
+    inventory_interval: int = 3600
     max_memory_mb: int = 128
     max_cpu_percent: int = 5
     max_queue_size: int = 1000
@@ -591,7 +601,19 @@ class SensorConfig:
         
         if self.performance.max_cpu_percent < 1 or self.performance.max_cpu_percent > 100:
             errors.append("performance.max_cpu_percent must be between 1 and 100")
-        
+
+        # A text here would end the osquery cycle at its first comparison.
+        interval = self.performance.inventory_interval
+        if (
+            isinstance(interval, bool)
+            or not isinstance(interval, (int, float))
+            or not 0 <= interval <= INVENTORY_INTERVAL_LIMIT
+        ):
+            errors.append(
+                "performance.inventory_interval must be a number of seconds "
+                f"between 0 and {INVENTORY_INTERVAL_LIMIT}, got {interval!r}"
+            )
+
         # Validate FIM paths. Whether a path exists is not checked here: it
         # can appear while the sensor runs, and the file monitor reports it.
         if not isinstance(self.fim.paths, list) or not all(
@@ -735,7 +757,9 @@ def _apply_env_overrides(config_data: Dict[str, Any]) -> Dict[str, Any]:
                 try:
                     current[final_key] = int(env_value)
                 except ValueError:
-                    logger.warning(f"Invalid integer value for {env_var}: {env_value}")
+                    # The variable, not its value: what is set by mistake
+                    # can be a secret meant for another variable (#755).
+                    logger.warning(f"{env_var} is not an integer and is ignored")
             else:
                 current[final_key] = env_value
     
@@ -792,6 +816,7 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
     perf_data = config_data.get('performance', {})
     performance = PerformanceConfig(
         query_interval=perf_data.get('query_interval', 10),
+        inventory_interval=perf_data.get('inventory_interval', 3600),
         max_memory_mb=perf_data.get('max_memory_mb', 128),
         max_cpu_percent=perf_data.get('max_cpu_percent', 5),
         max_queue_size=perf_data.get('max_queue_size', 1000),
