@@ -126,7 +126,7 @@ jobs:
       # third-party docs are not ours to edit.
       - name: Run proselint on Markdown
         run: |
-          git ls-files -z '*.md' ':!:docs/vendor/**' ':!:docs/api/vendor/**' \
+          git ls-files -z '*.md' ':!:docs/vendor/**' \
             | xargs -0 python scripts/check_prose.py --config .proselintrc.json
 
   inclusive-language:
