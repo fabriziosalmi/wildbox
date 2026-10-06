@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The data service's statistics no longer count other teams' collection
+  runs** (#755). `GET /api/v1/data/stats` answered `recent_collections` as
+  the number of collection runs of every team's sources in the last 24
+  hours, on a route any member of any team can call. It counts the runs of
+  the sources the caller can see: its team's and the global ones. Every
+  other figure of that answer, and every other route of the service, was
+  already scoped; `open-security-data/tests/unit/test_team_isolation.py`
+  now lists the routes from the application and holds each to a database
+  with two teams' rows, so that a route added later fails until it has a
+  probe.
 - **The Redis health check no longer carries the password on its command
   line, and fails when the password is wrong** (#740). Every compose file
   checked Redis with `redis-cli -a <password> ping`, or with

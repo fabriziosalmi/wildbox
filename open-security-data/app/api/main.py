@@ -177,8 +177,14 @@ async def get_statistics(current_user: GatewayUser = Depends(get_current_user), 
         Indicator.active == True, team_or_global_filter(Indicator, current_user)
     ).scalar()
     
-    # Recent collection runs
-    recent_collections = db.query(func.count(CollectionRun.id)).filter(
+    # Recent collection runs, of the sources the caller can see: its team's
+    # and the global ones. A run has no team of its own; it is its source's.
+    # This counted every run of every team's sources (#755), the one figure
+    # of this answer that was not scoped.
+    recent_collections = db.query(func.count(CollectionRun.id)).join(
+        Source, CollectionRun.source_id == Source.id
+    ).filter(
+        team_or_global_filter(Source, current_user),
         CollectionRun.started_at >= datetime.now(timezone.utc) - timedelta(hours=24)
     ).scalar()
     

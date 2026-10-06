@@ -340,9 +340,12 @@ and `source_id`.
 }
 ```
 
-Indicator and source counts cover what the caller can see (active
-indicators only). `recent_collections` counts every collection run started
-in the last 24 hours, of any team.
+Every figure covers what the caller can see: its team's rows and the
+global ones (a source or an indicator without a team). Indicator counts are
+of active indicators. `recent_collections` counts the collection runs
+started in the last 24 hours of the sources the caller can see; it counted
+every team's runs before
+[#755](https://github.com/fabriziosalmi/wildbox/issues/755).
 
 ### GET /api/v1/data/dashboard/threat-intel
 
