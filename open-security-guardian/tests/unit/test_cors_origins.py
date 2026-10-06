@@ -3,8 +3,13 @@
 ``docker-compose.prod.yml`` passed ``CORS_ALLOWED_ORIGINS=${CORS_ORIGINS}`` to
 guardian, whose list of origins was written in its settings: the operator's
 origin was never allowed, and the development ones always were.
+
+Under that overlay the variable holds the value the gateway reads as
+``CORS_ORIGINS``. guardian reads it by the gateway's grammar: a value the
+gateway starts on does not stop guardian, and the two allow the same origins.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -18,6 +23,41 @@ from guardian.cors import DEVELOPMENT_ORIGINS, VARIABLE, allowed_origins
 GUARDIAN_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = GUARDIAN_DIR.parent
 PROD_OVERLAY = REPO_ROOT / "docker-compose.prod.yml"
+GATEWAY_START_UP_TESTS = (
+    REPO_ROOT / "open-security-gateway" / "test" / "startup_config_tests.sh"
+)
+GATEWAY_PARSER = REPO_ROOT / "open-security-gateway" / "nginx" / "lua" / "cors.lua"
+
+# The values open-security-gateway/test/startup_config_tests.sh starts a
+# gateway with: these it refuses...
+GATEWAY_REFUSES = [
+    "*",
+    "https://*.example.com",
+    "dashboard.example.com",
+    "https://dashboard.example.com/",
+    "https://dashboard.example.com/app",
+    "https://a.example.com https://b.example.com",
+    "null",
+    "ftp://dashboard.example.com",
+    '["https://a.example.com", 5]',
+    '{"origin": "https://a.example.com"}',
+    "https://a.example.com,*",
+]
+# ...and on these it starts, allowing the origins beside each.
+GATEWAY_ACCEPTS = {
+    "": [],
+    "https://dashboard.example.com": ["https://dashboard.example.com"],
+    "https://a.example.com, http://localhost:3000,": [
+        "https://a.example.com",
+        "http://localhost:3000",
+    ],
+    '["https://a.example.com", "http://localhost:3000"]': [
+        "https://a.example.com",
+        "http://localhost:3000",
+    ],
+    "http://[::1]:3000": ["http://[::1]:3000"],
+    "HTTPS://Dashboard.Example.com:8443": ["https://dashboard.example.com:8443"],
+}
 
 # --- the variable ------------------------------------------------------------
 
@@ -47,10 +87,143 @@ def test_the_development_origins_are_not_added_to_a_list():
     ]
 
 
-def test_a_trailing_slash_and_a_repeat_are_dropped():
-    value = "https://dashboard.example.com/,https://dashboard.example.com"
+def test_a_repeat_is_dropped_and_case_is_not_kept():
+    value = "https://dashboard.example.com,HTTPS://Dashboard.Example.COM"
 
     assert allowed_origins(value) == ["https://dashboard.example.com"]
+
+
+# --- the JSON form, which the gateway and identity accept too ------------------
+
+
+def test_a_json_list_of_one_origin_is_read():
+    assert allowed_origins('["https://dashboard.example.com"]') == [
+        "https://dashboard.example.com"
+    ]
+
+
+def test_a_json_list_of_several_origins_is_read():
+    value = json.dumps(["https://a.example.com", "http://10.0.0.5:3000"])
+
+    assert allowed_origins(value) == ["https://a.example.com", "http://10.0.0.5:3000"]
+    assert allowed_origins(f"  {value}  ") == allowed_origins(value)
+
+
+@pytest.mark.parametrize("value", ["[]", " [ ] ", "[\n]"])
+def test_an_empty_json_list_means_none(value):
+    assert allowed_origins(value) == []
+
+
+@pytest.mark.parametrize(
+    "value, entry",
+    [
+        ('["https://ok.example.com", "*"]', "'*'"),
+        (
+            '["https://ok.example.com", "dashboard.example.com"]',
+            "'dashboard.example.com'",
+        ),
+        ('["https://dashboard.example.com/"]', "'https://dashboard.example.com/'"),
+        ('["https://ok.example.com", 5]', "'5'"),
+        ('["https://ok.example.com", null]', "'null'"),
+        ('[["https://ok.example.com"]]', "'[\"https://ok.example.com\"]'"),
+        # An entry of a JSON list is taken as written: it is not trimmed.
+        ('[" https://ok.example.com"]', "' https://ok.example.com'"),
+    ],
+)
+def test_a_json_list_holding_what_is_not_an_origin_is_refused(value, entry):
+    with pytest.raises(ImproperlyConfigured) as refused:
+        allowed_origins(value)
+
+    message = str(refused.value)
+    assert f"{VARIABLE}: {entry} is not an origin" in message
+    # The message says both forms the variable takes.
+    assert "separated by commas or as a JSON list" in message
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        '["https://dashboard.example.com"',
+        '["https://dashboard.example.com",]',
+        "[https://dashboard.example.com]",
+        '["https://dashboard.example.com"] x',
+        "[",
+    ],
+)
+def test_malformed_json_is_refused_and_not_read_as_a_comma_list(value):
+    with pytest.raises(ImproperlyConfigured) as refused:
+        allowed_origins(value)
+
+    message = str(refused.value)
+    assert f"{VARIABLE} starts like a JSON list and is not one" in message
+    assert "separated by commas or as a JSON list" in message
+
+
+def test_a_json_value_that_is_not_a_list_is_not_json_to_guardian():
+    """Only a value that starts with ``[`` is read as JSON, as in the gateway."""
+    with pytest.raises(ImproperlyConfigured) as refused:
+        allowed_origins('{"origin": "https://a.example.com"}')
+
+    assert "is not an origin" in str(refused.value)
+    with pytest.raises(ImproperlyConfigured):
+        allowed_origins('"https://a.example.com"')
+
+
+# --- the gateway's grammar -----------------------------------------------------
+
+
+@pytest.mark.parametrize("value", GATEWAY_REFUSES)
+def test_what_the_gateway_refuses_guardian_refuses(value):
+    with pytest.raises(ImproperlyConfigured):
+        allowed_origins(value)
+
+
+@pytest.mark.parametrize("value", sorted(GATEWAY_ACCEPTS))
+def test_what_the_gateway_starts_on_guardian_starts_on(value):
+    """The production overlay gives both the same value: guardian must not
+    stop on one the gateway documents and accepts."""
+    assert allowed_origins(value) == GATEWAY_ACCEPTS[value]
+
+
+def test_the_vectors_are_the_ones_the_gateway_is_started_with():
+    """If the gateway's own test changes its values, these lists follow."""
+    script = GATEWAY_START_UP_TESTS.read_text(encoding="utf-8")
+
+    for value in GATEWAY_REFUSES + sorted(GATEWAY_ACCEPTS):
+        quoted = f"'{value}'" if '"' in value else f'"{value}"'
+        assert quoted in script, value
+
+
+def test_the_gateway_parser_is_the_one_this_follows():
+    """The points of the grammar guardian/cors.py copies, where it copies them."""
+    parser = GATEWAY_PARSER.read_text(encoding="utf-8")
+
+    # A value that starts with [ is JSON; anything else is split on commas.
+    assert 'raw:match("^%s*%[")' in parser
+    assert 'raw:gmatch("[^,]+")' in parser
+    # An origin: lower case, a host of these characters, a port of 1-5 digits.
+    assert "local origin = value:lower()" in parser
+    assert '"^https?://([a-z0-9.-]+)$"' in parser
+    assert '"^https?://([a-z0-9.-]+):%d%d?%d?%d?%d?$"' in parser
+    assert '"^https?://%[[0-9a-f:]+%]$"' in parser
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "https://-a.example.com",
+        "https://a.example.com-",
+        "https://.example.com",
+        "https://a..example.com",
+        "https://a.example.com:123456",
+        "https://a.example.com:",
+        "https://a_b.example.com",
+        "https://a.example.com\n",
+    ],
+)
+def test_a_host_the_gateway_would_not_take_is_refused(entry):
+    with pytest.raises(ImproperlyConfigured):
+        allowed_origins(json.dumps([entry]))
 
 
 @pytest.mark.parametrize(
@@ -60,6 +233,7 @@ def test_a_trailing_slash_and_a_repeat_are_dropped():
         "https://*.example.com",
         "dashboard.example.com",
         "dashboard.example.com:3000",
+        "https://dashboard.example.com/",
         "https://dashboard.example.com/app",
         "https://dashboard.example.com?x=1",
         "https://user@dashboard.example.com",
@@ -117,6 +291,17 @@ def test_start_up_applies_the_variable():
     assert loaded.stdout.strip() == "['https://dashboard.example.com'] True"
 
 
+def test_start_up_applies_a_json_list():
+    loaded = _load_settings(
+        CORS_ALLOWED_ORIGINS='["https://a.example.com", "https://b.example.com"]'
+    )
+
+    assert loaded.returncode == 0, loaded.stderr[-500:]
+    assert loaded.stdout.strip() == (
+        "['https://a.example.com', 'https://b.example.com'] True"
+    )
+
+
 def test_start_up_with_an_empty_variable_allows_no_origin():
     loaded = _load_settings(CORS_ALLOWED_ORIGINS="")
 
@@ -138,7 +323,7 @@ def test_django_cors_headers_accepts_what_the_settings_hold(settings):
     from corsheaders.checks import check_settings
 
     settings.CORS_ALLOWED_ORIGINS = allowed_origins(
-        "https://dashboard.example.com/, http://10.0.0.5:3000"
+        '["https://dashboard.example.com", "http://10.0.0.5:3000", "http://[::1]:3000"]'
     )
 
     assert check_settings(app_configs=None) == []

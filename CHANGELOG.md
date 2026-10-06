@@ -819,11 +819,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   origins was written in its settings: a production guardian allowed
   eight development origins (`http://localhost:3000` and the like),
   with credentials, and not the origin the operator had named. The
-  variable is now read. Unset, the development origins, as before; set,
-  exactly the comma-separated origins it lists; set and empty, none,
-  which is right behind the gateway. An entry that is not an origin (a
-  wildcard, a host with no scheme, a URL with a path) stops guardian at
-  start-up with a message that names it.
+  variable is now read, by the grammar the gateway reads `CORS_ORIGINS`
+  with, since under the overlay the two are one value: origins
+  separated by commas, or a JSON list of them. Unset, the development
+  origins, as before; set, exactly the origins it lists; set and empty,
+  or `[]`, none, which is right behind the gateway. An entry that is
+  not an origin (a wildcard, a host with no scheme, a URL with a path
+  or a trailing slash) stops guardian at start-up with a message that
+  names it, as it stops the gateway: guardian refuses nothing the
+  gateway starts on.
 - **One version per service, wherever it is written** (#665). cspm
   stated its version in `app/__init__.py` and again as a settings
   field, the responder in `app/__init__.py` and again in `app/main.py`,
