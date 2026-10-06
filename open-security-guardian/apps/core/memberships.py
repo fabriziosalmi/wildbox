@@ -88,7 +88,6 @@ RECORD_FIELDS = {
     "vulnerabilities.VulnerabilityAssessment": ("assessed_by",),
     "vulnerabilities.VulnerabilityNote": ("author",),
     "vulnerabilities.VulnerabilityHistory": ("changed_by",),
-    "vulnerabilities.VulnerabilityAttachment": ("uploaded_by",),
     "remediation.RemediationTicket": ("created_by",),
     "remediation.RemediationWorkflow": ("created_by",),
     "remediation.RemediationComment": ("author",),

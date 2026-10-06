@@ -445,17 +445,6 @@ LOGGING = {
 }
 
 # =============================================================================
-# WILDBOX INTEGRATION SETTINGS
-# =============================================================================
-
-WILDBOX_SETTINGS = {
-    'API_URL': os.getenv('WILDBOX_API_URL', 'http://localhost:8000'),
-    'API_KEY': os.getenv('WILDBOX_API_KEY', ''),
-    'DATA_URL': os.getenv('WILDBOX_DATA_URL', 'http://localhost:8001'),
-    'DATA_API_KEY': os.getenv('WILDBOX_DATA_API_KEY', ''),
-}
-
-# =============================================================================
 # SCANNER INTEGRATION SETTINGS
 # =============================================================================
 

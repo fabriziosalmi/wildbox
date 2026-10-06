@@ -90,7 +90,7 @@ def discovery_rule_next_run(sender, instance, **kwargs):
     try:
         instance.next_run = next_cron_run(instance.schedule, timezone.now())
     except InvalidSchedule as exc:
-        # The API refuses such a schedule; one written another way (the
-        # admin, a shell) is reported by the dispatcher and never run.
+        # The API refuses such a schedule; one written another way (a
+        # shell, SQL) is reported by the dispatcher and never run.
         logger.warning(f"Discovery rule {instance.name}: {exc}")
         instance.next_run = None

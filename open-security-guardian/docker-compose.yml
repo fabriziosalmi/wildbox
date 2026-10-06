@@ -72,8 +72,6 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
-      - WILDBOX_API_URL=http://localhost:8000
-      - WILDBOX_DATA_URL=http://localhost:8002
     depends_on:
       db:
         condition: service_healthy

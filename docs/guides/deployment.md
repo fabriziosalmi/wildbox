@@ -256,8 +256,7 @@ and the applied limit and prints the memory in use and its peak.
 `guardian-beat` sends guardian's periodic tasks to `guardian-worker`. The
 schedule is defined in `open-security-guardian/guardian/schedule.py`; when
 `guardian-beat` starts it writes each entry into django-celery-beat's
-`PeriodicTask` table, where the Django admin shows it. Crontab times are in
-`CELERY_TIMEZONE`, UTC unless set.
+`PeriodicTask` table. Crontab times are in `CELERY_TIMEZONE`, UTC unless set.
 
 | Task | Default | Why | Variable |
 | --- | --- | --- | --- |
@@ -290,8 +289,8 @@ docker compose logs guardian-beat
   invalid value stops `guardian-beat` at start-up with the variable's name in
   the error.
 - The variables are the source of truth. An edit to one of these entries in
-  the Django admin lasts until `guardian-beat` restarts, when the configured
-  value is written back.
+  the `PeriodicTask` table lasts until `guardian-beat` restarts, when the
+  configured value is written back. guardian serves no Django admin site.
 - A run that is still queued when the next one is due (for the daily and
   weekly tasks, an hour after its slot) is dropped rather than run late, so a
   worker that was down does not come back to a burst of identical reminders.
@@ -326,7 +325,7 @@ The dispatcher in the last row runs the schedules users create:
   missed ones are not replayed. A one-off report schedule is set to
   `disabled` once it has run.
 - An invalid cron expression is refused by the API. One written another way
-  (the admin) is logged by every sweep and never run.
+  (straight into the database) is logged by every sweep and never run.
 - Reports are written to the `guardian_media` volume, which `guardian-worker`
   (which generates them) and `guardian` (which serves their downloads) share.
 

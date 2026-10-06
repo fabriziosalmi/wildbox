@@ -706,7 +706,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   has never had a route, a task or a command that attaches a file to a
   vulnerability, so the list was always empty; and the `file` of an
   attachment would have been a `/media/` URL, which nothing serves. The
-  route answers 404 and its serializer is gone. The table stays, unused.
+  route answers 404 and its serializer is gone. The table, unused, is
+  dropped by a later change (#665, below).
 - **shared: the tracing module, which could not be imported** (#665).
   `open-security-shared/tracing.py` imported the Jaeger Thrift exporter,
   whose last release (1.21.0) does not import under a current
@@ -858,6 +859,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each imported by at least one service, with the `fastapi` and
   `metrics` extras; a test fails for a module that no service imports.
   Nothing a running service used has changed.
+- **guardian: the attachment table, the payload columns of the
+  integration log, the `/admin/` route and two blocks of code nothing
+  read** (#665).
+  - `VulnerabilityAttachment` was a model without a writer: there has
+    never been an upload route, a task or a command that creates a row,
+    and its one reader went in #724. Migration
+    `vulnerabilities.0004_drop_unused_attachments` drops the table when
+    it is empty, which is every database guardian itself has written.
+    When it has rows, written by hand, the migration refuses before it
+    changes anything, names the table and the number of rows, and
+    guardian does not start until they are dealt with. The reverse
+    creates the table again, empty.
+  - `IntegrationLog.request_data` and `response_data` were columns for
+    the raw request and response of calls guardian does not make.
+    Nothing wrote them and the API never returned them. Migration
+    `integrations.0005_drop_unwritten_log_payloads` blanks and drops
+    them, and logs how many rows held a value when any did.
+  - `/admin/` was Django's admin site with no model of guardian
+    registered. In the image its login page answered `500` (it needs
+    the static files' manifest, which the image does not build), and
+    the gateway never routed to it. The route is removed and answers
+    `404`; the deployment guide no longer says that the admin shows
+    guardian's scheduled tasks.
+  - `WILDBOX_SETTINGS` in the settings (an API URL, a data URL that
+    named identity's port, and two API keys) and `apps/core/utils.py`
+    were read and imported by nothing. `WILDBOX_API_URL` and
+    `WILDBOX_DATA_URL` leave guardian's own `docker-compose.yml`; a
+    value still set in the environment is ignored.
 
 ### Fixed
 

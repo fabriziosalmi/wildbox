@@ -7,7 +7,8 @@ its ``file`` would have been ``/media/vulnerability_attachments/...``, a URL
 nothing serves (media is outside ``/api/``, where neither the gateway's
 authentication nor the team check applies, #642). The route and its
 serializer were removed rather than given an upload and a download that
-were never there.
+were never there, and the model and its table after them (#665,
+test_unwritten_tables_dropped.py): no model of guardian has a file field.
 
 What guardian does serve as a file is a generated report, through
 ``reports/reports/{id}/download/`` (test_report_paths.py).
@@ -62,26 +63,16 @@ def get(settings, monkeypatch, tmp_path):
     return call
 
 
-def _attached(team):
-    """A vulnerability with an attachment row, written as only the ORM can."""
-    from apps.vulnerabilities.models import Vulnerability, VulnerabilityAttachment
+def _vulnerability(team):
+    from apps.vulnerabilities.models import Vulnerability
 
-    vulnerability = tf.make(Vulnerability, team)
-    VulnerabilityAttachment.objects.create(
-        vulnerability=vulnerability,
-        uploaded_by=tf.user(team),
-        file="vulnerability_attachments/evidence.txt",
-        filename="evidence.txt",
-        file_size=1,
-        content_type="text/plain",
-    )
-    return vulnerability
+    return tf.make(Vulnerability, team)
 
 
 @pytest.mark.django_db
 def test_there_is_no_attachments_route(get):
     team = uuid.uuid4()
-    vulnerability = _attached(team)
+    vulnerability = _vulnerability(team)
     url = f"/api/v1/vulnerabilities/{vulnerability.pk}/attachments/"
 
     with pytest.raises(Resolver404):
@@ -92,7 +83,7 @@ def test_there_is_no_attachments_route(get):
 @pytest.mark.django_db
 def test_a_vulnerability_names_no_media_url(get):
     team = uuid.uuid4()
-    vulnerability = _attached(team)
+    vulnerability = _vulnerability(team)
 
     for url in (
         f"/api/v1/vulnerabilities/{vulnerability.pk}/",
@@ -103,7 +94,7 @@ def test_a_vulnerability_names_no_media_url(get):
         assert response.status_code == 200, body[:300]
         assert str(vulnerability.pk) in body
         assert "/media/" not in body
-        assert "evidence.txt" not in body
+        assert "attachment" not in body
 
 
 def test_media_is_not_served(get):
@@ -143,16 +134,14 @@ def test_no_serializer_carries_a_file():
             ), f"{serializer_class.__name__}.{name}"
 
 
-def test_the_attachment_model_is_the_only_one_with_a_file_and_has_no_serializer():
+def test_no_model_has_a_file_field():
+    """A model with one needs a download route under /api/ before it is added,
+    scoped to the team, as reports have (ReportViewSet.download)."""
+    own = [m for m in apps.get_models() if m._meta.app_label in _GUARDIAN_APPS]
+    assert len(own) > 40
     with_files = {
         model._meta.label
-        for model in apps.get_models()
-        if model._meta.app_label in _GUARDIAN_APPS
-        and any(isinstance(field, models.FileField) for field in model._meta.fields)
+        for model in own
+        if any(isinstance(field, models.FileField) for field in model._meta.fields)
     }
-    assert with_files == {"vulnerabilities.VulnerabilityAttachment"}
-    served = {
-        getattr(getattr(cls, "Meta", None), "model", None)
-        for cls in _serializer_classes()
-    }
-    assert apps.get_model("vulnerabilities.VulnerabilityAttachment") not in served
+    assert with_files == set()
