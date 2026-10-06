@@ -195,44 +195,6 @@ export interface ThreatIntelData {
   references: string[]
 }
 
-// Cloud Security Types
-export interface ComplianceScan {
-  id: string
-  accountId: string
-  framework: string
-  status: 'running' | 'completed' | 'failed'
-  startTime: Date
-  endTime?: Date
-  totalChecks: number
-  passedChecks: number
-  failedChecks: number
-  score: number
-  findings: ComplianceFinding[]
-}
-
-export interface ComplianceFinding {
-  id: string
-  checkId: string
-  title: string
-  description: string
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
-  // Backend (open-security-cspm) statuses. `not_implemented` means the check
-  // has no real implementation yet and must never be shown as passed.
-  status: 'passed' | 'failed' | 'warning' | 'error' | 'skipped' | 'not_implemented'
-  resource: string
-  region: string
-  category: string
-  remediation: RemediationGuide
-}
-
-export interface RemediationGuide {
-  description: string
-  steps: string[]
-  cliCommands?: string[]
-  consoleLink?: string
-  automationAvailable: boolean
-}
-
 // Tools and Execution Types
 export interface SecurityTool {
   id: string
@@ -440,25 +402,6 @@ export interface AnalysisFinding {
 }
 
 // Vulnerability Management Types
-export interface Vulnerability {
-  id: string
-  cveId?: string
-  title: string
-  description: string
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
-  cvssScore: number
-  discoveredDate: Date
-  publishedDate?: Date
-  lastModified: Date
-  status: 'new' | 'triaged' | 'in_progress' | 'resolved' | 'accepted_risk'
-  affectedAssets: string[]
-  category: string
-  tags: string[]
-  assignee?: string
-  dueDate?: Date
-  remediation?: RemediationGuide
-}
-
 // Guardian API Vulnerability (matches actual API response)
 export interface GuardianVulnerability {
   id: string

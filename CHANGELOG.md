@@ -38,6 +38,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same `500`, and identity's `503` for a database that cannot be
   reached, which is still logged with its cause.
 
+### Removed
+
+- **Four dashboard types nothing uses** (#778). `ComplianceScan`,
+  `ComplianceFinding` and `RemediationGuide` in
+  `open-security-dashboard/src/types/index.ts` described a compliance
+  scan in a shape no cspm route returns, and were imported by nothing;
+  the compliance page declares the finding it reads itself.
+  `Vulnerability`, the only other type that named `RemediationGuide`, was
+  imported by nothing either: the vulnerability pages use
+  `GuardianVulnerability`. Types only: nothing the dashboard renders or
+  sends changes.
+
 ### Fixed
 
 - **cspm answers when Redis accepts the connection and then says
