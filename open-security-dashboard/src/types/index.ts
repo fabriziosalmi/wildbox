@@ -196,17 +196,6 @@ export interface ThreatIntelData {
 }
 
 // Cloud Security Types
-export interface CloudAccount {
-  id: string
-  name: string
-  provider: 'aws' | 'azure' | 'gcp'
-  accountId: string
-  region: string
-  status: 'active' | 'inactive' | 'error'
-  lastScanned: Date
-  complianceScore: number
-}
-
 export interface ComplianceScan {
   id: string
   accountId: string

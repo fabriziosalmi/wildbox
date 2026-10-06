@@ -894,6 +894,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `security_middleware.py` of the shared package, which guardian never
   imported and which is removed above. Nothing changes in how guardian
   runs; `ENVIRONMENT` in `.env` is still required by the other services.
+- **dashboard: a rewrite to nowhere, a CORS grant nobody asked for, and
+  a guarded route without a page** (#665). `next.config.js` rewrote
+  `/api/proxy/*` to `API_BASE_URL`, which nothing sets, so to
+  `http://localhost:8000` inside the container; no page calls that path.
+  For the same proxy it answered every `/api/*` route of the dashboard
+  with `Access-Control-Allow-Origin: http://localhost:3000` (or
+  `CORS_ORIGIN`, which nothing sets either) and
+  `Access-Control-Allow-Credentials: true`, in production too. It also
+  exposed a `CUSTOM_KEY` variable that no code read. All three are
+  removed: `/api/proxy/*` answers `404`, and the dashboard's own routes
+  carry no CORS header, as a same-origin application needs none. The
+  security headers (the Content Security Policy, `X-Frame-Options`,
+  HSTS) are unchanged. `src/proxy.ts` no longer lists `/endpoints`
+  among the routes that need a session: there is no such page.
 
 ### Fixed
 

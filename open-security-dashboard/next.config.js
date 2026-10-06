@@ -38,19 +38,6 @@ const nextConfig = {
     // images.domains is deprecated in Next 16; this is the same allowance.
     remotePatterns: [{ hostname: 'localhost' }],
   },
-  env: {
-    CUSTOM_KEY: process.env.CUSTOM_KEY,
-  },
-  async rewrites() {
-    return [
-      {
-        source: '/api/proxy/:path*',
-        destination: process.env.API_BASE_URL
-          ? `${process.env.API_BASE_URL}/:path*`
-          : 'http://localhost:8000/:path*',
-      },
-    ]
-  },
   async headers() {
     return [
       {
@@ -66,23 +53,6 @@ const nextConfig = {
           {
             key: 'Content-Security-Policy',
             value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ${connectSrc};`,
-          },
-        ],
-      },
-      {
-        // CORS headers for API proxy routes
-        source: '/api/:path*',
-        headers: [
-          { key: 'Access-Control-Allow-Credentials', value: 'true' },
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: process.env.CORS_ORIGIN || 'http://localhost:3000',
-          },
-          { key: 'Access-Control-Allow-Methods', value: 'GET,OPTIONS,PATCH,DELETE,POST,PUT' },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value:
-              'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization',
           },
         ],
       },

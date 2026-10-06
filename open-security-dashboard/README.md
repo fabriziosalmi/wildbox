@@ -41,8 +41,7 @@ Notes:
   signed-in account, each with the status, the failure reason or the report
   the service answers for it. It says so when the service reports that no
   model API key is set, in which case every analysis fails.
-- There is no endpoint (sensor) page. The route guard in `src/proxy.ts` still
-  lists `/endpoints`, but no page exists for it.
+- There is no endpoint (sensor) page.
 
 ### Security Toolbox
 
