@@ -2757,6 +2757,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **A test of the agents service no longer fails on a random
+  identifier.** `test_a_malformed_ioc_value_is_a_field_error` sends a
+  refused value and asserts that the answer does not contain it. For the
+  SHA-256 case the value was `abc`, and the answer carries a random
+  `request_id` in hexadecimal: the three letters were in it about once in
+  170 runs, and the Unit Tests job of an unrelated pull request failed.
+  The value is now one that hexadecimal cannot spell.
+
 - **The integration and Playwright suites no longer meet the gateway's
   per-address rate limit** (#756). The gateway allows one address 100
   requests a second with a burst of 10, and 5 a second on the login and
