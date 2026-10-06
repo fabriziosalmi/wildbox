@@ -16,6 +16,7 @@ from datetime import timedelta
 
 from apps.core.tenancy import normalize_team_id, scope_to_team
 
+from .networks import NetworkRefused, scan_network
 from .models import (
     IMPLEMENTED_DISCOVERY_TYPES,
     Asset,
@@ -40,11 +41,20 @@ def discover_assets(self, network_range, scan_type='basic', team_id=None):
             for it. Other teams' assets at the same address are left
             alone. None is the rows without a team (a legacy rule's).
     """
+    # What the API refuses, refused here too: a rule stored before the check
+    # may name a range of any size (#724). Not retried: it would be the same.
+    try:
+        network = scan_network(network_range)
+    except NetworkRefused as refused:
+        logger.warning(f"Asset discovery of {network_range!r} refused: {refused}")
+        return {
+            'status': 'refused',
+            'network_range': network_range,
+            'reason': str(refused),
+        }
+
     try:
         logger.info(f"Starting asset discovery for {network_range}, scan type: {scan_type}")
-        
-        # Parse network range
-        network = ipaddress.ip_network(network_range, strict=False)
         discovered_count = 0
         
         # Iterate through IP addresses in the network
@@ -371,6 +381,14 @@ def _execute_network_scan(rule):
     queued = 0
 
     for network_range in networks:
+        try:
+            # Nothing is queued for a range the task would refuse.
+            scan_network(network_range)
+        except NetworkRefused as refused:
+            logger.warning(
+                f"Discovery rule {rule.name}: {network_range!r} not scanned: {refused}"
+            )
+            continue
         try:
             discover_assets.delay(
                 network_range,

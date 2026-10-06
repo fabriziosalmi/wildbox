@@ -40,8 +40,9 @@ The container entrypoint, `scripts/init.sh`:
    the password is unset or does not meet the password policy, and it never
    prints the password.
 4. Starts `uvicorn app.main:app` on port 8001, with `--reload` only when
-   `ENVIRONMENT` is `development` (the root Compose default); any other
-   value, or none, runs a single server process without the file watcher.
+   `ENVIRONMENT` is `development`; any other value, or none, runs a single
+   server process without the file watcher. The root Compose file passes
+   the `ENVIRONMENT` of `.env`, which it requires.
 
 The `docker-compose.yml` and `Makefile` in this directory start a standalone
 identity with its own PostgreSQL and Redis. They are not what the root stack
@@ -276,7 +277,7 @@ case-insensitive), plus a few variables read directly.
 | `GUARDIAN_CONTACTS_SECRET` | unset | What guardian's worker presents to `/internal/team-contacts`. At least 32 characters, and not the value of `GATEWAY_INTERNAL_SECRET`, `JWT_SECRET_KEY` or `API_KEY_HASH_SECRET`: identity does not start otherwise. Unset, the route answers `503` |
 | `CORS_ORIGINS` | `http://localhost:3000`, `https://wildbox.local`, `https://dashboard.wildbox.local` | Comma-separated or JSON list |
 | `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS` | see `app/config.py` | |
-| `ENVIRONMENT` | none | `development` serves the API docs; `production` makes `API_KEY_HASH_SECRET` mandatory. Unset or empty is neither |
+| `ENVIRONMENT` | none | Only `development` serves the API docs and may run without `API_KEY_HASH_SECRET`. Every other value, unset and empty included, requires it |
 | `DEBUG` | `false` | Used only by `python -m app.main` |
 | `CREATE_INITIAL_ADMIN` | `false` in `init.sh`, `true` in the root Compose file | Create the initial admin at startup |
 | `INITIAL_ADMIN_EMAIL` | `admin@wildbox.security` in `init.sh` | Initial admin account |
@@ -293,7 +294,8 @@ leaves API keys valid (#648):
 
 - The root `docker-compose.yml` and `docker-compose.prod.yml` require it
   (`${API_KEY_HASH_SECRET:?}`); compose does not start without it.
-- With `ENVIRONMENT=production`, identity refuses to start without it. In any
+- Unless `ENVIRONMENT` is `development`, identity refuses to start without
+  it: in `production`, in `staging`, and when the variable is not set. In any
   environment it refuses a value that is too short, has too few distinct
   characters or is a placeholder from `.env.example` (`app/config.py`); an
   empty value counts as unset.

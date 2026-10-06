@@ -36,11 +36,12 @@ Every task is routed by name in `guardian/celery.py` (`TASK_QUEUES`), and
 | `scanning` | Asset discovery, discovery rules, asset port scans |
 | `reporting` | Report generation and metrics, alert-rule checks, expired-report cleanup, compliance reports |
 | `analytics` | Vulnerability risk-score recomputation, compliance metrics |
-| `default` | Notifications, SLA checks, threat-intel enrichment, history cleanup, asset inventory, compliance reminders, the user-schedule dispatcher |
+| `default` | Notifications, SLA checks, history cleanup, asset inventory, compliance reminders, the user-schedule dispatcher |
 
-The threat-intel enrichment task reads `THREAT_INTEL_URLS`, which
-`guardian/settings.py` does not define, so it currently changes nothing.
-Guardian does not query the data service.
+Guardian does not query the data service: a vulnerability's `threat_level`
+and `exploitability_score` are what the team records. The task that was to
+fill them from threat-intelligence feeds read a `THREAT_INTEL_URLS` setting
+that never existed, changed nothing, and was removed (#724).
 
 `tests/unit/test_celery_routing.py` fails when a registered task has no queue
 or when the worker's `-Q` list differs from `TASK_QUEUES`.
@@ -85,7 +86,8 @@ plus `/api/v1/guardian`.
 
 ### Pagination links
 
-Lists are paginated 50 rows to a page (`apps/core/pagination.py`). The `next`
+Lists are paginated 50 rows to a page (`apps/core/pagination.py`);
+`?page_size=N` asks for another size, up to 200 (#724). The `next`
 and `previous` links are relative references under the gateway's path, such
 as `/api/v1/guardian/assets/assets/?page=2`, with no scheme and no host: a
 client resolves them against the URL it requested. They used to be absolute
@@ -139,7 +141,11 @@ writes.
   in the team are cleared (assignee, owner, technical contact, approver,
   assessor, dashboard shares). If that notice is lost, the user stops
   counting when the window runs out, because a user who left can make no
-  request that renews it. What a former member did stays on record: the
+  request that renews it. A request the gateway authenticated just before
+  the removal may still arrive just after the notice; guardian remembers
+  a notice for ten minutes (`REVOCATION_GRACE`, `apps/core/memberships.py`)
+  and in that time serves such a request without recording the membership
+  again (#724). What a former member did stays on record: the
   rows they created, the exceptions they approved, the notes they wrote.
   The SLA and assignment e-mails go to an assignee only while they are a
   member of the vulnerability's team.
@@ -172,12 +178,16 @@ writes.
 
   ```bash
   docker compose exec guardian python manage.py assign_guardian_team --list
+  docker compose exec guardian python manage.py assign_guardian_team --team <team UUID> --dry-run
   docker compose exec guardian python manage.py assign_guardian_team --team <team UUID>
   ```
 
-  `--dry-run` reports what it would change; `--include-shared` also gives
-  the shared frameworks and vulnerability templates to that team. See
-  [UPGRADING.md](../UPGRADING.md).
+  `--list` counts the rows without a team. `--team <team UUID> --dry-run`
+  changes nothing and says what the same command without `--dry-run` would
+  do: the team, how many rows of each model it would get, and the key and
+  name of the first ten of each (`-v 2` names them all). `--include-shared`
+  also gives the shared frameworks and vulnerability templates to that
+  team. See [UPGRADING.md](../UPGRADING.md).
 
 ## Quick start
 
@@ -278,6 +288,9 @@ one answers 400 on that field.
 
 The OpenAPI schema and UIs (`/api/schema/`, `/docs/`, `/redoc/`) exist only
 when `DEBUG` is true, and only on the service port, not through the gateway.
+So does Django REST framework's browsable API: with `DEBUG` false the API has
+one renderer, JSON, and a request that accepts only `text/html` answers 406
+(#724).
 
 ## Data model
 
@@ -306,8 +319,10 @@ queues the same scan on demand.
 - `status`: `open` (default), `in_progress`, `resolved`, `accepted`,
   `false_positive`, `duplicate`.
 - `priority`: `p1` to `p4` (default `p3`).
-- `resolved_at`: set by the `close` action and cleared by `reopen`; a plain
-  `PATCH` of `status` does not set it.
+- `resolved_at`: when the status became `resolved`. It follows the status
+  on every save (`apps/vulnerabilities/signals.py`): set when the status
+  becomes `resolved`, by `close/`, a `PATCH`, a bulk action or a task, and
+  cleared when it stops being so (#724).
 - Unique together: `(asset, cve_id, port)`.
 
 Within the team, users who lack the `view_all_vulnerabilities` permission see only the
@@ -380,11 +395,28 @@ docker compose logs -f guardian guardian-worker guardian-beat
 ## Development
 
 Run the unit tests from this directory; `pytest.ini` selects
-`guardian.settings_test`:
+`guardian.settings_test`, which uses an in-memory SQLite database unless
+`DATABASE_URL` is set:
 
 ```bash
 pytest
 ```
+
+Guardian is deployed on PostgreSQL, and the suite runs there too. A few
+tests need it (JSON containment, which SQLite lacks, is skipped there), and
+CI runs the whole suite on both (the `Guardian Unit Tests (PostgreSQL)` job
+of `.github/workflows/test.yml`). Against a throwaway server of your own:
+
+```bash
+docker run -d --rm --name guardian-test-postgres -e POSTGRES_PASSWORD \
+  -e POSTGRES_DB=guardian -p 127.0.0.1:55432:5432 postgres:15
+DATABASE_URL="postgres://postgres:${POSTGRES_PASSWORD}@127.0.0.1:55432/guardian" pytest
+docker rm -f guardian-test-postgres
+```
+
+`POSTGRES_PASSWORD` is a value of your choosing, exported in the shell
+first. Django creates and drops its own `test_guardian` database on that
+server.
 
 Django management commands run in the container:
 

@@ -8,7 +8,7 @@ version: '3.8'
 
 services:
   n8n:
-    image: n8nio/n8n:1.74.0
+    image: n8nio/n8n:1.74.0@sha256:18edccfb47c6cae9a193c5636662e1255f3aef0b484a10bb63bd2199f1ffc471
     container_name: wildbox-automations-n8n
     restart: unless-stopped
     ports:
@@ -74,7 +74,7 @@ services:
   # Local Redis for standalone development (optional but recommended)
   # When using main stack, automations can use shared wildbox-redis if needed
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     container_name: wildbox-automations-redis
     restart: unless-stopped
     volumes:
@@ -82,8 +82,13 @@ services:
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16 --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     networks:
       - wildbox-net
+    environment:
+      # For the health check: redis-cli reads the password from here, so it
+      # is in no argument list (#740).
+      - REDISCLI_AUTH=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # redis-cli exits 0 on an error reply: the reply has to be PONG (#740).
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
       interval: 30s
       timeout: 10s
       retries: 3

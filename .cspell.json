@@ -73,6 +73,7 @@
     "blockquotes",
     "boto3",
     "botocore",
+    "browsable",
     "Bruteforcer",
     "BSD",
     "buildx",
@@ -107,6 +108,7 @@
     "codellama",
     "CodeQL",
     "codice",
+    "collectstatic",
     "commentato",
     "commitlintrc",
     "compatibilit\u00e0",
@@ -772,6 +774,7 @@
     "woff",
     "WORDLIST",
     "Wordlist",
+    "WRONGPASS",
     "wordlist",
     "wordlists",
     "workflow",
@@ -799,7 +802,11 @@
     "setuptools",
     "resty",
     "unhashed",
-    "unrouted"
+    "unrouted",
+    "TARGETARCH",
+    "SASL",
+    "libc",
+    "pyyaml"
   ],
   "ignoreWords": [
     "APIKEY",

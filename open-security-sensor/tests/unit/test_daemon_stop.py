@@ -102,12 +102,20 @@ def sensor(tmp_path, monkeypatch):
     monkeypatch.setattr(sensor_main, "setup_logging", lambda settings: None)
     handlers = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
     yield sensor_main.SensorDaemon(str(config)), log, data_dir, Gateway
-    loop = asyncio.get_event_loop_policy().get_event_loop()
+    # The loop the test ran on may already be closed and unset when this
+    # runs (pytest-asyncio 1.4 does both before a synchronous fixture is
+    # torn down): then there is no handler of the loop's left to remove, and
+    # only the process-wide handlers are put back.
+    try:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+    except RuntimeError:
+        loop = None
     for signum, handler in handlers.items():
-        try:
-            loop.remove_signal_handler(signum)
-        except (NotImplementedError, RuntimeError, ValueError):
-            pass
+        if loop is not None:
+            try:
+                loop.remove_signal_handler(signum)
+            except (NotImplementedError, RuntimeError, ValueError):
+                pass
         signal.signal(signum, handler)
 
 

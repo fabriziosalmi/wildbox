@@ -70,7 +70,10 @@ than secrets:
   dashboard and the API share the gateway's origin, as they do in this
   stack: an empty value allows no cross-origin requests, and same-origin
   requests need none
-- `ENVIRONMENT=production` (the template default)
+- `ENVIRONMENT=production` (the template default). Required: Compose refuses
+  to start without it, and `docker-compose.prod.yml` sets `production` on
+  every service whatever `.env` says. Only `development` serves the API
+  schemas and skips the start-up checks for secrets
 - `NEXT_PUBLIC_GATEWAY_URL`: leave it empty. The gateway serves the
   dashboard, and an empty value makes the dashboard call the API on the
   origin it was loaded from. See [The dashboard's browser
@@ -233,10 +236,15 @@ Monitor the headroom and alert well before the ceiling, for example when
 `errorstat_OOM`, the count of refused writes:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec \
-  -e REDISCLI_AUTH="$REDIS_PASSWORD" wildbox-redis \
+REDISCLI_AUTH="$(sed -n 's/^REDIS_PASSWORD=//p' .env)" \
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec \
+  -e REDISCLI_AUTH wildbox-redis \
   sh -c 'redis-cli INFO memory | grep -E "^(used_memory|maxmemory):"; redis-cli INFO errorstats'
 ```
+
+`-e REDISCLI_AUTH` names the variable and takes its value from the
+environment of the command, so the password is not an argument of `docker`,
+where the process list of the host would show it.
 
 With the stack running,
 `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml python3
@@ -255,7 +263,7 @@ schedule is defined in `open-security-guardian/guardian/schedule.py`; when
 | --- | --- | --- | --- |
 | SLA violation check | every 15 minutes | The shortest SLA is 4 hours (P1), so a breach is reported within 15 minutes of it. The assignee is e-mailed at most once every 24 hours per vulnerability, however often the check runs; the team's owners and admins, when there is no assignee to tell, once (see Notification recipients) | `GUARDIAN_SCHEDULE_SLA_CHECK` |
 | Alert rules | every 15 minutes | A condition is noticed within 15 minutes of becoming true. A rule notifies when it starts firing and when it recovers, not on every evaluation (below), so a shorter interval detects sooner without sending more mail | `GUARDIAN_SCHEDULE_ALERT_RULES` |
-| Risk score recalculation | daily, 02:00 | A full pass over open vulnerabilities, so off-peak. Edits and threat-intel enrichment already recalculate one vulnerability at a time; the pass catches what does not, such as a change to an asset's criticality | `GUARDIAN_SCHEDULE_RISK_SCORES` |
+| Risk score recalculation | daily, 02:00 | A full pass over open vulnerabilities, so off-peak. Edits already recalculate one vulnerability at a time; the pass catches what does not, such as a change to an asset's criticality | `GUARDIAN_SCHEDULE_RISK_SCORES` |
 | Expired report cleanup | daily, 03:00 | Reports expire 30 days after generation; a day's precision is enough | `GUARDIAN_SCHEDULE_REPORT_CLEANUP` |
 | Vulnerability history cleanup | daily, 03:30 | One year of history is kept; running daily keeps each deletion to one day of rows | `GUARDIAN_SCHEDULE_HISTORY_CLEANUP` |
 | Asset inventory | daily, 04:30 | Marks assets not seen for 30 days inactive | `GUARDIAN_SCHEDULE_ASSET_INVENTORY` |
@@ -307,7 +315,7 @@ The dispatcher in the last row runs the schedules users create:
 | --- | --- | --- | --- |
 | Asset discovery rule (`/api/v1/guardian/assets/discovery-rules/`) | `schedule`: five crontab fields, in `CELERY_TIMEZONE` (UTC unless set), with the same syntax as the variables above | the rule's network scan, on the `scanning` queue | `network_scan` rules only. Cloud API and CMDB discovery are placeholders and agent reports and DNS zone transfers have no code, so the API refuses those types |
 | Report schedule (`/api/v1/guardian/reports/schedules/`) | `next_run` (the first run) and `frequency`: once, daily, weekly, monthly or quarterly | a report, generated on the `reporting` queue and e-mailed to the schedule's `recipients` when it is ready; a schedule without recipients sends no e-mail (see Notification recipients) | vulnerability summary, asset inventory, compliance status and executive dashboard reports, as JSON or HTML. The other report types have no data behind them and the other formats are not written yet, so the API refuses them |
-| Scan schedule (`/api/v1/guardian/scanners/scan-schedules/`) | `cron_expression` | nothing | nothing: guardian cannot start a scan on an external scanner yet, so creating, changing, triggering or enabling one answers 400. Existing ones can still be listed, disabled and deleted |
+| Scan schedule (`/api/v1/guardian/scanners/scan-schedules/`) | `cron_expression` | nothing | nothing: guardian cannot start a scan on an external scanner yet, so the API has no route that creates, changes, triggers or enables one. Existing ones can still be listed, disabled and deleted |
 
 - Each due time runs once. The dispatcher claims a run by moving `next_run`
   on in the same statement that checks it, so two overlapping sweeps, or a
@@ -630,9 +638,12 @@ certificate analyzers, `network_scanner`, `iot_security_scanner`,
 `container_security_scanner`) refuse internal targets: private, loopback,
 link-local, multicast, reserved and shared addresses, ranges that contain
 one, names that resolve to one, and the stack's own service names. A
-range holds at most 1024 addresses. A synchronous run that is refused
-answers 400 with the reason; an asynchronous run ends as a task with status
-`failed` and the reason in `error`.
+range holds at most 1024 addresses. A run that is refused answers 400
+with the reason, synchronous or asynchronous: the asynchronous submission
+applies the policy before it queues anything. The worker applies it again
+when the task runs, since a name can resolve to another address by then; a
+task refused at that point ends with status `failed` and the reason in
+`error`.
 
 To scan an internal lab, list its ranges and hosts in `.env`, then
 recreate `api` and `tools-worker`:
@@ -835,6 +846,17 @@ what it would have overwritten: each database with the archive it would be
 restored from, or the Redis volume with the snapshot. Neither script asks a
 question, so both still run from a script of your own.
 
+Give both scripts the same `--timestamp`, so that PostgreSQL and Redis come
+from the same backup run. `--latest` means the newest run: the files that
+carry the newest timestamp, read from their names. `restore_postgres.sh
+--latest` refuses when that run does not hold every database asked for (a
+run taken with `--databases`), and `restore_redis.sh --latest` refuses when
+it holds no Redis snapshot (a run taken with `SKIP_REDIS=true`): the newest
+archive of each would be data from different moments. The refusal names the
+newest run that is complete. To mix runs on purpose, run
+`restore_postgres.sh` once per database with `--databases` and
+`--timestamp`.
+
 `restore_postgres.sh` has two targets that need no flag: `--into-suffix
 _check` restores into `<db>_check` next to the live databases, and
 `--dry-run` only reads the archives. It looks up every archive before it
@@ -844,6 +866,26 @@ touches a database, so a missing one stops the run with nothing restored.
 because Redis runs with the append-only file enabled and then ignores a
 `dump.rdb` at start: copying the snapshot into the volume by hand gives an
 empty Redis.
+
+#### When a restore fails
+
+A restore that fails leaves the data that was there.
+
+`restore_postgres.sh` reads every archive before it touches a database, and
+restores each database in one transaction (`pg_restore --single-transaction`).
+If anything in it fails, PostgreSQL rolls that database back to what it was.
+The three databases are three transactions, because PostgreSQL has none that
+spans databases: if the second fails, the first is restored and the other two
+are unchanged. The script lists which is which, and the same command run
+again restores all three; restoring a database twice is safe.
+
+`restore_redis.sh` loads the snapshot in a scratch directory of the Redis
+volume. The temporary server has to answer and to hold as many keys as the
+snapshot, the append-only file it writes is read back, and only then is it
+swapped with the data in place. The volume needs room for both copies during
+the restore. The swap itself is two renames: if the script is killed between
+them, the previous data is in `.restore-previous` in the volume, and the next
+run puts it back before it does anything else.
 
 ---
 
@@ -891,8 +933,8 @@ configured.
 | `WildboxServiceDown` | Prometheus cannot scrape `/metrics` on identity, tools, data, responder, CSPM or agents for 2 minutes | guardian, the gateway, the dashboard, the workers, PostgreSQL and Redis are not scraped |
 | `WildboxHighErrorRate` | more than 5% of the HTTP requests one of those services handled ended in a 5xx, for 10 minutes | requests the gateway refused or could not forward: each service counts its own |
 | `WildboxSyncToolFailureRate` | more than 25% of the synchronous tool runs (`POST /api/v1/tools/{tool}`) raised an error the tool does not handle, for 15 minutes | asynchronous runs (`.../async`), which the next alert measures. Timeouts, refused runs and a failure the tool reports in its result (`success: false`) are not counted as failures |
-| `WildboxAsyncToolFailureRate` | more than 25% of the asynchronous tool runs (`POST /api/v1/tools/{tool}/async`) failed, for 15 minutes: the tool raised an error it does not handle, or the task failed in the worker after its retries | synchronous runs. Timeouts (a task killed at the hard time limit included), canceled tasks, tasks that ended before the tool started (input that does not validate, a refused target or caller) and a failure the tool reports in its result are not counted as failures. A count the worker could not write to Redis is lost |
-| `WildboxAsyncToolTasksNotConsumed` | asynchronous tool tasks have been in the queue for 15 minutes and no worker took any task in that time: `tools-worker` is stopped, restarting or cannot reach Redis | a backlog that a busy worker is working through, and tasks a worker had already taken when it was killed: the broker returns those to the queue only after its visibility timeout, an hour |
+| `WildboxAsyncToolFailureRate` | more than 25% of the asynchronous tool runs (`POST /api/v1/tools/{tool}/async`) failed, for 15 minutes: the tool raised an error it does not handle, or the task failed in the worker after its retries | synchronous runs. Timeouts (a task killed at the hard time limit included), canceled tasks, tasks that ended before the tool started (a caller the tool refuses, a target refused when the task runs) and a failure the tool reports in its result are not counted as failures. A count the worker could not write to Redis is lost |
+| `WildboxAsyncToolTasksNotConsumed` | asynchronous tool tasks have been in the queue for 15 minutes and no worker took any task in that time: `tools-worker` is stopped, restarting or cannot reach Redis | a backlog that a busy worker is working through, and tasks a worker had already taken when it was killed whole (`docker kill`, the kernel's out-of-memory killer on the container): they are not in the queue, they read `running`, and a running worker puts them back only once they were taken longer ago than the broker's visibility timeout, 3600 seconds (`broker_transport_options` in `open-security-tools/app/celery_app.py`); it looks when it starts and every hundred seconds after that |
 | `WildboxAsyncToolMetricsUnreadable` | the tools API has not been able to read the asynchronous counters from Redis for 10 minutes | nothing else: while it fires, the two alerts above cannot |
 | `WildboxAlertmanagerDown` | Prometheus cannot scrape Alertmanager for 5 minutes | it cannot be delivered: it is shown on the Prometheus alerts page only |
 | `WildboxAlertNotificationsFailing` | Alertmanager failed to send a notification in the last 15 minutes | if the failing receiver is the only one it cannot be delivered either: it is shown in both UIs |
@@ -1005,8 +1047,12 @@ in `monitoring/prometheus.yml` to its address.
 
 ### Logs
 
-Container logs are rotated by the production overlay for the services it
-configures; read them with `docker compose logs <service>`.
+The production overlay rotates the container log of every service, Prometheus
+and Alertmanager included: files of 10 MB, five kept for the application
+services and three for PostgreSQL, Redis, the dashboard, Flower, the backup
+loop, Prometheus and Alertmanager. Read them with
+`docker compose logs <service>`. Without the overlay (`docker compose up` on
+`docker-compose.yml` alone) Docker's defaults apply and nothing is rotated.
 
 ---
 

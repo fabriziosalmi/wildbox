@@ -485,7 +485,17 @@ def attachment_upload_to(instance, filename):
 
 
 class VulnerabilityAttachment(models.Model):
-    """File attachments for vulnerabilities"""
+    """A file attached to a vulnerability. Not offered by the API (#724).
+
+    Nothing in guardian creates a row: there has never been an upload
+    route, a task or a command for it. The one route that read the table,
+    ``vulnerabilities/{id}/attachments/``, answered an empty list and a
+    ``file`` URL under /media/, which is not served, and was removed. The
+    model and its table stay, so that this is not a migration that drops
+    data an operator may have written by hand; before an upload is ever
+    offered it needs a download route under /api/, scoped to the team, as
+    reports have (apps.reporting.views.ReportViewSet.download).
+    """
     TEAM_LOOKUP = 'vulnerability__asset__team_id'
     vulnerability = models.ForeignKey(Vulnerability, on_delete=models.CASCADE, related_name='attachments')
     uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)

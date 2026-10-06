@@ -68,8 +68,10 @@ The guides on the documentation site are the reference; in short:
 - **TLS**: replace the self-signed development certificate with a real one.
   See the [Deployment guide](https://www.wildbox.io/guides/deployment/).
 - **Environment**: keep `ENVIRONMENT=production` (the generated default) and
-  `DEBUG=false`; identity, agents and responder then stop serving their API
-  documentation, and cspm serves it only with `DEBUG=true`.
+  `DEBUG=false`. Compose does not start without `ENVIRONMENT`. Only
+  `development` is a development stack: the services publish their API
+  schemas and may run without the secrets they check at start-up. Any other
+  value serves no schema and is held to those checks.
 - **Updates**: rebuild the images after pulling a release, and read
   [UPGRADING.md](UPGRADING.md) first.
 - **Backups**: `make backup` (PostgreSQL and Redis) and

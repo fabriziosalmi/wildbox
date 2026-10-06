@@ -69,14 +69,15 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           PUSH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
-          if git diff --quiet -- 'open-security-*/requirements.txt'; then
+          # The eight service locks and the CI tools lock (tests/ci-tools).
+          if git diff --quiet -- 'open-security-*/requirements.txt' tests/ci-tools/requirements.txt; then
             echo "No pin moved." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
-          git add open-security-*/requirements.txt
+          git add open-security-*/requirements.txt tests/ci-tools/requirements.txt
           git commit -m "build(deps): upgrade pip packages with known advisories"
           git push --force "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
 

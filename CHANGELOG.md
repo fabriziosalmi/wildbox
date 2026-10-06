@@ -9,6 +9,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The Redis health check no longer carries the password on its command
+  line, and fails when the password is wrong** (#740). Every compose file
+  checked Redis with `redis-cli -a <password> ping`, or with
+  `redis-cli ping` and no password. The password was an argument of a
+  process that runs every 30 seconds, visible in the container's process
+  list. `redis-cli` also exits 0 when the server answers with an error,
+  so the check passed on `NOAUTH` and `WRONGPASS`: a Redis whose password
+  no longer matched stayed `healthy`, and in `open-security-data` the
+  check sent a literal `${REDIS_PASSWORD...}` as the password and was
+  healthy all the same. The check is now
+  `redis-cli ping | grep -qx PONG` in `docker-compose.yml` and in the
+  nine per-service compose files that have one, and each Redis that
+  requires a password receives it as `REDISCLI_AUTH` in its environment.
+  A Redis that is still loading its data is not healthy yet. After a
+  `REDIS_PASSWORD` rotation the container reports `unhealthy` until it is
+  recreated, which the rotation asks for.
+- **The Redis password is no longer an argument of a `docker` command**
+  (#740). `scripts/check_redis_config.py runtime` ran
+  `docker compose exec -e REDISCLI_AUTH=<password>`, and the deployment
+  guide, the authentication guide and `TROUBLESHOOTING.md` told operators
+  to do the same: the password reaches `redis-cli` through its
+  environment, but on the way it is an argument of the `docker` process
+  on the host, which every local user can read in the process list. The
+  script and the three pages now name the variable only
+  (`-e REDISCLI_AUTH`), and `docker` takes the value from the
+  environment of the command. `runtime --env-file FILE` also passes the
+  file to `docker compose`, which it used to leave out.
+- **Prometheus 3.13.4 and osquery 5.23.1 replace releases that no longer
+  get fixes** (#726). The monitoring profile ran Prometheus v2.55.1, the
+  last release of the 2.x line (November 2024): CVE-2026-44903, a stored
+  XSS in the heatmap of its web UI, and CVE-2026-42154, a denial of
+  service through the remote-read endpoint, are fixed in 3.x only. It
+  now runs v3.13.4, of the long-term support line. The sensor image
+  installed osquery 5.10.2 (October 2023); 5.23.1 has the memory-safety
+  fixes of 5.23.0 and 5.23.1 (bounds checks in the container tables, a
+  format string in the shell, a use-after-free in the Linux file events)
+  and links OpenSSL 3.6.1 and expat 2.7.4 (CVE-2026-25210) in place of
+  OpenSSL 3.1. Both were checked before the move: every Linux query the
+  sensor ships returns the same columns on both osquery versions, on
+  amd64 and arm64; with Prometheus 3.13.4 the rule tests pass, all eight
+  targets are scraped, an alert reaches a webhook through Alertmanager,
+  and a data volume written by 2.55.1 is read as it is.
+- **Compose images are pinned by digest, and the secret scanner is
+  verified before it runs** (#726). The 21 references to PostgreSQL,
+  Redis, n8n, Prometheus, Alertmanager, nginx, curl and alpine in the
+  tracked Compose files named a version tag and nothing else, and a tag
+  is published again with every rebuild upstream: the same file ran
+  different code on two hosts. Each now carries the digest of its image
+  index (`redis:7-alpine@sha256:...`), and
+  `scripts/check_container_hygiene.py` refuses a Compose image without
+  both the tag and the digest. `secret-scan.yml` unpacked and ran the
+  gitleaks archive as downloaded; it checks the SHA-256 of the release
+  first.
+- **A 5xx answer no longer carries the text of the exception** (#735).
+  Four identity routes caught an error to answer a 500 of their own with
+  `str(e)` in it, in every environment: the three under
+  `/api/v1/analytics/admin/` (`Failed to generate ...: <exception>`) and
+  `DELETE /api/v1/admin/users/{id}` (`Failed to delete user:
+  <exception>`). The text of an exception names tables, columns, hosts
+  and paths. They now leave the error to the shared handler, which
+  answers the same 500 for every unhandled error and logs the exception
+  with the request id; the deletion still rolls back first. In tools,
+  the orchestrator reported a workflow step that failed inside the
+  service with the text of the connection error, the class of the
+  exception, or the module path of a failed import; a step now says
+  `Tool execution failed: a service it needs is unavailable`,
+  `Internal error executing tool` or `Tool '<name>' not found`, and the
+  cause is logged. What a caller got wrong (a refused target, an invalid
+  parameter) is still said in full. A sweep of every service for a 5xx
+  response built from a caught exception finds no other.
+- **agents no longer quotes the IOC value it refuses** (#735). The
+  validation message was `Invalid format for <type> IOC: '<value>'`, and
+  a validator's message is returned as written; it now stops at the
+  type.
+- **tools no longer logs, or reports from a workflow, the tool input it
+  refuses** (#735). A tool input that failed validation left the
+  response without its values (#585) and went to the log entire: the
+  route logged `str()` of the validation error, which quotes every value
+  refused, a credential among them if a field held one. The log now has
+  the fields and the messages. The orchestrator reported an invalid
+  parameter of a workflow step the same way, in the workflow result; it
+  now says `<field>: <message>`. The route's own reduction of a
+  validation error is gone: it uses `field_errors()` of the shared
+  package, as every service does.
+- **A missing `ENVIRONMENT` never means development, and the start-up
+  checks for secrets apply to everything that is not development**
+  (#736). `docker-compose.yml` passed
+  `ENVIRONMENT=${ENVIRONMENT:-development}` to eighteen services: a `.env`
+  without the line, written by hand or older than the variable, started
+  the whole stack as a development one, silently, with the API schemas
+  published. The production overlay set `production` itself on five
+  services and left thirteen to `.env`. Compose now requires the variable
+  (`${ENVIRONMENT:?}`) and refuses to start without it, before it touches
+  a container; `docker-compose.prod.yml` sets `production` on all
+  eighteen; `scripts/validate_secrets.py` requires the line, with
+  `production`, `staging` or `development`. The checks the services make
+  at start-up applied to the exact value `production`: identity required
+  `API_KEY_HASH_SECRET`, data `SECRET_KEY`, `DATABASE_URL` and `DEBUG`
+  off, tools a real API key, so `staging`, a `.env` that said
+  `Production` (data and tools compared case-sensitively) or no
+  `ENVIRONMENT` at all ran without them. They now follow one rule,
+  `open_security_shared.environment`: only an environment that says
+  `development` is a development one, and every other is held to the
+  checks. The rule for the API documentation (#679) is the same one,
+  read the other way.
 - **The sensor in the root `docker-compose.yml` drops all capabilities**
   (#725). Its README and `DOCKER.md` said the container runs with
   `cap_drop: ALL`, which only the standalone compose file did; in the
@@ -373,9 +478,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on PostgreSQL 15 the heap files of the four tables held the secrets
   after a drop alone and none after the migrations as written.
   Twenty-two mutations of the fix each fail a test.
+- **guardian: a request that overtakes a membership notice no longer
+  undoes it** (#724, after #676). When identity removes a member from a
+  team it tells the gateway, then guardian, which deletes its record of
+  the membership. A request the gateway had authenticated a moment
+  earlier could reach guardian after the notice, and guardian records a
+  membership for every request it lets in: the record came back, and
+  the former member could be assigned and named in that team again for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` (30 days by default). guardian
+  now remembers a notice for ten minutes and records no such membership
+  in that time; the request itself is still served. A member removed and
+  added back within ten minutes can use guardian at once, and can be
+  named once the ten minutes have passed and they have made a request.
+- **guardian: a report no longer names where its file is on the
+  server** (#724). Every answer that carried a report (the list, the
+  record, `recent/`, `failed/`, a template's `reports/`, and the answers
+  of `generate/` and `run_now/`) had a read-only `file_path`, such as
+  `/app/media/reports/<team id>/<report id>.json`. The field is gone
+  from the API; the file is still `reports/reports/{id}/download/`. A
+  report that failed because its file could not be written says so in
+  `error_message` without the text of the operating system's error,
+  which names the path too.
 
 ### Removed
 
+- **`ENABLE_METRICS` for identity in `docker-compose.prod.yml`, and
+  `ENABLE_METRICS` and `METRICS_PORT` in `.env.example`** (#743). No
+  code reads the first, and no Compose file passed the other two to a
+  container: every service that has a `/metrics` route always serves
+  it. A test now reads the root Compose files and the code of every
+  service built from this repository, and fails when a variable passed
+  to a container is neither a field of its settings nor read by its
+  code. The 26 it finds today and this change does not fix are listed
+  in `tests/scripts/test_compose_variables_are_read.py`, by file and
+  service; they include `CORS_ALLOWED_ORIGINS` for guardian in the
+  production overlay, which guardian does not read.
 - **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
   client that was its only reader.** `WildboxAPIClient.health_check()`
   had no caller, and no tool of the agent calls the responder. The
@@ -385,6 +522,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file in the service's directory, which only a run outside the Compose
   stack reads, it now stops the service at start, as every key the
   settings do not know does: remove the line (#727).
+- **Three Compose files that could not start, and the sensor's scale
+  and monitoring extras** (#726).
+  `open-security-gateway/docker-compose.dev.yml` mounted a mock identity
+  configuration that was never in the repository;
+  `open-security-data/docker-compose.yml` mounted an nginx, a Prometheus
+  and a Grafana configuration that were not there either, and ran the
+  API in production mode without its `SECRET_KEY`;
+  `open-security-sensor/docker-compose.dev.yml` built a `development`
+  stage the Dockerfile does not have. `docker compose up` failed on each.
+  They are removed, with `open-security-sensor/docker-compose.scale.yml`
+  (its load balancer's `nginx.conf` is not a valid main configuration)
+  and the `monitoring` profile of the sensor's own file, which scraped a
+  `/metrics` endpoint the sensor does not have: `open-security-sensor/nginx/`
+  and `open-security-sensor/monitoring/` go with them. The data service
+  runs from the root `docker-compose.yml`; the gateway's mock identity is
+  `test/mock_identity.py`. The two Grafana services that read
+  `GRAFANA_ADMIN_PASSWORD` without requiring it were in those files, so
+  nothing takes an empty admin password any more.
 - **gateway: `/api/v1/automations/`, the route to n8n** (#714). It
   answers 404. n8n's editor is on `http://127.0.0.1:5678` of the host
   with the `automations` profile started; from another machine, through
@@ -505,9 +660,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that sends a value in one of them answers `400` on that field, with
   the reason, instead of `201` or `200` for a secret guardian would
   discard; an empty value (`""`, `null`, `{}`, `[]`) is ignored.
+- **guardian: the threat-intelligence enrichment task** (#724).
+  `enrich_vulnerability_with_threat_intel` was queued for every new
+  vulnerability that had a CVE, read a `THREAT_INTEL_URLS` setting that
+  was never defined, and so answered "No threat intelligence sources
+  available" every time and changed nothing. The task, its queue entry
+  and its dispatch are removed. A vulnerability's `threat_level` and
+  `exploitability_score` are what the team records, as they always were.
+- **guardian: the scan-schedule routes that could only refuse** (#724).
+  Since #548, `POST scanners/scan-schedules/`, `PUT` and `PATCH` on a
+  schedule, and `POST .../{id}/trigger/` and `.../{id}/enable/` answered
+  400 "Scheduled scans are not supported" to every request: guardian
+  cannot start a scan on an external scanner, so a schedule would never
+  run. A route that can do nothing else is not part of an API. The first
+  three now answer 405, with the methods that exist in `Allow`, and the
+  two actions 404. Listing, reading, disabling and deleting a stored
+  schedule are unchanged.
+- **guardian: `GET vulnerabilities/{id}/attachments/`** (#724). guardian
+  has never had a route, a task or a command that attaches a file to a
+  vulnerability, so the list was always empty; and the `file` of an
+  attachment would have been a `/media/` URL, which nothing serves. The
+  route answers 404 and its serializer is gone. The table stays, unused.
 
 ### Fixed
 
+- **agents and data report one version** (#743). Each passed one
+  version literal to the application and a second to the middleware
+  that writes the `X-API-Version` header of every response. Both now
+  read one name, as tools does. A test reads every FastAPI service's
+  application module and fails when the two are not the same name or
+  either is a literal; responder still passes one, which the test
+  lists.
+- **The visibility timeout of the tools task queue is a setting of the
+  service, and the documentation states what happens to a task whose
+  worker is killed** (#743). `open-security-tools/app/celery_app.py`
+  set no `broker_transport_options`, so the timeout was the Redis
+  transport's default, 3600 seconds, and the alert rule's comment and
+  the deployment guide said "an hour" for a value nothing set and
+  nobody had measured. It is now set, to the same value, and a test
+  fails if it stops outlasting the longest a live worker can hold a
+  task. Measured with a worker killed whole by `SIGKILL` while it ran a
+  task: the task is not returned to the queue and goes on reading
+  `running`; nothing returns it while no worker runs; a worker looks
+  for such tasks when it starts and every hundred seconds after that,
+  and returns those it finds taken longer ago than the timeout, so a
+  worker restarted at once leaves the task for a later look. The rule
+  comment, the guide and the endpoint reference say so.
+- **A tool task whose worker process keeps dying is failed, not put
+  back on the queue without end** (#743). When the process running a task
+  dies, Celery returns the task to the queue, which is right for a
+  process killed once and wrong for a tool that takes its process down
+  on every start (out of memory, a crash in native code): the task came
+  back every time, read `running` indefinitely and killed a worker process
+  on each round. A task now counts its starts in Redis, and when three
+  of them have ended with the process gone the next delivery ends it as
+  `failed` with the reason,
+  `The worker process running this task was lost 3 times; the task was
+  not started again`. It is counted once as a failure in
+  `wildbox_tool_async_executions_total`. A retry is not a lost start.
+- **A canceled tool task never runs, and reads `cancelled` at once**
+  (#743). `DELETE /api/v1/tasks/{id}` asked Celery to revoke the task,
+  which is a broadcast the workers running at that moment keep in
+  memory. For a pending task with no worker alive, or one that restarts
+  before it takes the task, nobody held it: the task ran when a worker
+  came back, and until then its owner read `pending`. The cancellation
+  is now a record in Redis, written after the ownership check and
+  before the broadcast. The task reads it first when it starts and does
+  not run, whichever worker takes it and whenever; a Redis that does
+  not answer is not read as "not canceled". The API reads it too: the
+  task and the task list say `cancelled` as soon as the owner cancels,
+  and a second `DELETE` answers 400. A task that finished before the
+  cancellation could stop it reads as it finished. A test cancels a
+  queued task and only then starts a real worker: the task is dropped,
+  counted once, and its tool leaves no trace.
+- **tools checks an asynchronous submission as it checks a synchronous
+  run, and queues nothing that fails** (#743).
+  `POST /api/v1/tools/{tool}/async` recorded an owner and queued a task
+  for whatever name and body it was given, and answered 202. The
+  synchronous route answers 404 for a name that is no tool, 422 for
+  input the tool's schema refuses and 400 for a target the network
+  target policy refuses, before a run exists; the asynchronous caller
+  read the same back from the task, as `failed`, after it had taken a
+  place in the queue and a worker. Both routes and the worker now call
+  one check, and the submission gives the answers of the synchronous
+  route, with no task created. The worker checks again when the task
+  runs, because a host name can resolve to another address by then.
+  The error a task stores for refused input names the field and the
+  kind of error; it used to be the validator's own message, which
+  quotes the value refused, and the routes logged that message too. A
+  tool name is one package name: a name with a dot in it, taken from
+  the URL, was imported as a path below the tools package. A client
+  that submitted invalid requests and read the refusal from the task
+  now gets it from the submission.
 - **tools reports one version.** `/health` and `/api` said `1.0.0` while
   the OpenAPI schema and the `X-API-Version` header of the same
   responses said `0.1.6`. All four now read the version written once in
@@ -526,6 +770,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a credential, for a route it serves (the tool list, the data
   health probe, the agents statistics) and expects 200, and expects the
   tools service's own 404 for the mistaken path.
+- **`restore_postgres.sh --latest` restores one backup run** (#740). It
+  took the newest archive of each database on its own, so after a run
+  limited with `--databases` the three databases were restored from
+  different runs, hours or days apart, without a word. `--latest` now
+  means the newest run, the archives that carry the newest timestamp,
+  read from the file names and no longer from modification times, which
+  a copy from another disk changes. If that run does not hold every
+  database asked for, the script refuses, shows what the run holds and
+  names the newest run that is complete. `restore_redis.sh --latest`
+  refuses in the same way when the newest run holds no Redis snapshot
+  (`SKIP_REDIS=true`). A run that is not the newest is named with
+  `--timestamp`; runs are mixed on purpose with `--databases` and
+  `--timestamp`, one database at a time.
+- **A restore that fails leaves the data that was there** (#740).
+  `scripts/restore_redis.sh` deleted the contents of the Redis volume and
+  then loaded the snapshot, so a snapshot that did not load left an empty
+  Redis. It now loads the snapshot in a scratch directory of the volume,
+  requires the temporary server to answer and to hold as many keys as the
+  snapshot, reads back the append-only file it wrote, and only then swaps
+  it with the data in place; the volume needs room for both meanwhile.
+  `scripts/restore_postgres.sh` ran `pg_restore --clean` statement by
+  statement and carried on after an error: measured on a table that a
+  later view depended on, the failed restore left it without its primary
+  key and with its rows loaded twice. Each database is now restored in
+  one transaction (`--single-transaction`) and is rolled back whole when
+  anything fails, and every archive is read before the first database is
+  touched. The three databases remain three transactions: if one fails,
+  the script says which were restored, which failed and which were not
+  reached, and the same command run again restores all of them.
+- **`make health` no longer reports a Redis it cannot log in to as
+  healthy** (#740). The check ran `redis-cli ping` without a password and
+  counted `NOAUTH` as success, so a Redis whose password no longer
+  matched `.env`, which no service can use, passed. It now authenticates
+  with `REDIS_PASSWORD` from the environment or from the env file Compose
+  reads (`ENV_FILE`, default `.env`), passes the password by name through
+  the environment, and requires the reply to be `PONG`. A refused
+  password, a Redis that is still loading and a missing password each
+  fail the check with a message of their own.
+- **tools: an arm64 image ships a Trivy it can run** (#726). The
+  Dockerfile downloaded `trivy_*_Linux-64bit.tar.gz` whatever the
+  platform, so an image built on or for arm64 (an Apple Silicon laptop,
+  a Graviton host) had an x86-64 `/usr/local/bin/trivy`: the container
+  security scanner answered "exec format error", or ran under emulation
+  where the host had it. The asset is now chosen from `TARGETARCH`, with
+  the SHA-256 of each architecture, and any other architecture fails the
+  build. `scripts/check_container_hygiene.py` refuses a download that
+  names one architecture in a `RUN` that never asks for the platform.
+- **The production overlay rotates the log of every service** (#726).
+  Ten services had no `logging` block, so Docker kept their whole output
+  in one file that never rotates: Prometheus and Alertmanager, the tools
+  worker and Flower, the data API and its scheduler, CSPM, the sensor,
+  n8n and the backup loop. They get the block the other eleven have (10
+  MB files, three or five kept), and a test fails for a service of
+  `docker-compose.yml` that the overlay leaves unbounded.
+- **sensor: the standalone Compose file starts with one command**
+  (#726). `open-security-sensor/docker-compose.yml` attached the sensor
+  to an external `security-suite` network that had to be created by hand
+  and that nothing else joins, and started a Redis the sensor never
+  connects to. It now defines the sensor alone, on the project's default
+  network.
 - **identity answers 404, 500 and 503 in the body every service
   answers** (#722). It installed the shared error handlers and then
   registered two of its own by status code, which run first. Every 404
@@ -574,6 +878,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still cannot be imported with a current OpenTelemetry SDK, because it
   uses the Jaeger Thrift exporter, last released as 1.21.0, and no image
   installs the extra.
+- **identity dispatches a request once, whatever its handler raises**
+  (#735). Its database middleware wrapped the making of a session and
+  the rest of the application in one `try`, and answered a
+  `ValueError`, `KeyError`, `TypeError`, `ConnectionError`,
+  `TimeoutError` or `SQLAlchemyError` raised by a route by calling the
+  application again. On the Starlette the service pins, the second run
+  was started and cancelled at its first suspension, which comes before
+  any handler in identity: no doubled write or gateway call could be
+  produced through its routes, but where the second run stopped was the
+  framework's to decide. The middleware is removed. The session it made
+  was read by nothing; a stale connection is the pool's to replace
+  (`pool_pre_ping`, `pool_recycle`); a database that cannot be reached
+  is still answered 503, by an exception handler, and that answer now
+  carries `X-Request-ID`. A test reads every middleware of every
+  service and refuses one that calls downstream from an `except` or
+  `finally` clause, in a loop, or twice.
 - **gateway: a dashboard on another origin can call the API: a CORS
   preflight is answered, for the origins in `CORS_ORIGINS`** (#712).
   The production configuration answered 405 to every `OPTIONS` request
@@ -1195,9 +1515,158 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#745). It said Prometheus and Grafana were published on all host
   interfaces; `open-security-sensor/docker-compose.yml` binds both to
   `127.0.0.1`, as it does the sensor's local API.
+- **guardian: a vulnerability can be recorded without a CVE, its
+  creation answers with its `id`, and its record is served when its
+  asset has an environment** (#724). `POST vulnerabilities/` answered
+  400 without `cve_id`, which the model and the reference call optional;
+  the answer to a creation carried no `id`, so the responder's
+  `create_vulnerability` action returned none to its playbook; and
+  `GET vulnerabilities/{id}/` answered 500 when the asset had an
+  environment, because `asset_details.environment` was a database row
+  and not a value. It is the environment's name, or null.
+- **guardian: a discovery rule that never runs cannot be enabled**
+  (#724). A rule of a type guardian does not implement (cloud API, CMDB
+  import, agent report, DNS zone), stored before the API refused those
+  types, is never run by the dispatcher, and could still be switched
+  on: `enable/` answered "enabled". It now answers 501 with
+  `DISCOVERY_TYPE_NOT_IMPLEMENTED`, as `execute/` does, and a `PATCH`
+  with `"enabled": true` answers 400. A migration switches off the
+  stored rules of those types.
+- **guardian: a discovery is checked before it is queued, and sweeps
+  at most 1,024 addresses** (#724). `POST assets/assets/discover/`
+  accepted any `network_range`: a value that is not a network answered
+  "Asset discovery initiated" and failed in the worker after three
+  retries, and `10.0.0.0/8` was sixteen million connection attempts in
+  one task. A discovery rule checked that its networks parse, not their
+  size. Both now refuse, with 400, a network of more than 1,024
+  addresses (the tools service's bound on a scan target), a value that
+  is not a network, and a `scan_type` other than `basic` or
+  `comprehensive`; a rule lists at most 32 networks. The task refuses
+  the same ranges, so a rule stored with a larger network skips it.
+- **guardian: `total_open` in `vulnerabilities/trends/` is the number
+  open on that day** (#724). For a past day it was the vulnerabilities
+  discovered by then whose status is open now, so one open for a month
+  and resolved yesterday was open on no day of that month. It is now
+  read from the history of status changes guardian keeps: the
+  vulnerabilities whose status was `open` when the day ended. In the
+  same way `avg_risk_score` is the average of the score those had on
+  that day. The whole window costs two queries instead of two a day.
+- **guardian: `assign_guardian_team --dry-run` says what the run would
+  do** (#724). It printed what `--list` prints, "N row(s) without a
+  team", whatever team was given. It now names the team, how many rows
+  of each model it would get, and the key and name of the first ten of
+  each (`-v 2` for all), and ends with "Dry run: N row(s) would be
+  assigned to <team>; nothing changed." `--list` together with `--team`
+  or `--dry-run` is refused instead of answering one of the two.
+- **guardian: a bulk assignment notifies the assignee, as `assign/`
+  does** (#724). `vulnerabilities/bulk_action/` with `assign` and an
+  `assigned_to` set the assignee of up to a hundred vulnerabilities and
+  told them of none. It queues the assignment e-mail for each one; a
+  bulk assignment to a group alone still sends nothing.
+- **guardian: a vulnerability's `resolved_at` follows its status**
+  (#724). Only `close/` and `reopen/` wrote it, so a vulnerability
+  resolved with `PATCH {"status": "resolved"}` had no date: `stats/`
+  left it out of the average resolution time and `trends/` out of the
+  day's `resolved_count`, and one reopened with PATCH kept the date of a
+  resolution it no longer had. The code meant to do this ran after the
+  list of changes it read had been deleted. Any save that makes the
+  status `resolved` now sets the date, and any that takes it away clears
+  it. A migration gives the resolved vulnerabilities without a date the
+  time their history says they were resolved, where it says, and clears
+  the date of those that are not resolved.
+- **guardian: assigning a vulnerability with `PUT` or `PATCH` notifies
+  the new assignee** (#724). `assign/` queued the assignment e-mail; the
+  same assignment made by changing `assigned_to` told nobody: the notice
+  was to come from the same dead code. It is queued now, when the
+  assignee changes to a user. Who is told is unchanged: the assignee,
+  while a member of the team.
+- **guardian no longer writes to stdout when a vulnerability is saved.**
+  Three `print()` calls in the vulnerability signals put a line outside
+  the log, with the vulnerability's title, for every creation, history
+  entry and deletion; a creation is a log line now and the others are
+  gone, with a signal nothing sent and its handler (#724).
+- **guardian answers JSON, and serves the browsable API only in
+  development** (#724). Django REST framework's HTML renderer was on in
+  every environment, and in the image any request that asked for
+  `text/html` answered 500, "Missing staticfiles manifest entry": the
+  pages link static files, and the image never runs `collectstatic`.
+  With `DEBUG` false the only renderer is JSON; a request that accepts
+  nothing else answers 406. With `DEBUG=true` the pages are served and
+  work.
+- **guardian: the severity, status, priority and threat-level filters
+  of the vulnerability list match again** (#724).
+  `GET /api/v1/guardian/vulnerabilities/?severity=medium` answered an
+  empty list whatever the team held, and so did `?status=`, `?priority=`
+  and `?threat_level=`, on `vulnerabilities/stats/` too: each compared
+  the column with the characters of the value. The dashboard's severity
+  and status menus send these two, so choosing an entry of either read
+  "No vulnerabilities found". Each filter takes one value, or several
+  when the parameter is repeated.
+- **guardian: every filter of every list was tried, and the ones that
+  did not do what they say were fixed** (#724). On the vulnerability
+  list, `asset_environment` answered 500 and now matches the name of the
+  asset's environment; `unassigned=true` matched nothing and now matches
+  the vulnerabilities with neither an assignee nor a group. A true/false
+  filter given `false` was ignored and now selects the other rows
+  (`overdue`, `due_today`, `due_this_week` and `unassigned` on
+  vulnerabilities, `is_overdue` on compliance assessments,
+  `needs_review` on compliance exceptions). `?format=` on
+  `reports/reports/` answered 404, because guardian read the parameter
+  as the name of a renderer; it is the filter on a report's format, and
+  no longer chooses a renderer on any route. `?ip_range=` on the asset
+  list listed every address of the range before it asked the database:
+  sixteen million strings for `10.0.0.0/8`, and `0.0.0.0/0` did not
+  answer. An IPv4 range of any size is now one bounded condition, and an
+  IPv6 range of more than 256 addresses answers 400. A unit test walks the
+  URLconf and, for each filter and each search field of each list,
+  stores two rows and requires the one the value describes.
+- **guardian: `?search=` on the vulnerability list reads every field it
+  names** (#724). The list had two searches, applied one after the
+  other, so a vulnerability was found only by its title, description,
+  CVE or asset name: a match on the asset's address, the scanner or the
+  service, which one of the two also read, never counted. There is one
+  search now, over the seven fields, and each word of the text must be
+  found in one of them.
+- **guardian honors `?page_size=`** (#724), from 1 to 200; the default
+  stays 50. It was ignored: the dashboard home asked for one asset to
+  read a count, and for the three newest vulnerabilities, and was sent
+  fifty rows each time. `next` and `previous` keep the parameter.
 
 ### Changed
 
+- **Images install only the OS packages they name** (#726). agents,
+  data, identity, sensor and the tools development image ran
+  `apt-get install -y` and took every recommended package with it:
+  manual pages, bash-completion, Kerberos locales, SASL modules, and in
+  the tools development image an SSH client, D-Bus and X libraries. They
+  now pass `--no-install-recommends`, as the other images did. agents
+  and identity name `libc6-dev` next to `gcc`, which recommended it:
+  without the C library headers the compiler builds nothing. The sensor
+  no longer falls back to `apt-get install -f` after `dpkg -i`, which
+  could not have worked with the package lists already removed.
+- **Dependabot reads the Compose files** (#726). The `docker-compose`
+  ecosystem in `.github/dependabot.yml` proposes, weekly, the new digest
+  of an image whose tag was published again and newer minor and patch
+  tags, for the root, `.github` and the service directories. Majors are
+  ignored there and decided by hand, as are minors of Prometheus (it
+  stays on the long-term support line) and of nginx. The base images of
+  the Dockerfiles were already covered: Dependabot proposed the
+  openresty digest on 2026-10-02, and pip 24.0 is the pip the
+  `python:3.11-slim` image ships in every digest, not a stale layer.
+- **tools no longer logs a configuration error for two variables it does
+  not read** (#736). With `ENVIRONMENT=production`, `app/tool_config.py`
+  required `API_KEY_SECRET` and `DATABASE_URL` and logged
+  `Configuration validation failed` on every start: the service reads
+  neither, and Compose passes it neither. The check is removed.
+- **`make start` no longer leaves `data-scheduler` crash-looping**
+  (#736). The development overlay turns `DEBUG` on for it and left its
+  `ENVIRONMENT` to `.env`, which `make generate-secrets` sets to
+  `production`; the scheduler loads the data service's configuration,
+  which refuses `DEBUG` outside development. The overlay now sets
+  `development` for it, as it did for `data`.
+- **The standalone Compose file of identity says it is a development
+  stack** (#736): it sets `ENVIRONMENT=development`, the only environment
+  in which identity starts without `API_KEY_HASH_SECRET`.
 - **cspm, data and guardian run prometheus-client 0.26.0** (#722), the
   version the other services already locked, up from 0.19.0. The six
   services that call `install_observability` name
@@ -1522,6 +1991,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **Path-filtered workflows follow what they build and run** (#736).
+  Docker Build Validation was triggered by `open-security-*/app/**`, the
+  lock, the Dockerfile, `pyproject.toml` and `manage.py`: a change to
+  guardian's code (`apps/`, `guardian/`), to the dashboard's (`src/`,
+  `package-lock.json`), to the gateway's nginx configuration or to an
+  entrypoint script changed an image and built none. Its filter is now
+  the whole directory of each service and of the shared package, less
+  documentation and tests. Production Stack is also triggered by
+  `scripts/validate_secrets.py` and `tests/integration/**`, which it
+  runs, and Documentation Quality by `.markdown-link-check.json`, on
+  push as on pull requests. `tests/scripts/test_workflow_path_filters.py`
+  derives both rules from the workflows and fails when a file a workflow
+  builds or runs would not start it.
+- **The unit-test job no longer masks a shared package that does not
+  install** (#736): `pip install ../open-security-shared || true` lost
+  its `|| true`, and a test refuses a masked install in any workflow.
+- **The gateway's mock identity answers errors as identity does**
+  (#736). `open-security-gateway/test/mock_identity.py` answered
+  `{"detail": "..."}` for 400, 401 and 403; it now answers the canonical
+  body, with the request id the gateway sent and identity's own words,
+  and 422 for a body that is not JSON. The gateway reads only the
+  status, so no gateway test changes; a test compares the mock's
+  answers with what `open_security_shared.errors` builds.
 - **No script test can be skipped in CI** (#723). The backup, restore
   and rotation tests start a throwaway PostgreSQL or Redis and skip
   where Docker is missing. The step that runs `tests/scripts` already
@@ -1534,6 +2026,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that would be skipped, whatever skipped it, the Docker check is one
   fixture, and a test fails when a workflow runs `tests/scripts`
   without the variable.
+- **The workflows install their tools at pinned versions** (#726).
+  `test.yml`, `pr-validation.yml`, `integration-tests.yml` and
+  `production-stack.yml` installed pytest, pytest-cov, pytest-asyncio,
+  httpx, black, flake8, isort and mypy with no version, and
+  `documentation-quality.yml` its four npm tools: a release of a linter
+  could turn `main` red with no change in the tree.
+  `tests/ci-tools/requirements.in` names them at exact versions and
+  `requirements.txt` next to it is the hash-pinned lock, compiled by
+  `scripts/compile_requirements.sh ci-tools`, checked by Dependency
+  Integrity and included in the weekly advisory upgrades. Jobs on a
+  clean interpreter install it with `--require-hashes`; Unit Tests and
+  Python Code Quality, which install on top of a service's lock, name
+  the same versions. `scripts/check_workflow_pins.py`, a new step of
+  Code Quality, fails on a `pip install` or `npm install -g` without an
+  exact version, on a version that differs from the tools lock, on a
+  download that is unverified or piped to a shell, and on an action
+  that is not at a version tag or a commit.
+- **Validate Docker Compose renders every Compose file** (#726). It
+  rendered `docker-compose.yml` and nothing else.
+  `scripts/check_compose_files.py` renders every tracked Compose file,
+  alone or with the files it overlays, every profile included, and
+  checks in the result what `docker compose config` does not: that each
+  build context, Dockerfile, stage and named build context exists, and
+  that each bind-mount source inside the repository is there or is
+  created at run time.
+- **Code Quality checks how images install OS packages** (#726).
+  `scripts/check_container_hygiene.py` fails on an `apt-get install`
+  without `--no-install-recommends`, on an `apt-get update` whose
+  package lists are not removed in the same `RUN`, and on an `apk add`
+  without `--no-cache`. A test holds the Docker Build Validation matrix
+  to the service directories that have a Dockerfile.
 - **An image whose environment does not satisfy the shared package does
   not build, and Dependency Integrity says so first** (#722). The
   offline install of the shared package with extras and the `pip check`
@@ -1611,6 +2134,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checks each `wildbox_*` selector against what `/metrics` really
   serves, and the production-stack job starts the profile and checks
   that every target is up and every metric a rule reads is exported.
+- **The sensor's log forwarder reads the sources listed under
+  `log_sources`** (#638). The section was ignored: the configuration had
+  no such field, and the forwarder read a fixed list per platform (on
+  Linux `/var/log/syslog`, `/var/log/auth.log` and the systemd journal)
+  whatever the file said, so the web-attack-detection use case, which
+  points `log_sources` at an nginx access log, forwarded none of it. A
+  source is now a `name`, a `type` (`file`, `journald`, `windows_event`,
+  `unified_log`), for a file an absolute `path` or pattern and a `format`
+  (`syslog`, `nginx`, `apache`, `raw`), an `enabled` flag and `read_from`
+  (`end` or `beginning`). With the section, the forwarder reads exactly
+  what it lists; without it, the same per-platform defaults as before. A
+  section the sensor cannot understand (an unknown key, type or format, a
+  relative path, a repeated name, the key with no value) stops it at
+  start-up with a message naming each entry, as an unusable `data_lake`
+  does; a file that does not exist yet or cannot be read is a warning
+  naming the source, logged once, and the file is read when it can be.
+  The sources and their problems are in `GET /api/v1/components`, the
+  configured list in `GET /api/v1/config`. A source is confined to the
+  directory its path names: the forwarder reads regular files only and
+  follows no link out of that directory, so a link placed in a log
+  directory is reported and not sent. In the container no host log is
+  mounted; the sensor README and `DOCKER.md` list what the container can
+  read and how to mount a log directory. The use case's configuration
+  and quick start no longer set `logging.format: json`, which made the
+  sensor print the word `json` for every log record, or a `filters` key
+  that never existed.
+- **The sensor's log forwarder follows a file through rotation and does
+  not split, repeat or hold lines** (#638). It reopened the path every
+  second and read from a remembered size, so the lines written to a file
+  just before `logrotate` renamed it were lost, a new file longer than
+  the old position was read from the middle, a line whose end was not
+  written yet was sent as two events, and a file that had grown by a
+  gigabyte was read into memory at once. It now keeps the file open and
+  reads it to its end before opening the one that replaced it, notices a
+  file truncated in place by its size or its first bytes, reads a file
+  that appears later from its beginning, sends a line when its newline
+  is written, sends a line longer than 16 KiB once, cut and marked
+  `truncated`, turns bytes that are not UTF-8 into U+FFFD, and reads
+  64 KiB at a time, waiting for the event queue to take each line: when
+  Wildbox is unreachable it stops reading and the file is the buffer.
+  Stopping the sensor now ends a forwarder that is waiting on a full
+  queue. Positions are still kept in memory only: after a restart the
+  forwarder continues from each file's end.
+- **A batch the gateway refuses no longer blocks the sensor's later
+  batches.** The sender put a refused batch (401, 403, or a 413 or 422
+  for one it found too large or malformed) back in its buffer, so it
+  was sent again with every flush and refused again, and the events
+  collected meanwhile went out with it and were lost: one batch the
+  gateway would not take stopped all forwarding until a restart. A
+  refused batch is now dropped and counted in `events_failed`; a batch
+  that failed for a reason that may pass (a network error, 429, 5xx) is
+  still kept and retried.
+- **guardian's unit tests run on PostgreSQL too** (#724). They ran on
+  in-memory SQLite only, and two modules could run nowhere else:
+  `test_gateway_only_auth.py` created a table in SQLite's dialect, and
+  `test_celery_schedule.py` passed because SQLite ignores the
+  connection the beat scheduler closes. Both are portable now, and a
+  new job, Guardian Unit Tests (PostgreSQL), runs the whole suite on the
+  PostgreSQL version of the stack; a test fails if that run is not on
+  PostgreSQL.
 
 ## [0.11.2] - 2026-10-05
 

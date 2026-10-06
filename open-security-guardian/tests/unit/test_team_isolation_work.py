@@ -324,16 +324,23 @@ def test_a_report_file_path_cannot_be_set_through_the_api(api, teams):
             "file_path": "/etc/passwd",
         },
     )
+    from apps.reporting.models import Report
+
     assert created.status_code == 201, created.content[:300]
-    assert created.json()["file_path"] == ""
+    # Read from the row: the API no longer says where a file is (#724).
+    assert "file_path" not in created.json()
+    report = Report.objects.get(pk=created.json()["id"])
+    assert report.file_path == ""
     patched = api(
         "patch",
-        f"/api/v1/reports/reports/{created.json()['id']}/",
+        f"/api/v1/reports/reports/{report.pk}/",
         team_a,
         data={"file_path": "/etc/passwd"},
     )
     assert patched.status_code == 200, patched.content[:300]
-    assert patched.json()["file_path"] == ""
+    assert "file_path" not in patched.json()
+    report.refresh_from_db()
+    assert report.file_path == ""
 
 
 @pytest.mark.django_db

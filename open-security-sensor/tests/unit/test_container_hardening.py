@@ -130,16 +130,15 @@ def _published(path):
 
 def test_the_standalone_stack_publishes_on_loopback_and_its_document_says_so():
     """DOCKER.md said Prometheus and Grafana were published on all host
-    interfaces (#745); the compose file binds them, like the sensor's
-    local API, to 127.0.0.1."""
+    interfaces (#745). The compose file bound them to 127.0.0.1, and since
+    #726 it starts neither: the sensor is its only service, and the document
+    says where the stack's Prometheus is."""
     published = _published(SERVICE_ROOT / "docker-compose.yml")
 
-    assert {"sensor", "prometheus", "grafana"} <= set(published)
-    # Every port of every service of the file, not these three only.
+    assert set(published) == {"sensor"}
+    # Every port the file publishes.
     assert set(sum(published.values(), [])) == {"127.0.0.1"}
     docker_md = " ".join((SERVICE_ROOT / "DOCKER.md").read_text().split())
     assert "all host interfaces" not in docker_md
-    assert (
-        "both published on the host's loopback address only "
-        "(`127.0.0.1:9090`, `127.0.0.1:3000`)" in docker_md
-    )
+    assert "publishes that port on `127.0.0.1:8004` only" in docker_md
+    assert "this file starts none" in docker_md

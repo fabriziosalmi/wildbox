@@ -11,7 +11,11 @@
 #     failures: guardian's /health answers 301 and used to count as healthy
 #     while /health/ answered 503 (#656);
 #   - PostgreSQL must accept connections and hold the three databases;
-#   - Redis must answer.
+#   - Redis must answer PONG to a client that authenticates with the
+#     stack's REDIS_PASSWORD: the one in the environment, or in the env file
+#     Compose reads (ENV_FILE, default .env). The check used to send no
+#     password and count NOAUTH as healthy, so a Redis whose password no
+#     longer matched .env passed it (#740).
 #
 # The check only reads. The repairs it used to apply on every run (creating
 # a database, restarting the gateway when its log ever held a certain line)
@@ -28,6 +32,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=scripts/lib/health_endpoints.sh
 . "$REPO_ROOT/scripts/lib/health_endpoints.sh"
+# For wb_redis_password: the same reading of REDIS_PASSWORD as the backup.
+# shellcheck source=scripts/lib/db_access.sh
+. "$REPO_ROOT/scripts/lib/db_access.sh"
 cd "$REPO_ROOT"
 
 # Colors for output
@@ -84,7 +91,7 @@ check_containers() {
 check_databases() {
     log "Checking PostgreSQL and Redis..."
     find_compose || return 1
-    local failed=0 existing db reply
+    local failed=0 existing db reply password
 
     # shellcheck disable=SC2016
     if "${COMPOSE[@]}" exec -T postgres sh -c 'pg_isready -q -U "${POSTGRES_USER:-postgres}"' >/dev/null 2>&1; then
@@ -104,16 +111,29 @@ check_databases() {
         failed=$((failed + 1))
     fi
 
-    # Without the password Redis answers NOAUTH, which still shows it is up
-    # and enforcing authentication. Anything else is a failure.
-    reply=$("${COMPOSE[@]}" exec -T wildbox-redis redis-cli ping 2>&1 </dev/null || true)
-    case "$reply" in
-        PONG*|*NOAUTH*) success "Redis answers" ;;
-        *)
-            error "Redis does not answer"
-            failed=$((failed + 1))
-            ;;
-    esac
+    # Redis has to answer PONG to the password the services are given.
+    # NOAUTH only shows that something listens: it is also what a Redis
+    # answers whose password no longer matches .env, which the stack cannot
+    # use. The password reaches redis-cli by name, through the environment
+    # of the docker command, so it is in no argument list.
+    if password=$(BACKUP_MODE=compose wb_redis_password); then
+        reply=$(REDISCLI_AUTH="$password" "${COMPOSE[@]}" exec -T -e REDISCLI_AUTH \
+            wildbox-redis redis-cli ping 2>&1 </dev/null || true)
+        case "$reply" in
+            PONG) success "Redis answers PONG to the stack's password" ;;
+            *WRONGPASS*|*NOAUTH*)
+                error "Redis refuses the REDIS_PASSWORD of ${ENV_FILE:-.env}: the server and the file disagree (after a rotation, recreate Redis: docker compose up -d wildbox-redis)"
+                failed=$((failed + 1))
+                ;;
+            *)
+                error "Redis does not answer"
+                failed=$((failed + 1))
+                ;;
+        esac
+    else
+        error "Redis cannot be checked: no REDIS_PASSWORD in the environment or in ${ENV_FILE:-.env} to authenticate with"
+        failed=$((failed + 1))
+    fi
     return "$failed"
 }
 

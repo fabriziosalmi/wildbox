@@ -87,24 +87,18 @@ docker compose exec data python manage.py sources test "Feodo Tracker"
 SQLAlchemy `create_all()` rather than Alembic, and `reset` drops every table;
 with the full stack, let the API apply the migrations instead.
 
-### Standalone compose file
+### No standalone compose file
 
-`open-security-data/docker-compose.yml` predates the shared stack and does not
-start as shipped:
+There is no Compose file in this directory. The one that was here predated the
+shared stack and could not start: it mounted an nginx, a Prometheus and a
+Grafana configuration that are not in the repository, and ran the API in
+production mode without the `SECRET_KEY` it requires. The service is reached
+through the gateway, which authenticates the request and passes the team on,
+so it runs from the root `docker-compose.yml`:
 
-- It mounts files that are not in the repository: `nginx/nginx.conf`,
-  `nginx/ssl`, `prometheus/prometheus.yml`, `grafana/dashboards`,
-  `grafana/datasources` and `scripts/init-db.sql`.
-- Its API runs with `ENVIRONMENT=production` but sets no `SECRET_KEY`, which
-  `app/config.py` refuses at startup, and no `GATEWAY_INTERNAL_SECRET`, so no
-  request would authenticate.
-- Its ports clash with the main stack: the API on `127.0.0.1:8002`, nginx on
-  80 and 443 (the gateway), Prometheus on 9090, and Grafana on 3000, the port
-  the dashboard publishes.
-- Grafana takes its admin password from `GRAFANA_ADMIN_PASSWORD`. The file
-  does not require the variable, so set it yourself before starting Grafana.
-
-Use the root `docker-compose.yml`.
+```bash
+docker compose up -d data data-scheduler gateway
+```
 
 ## Collectors
 
@@ -200,8 +194,8 @@ Settings are read from environment variables in `app/config.py`;
 `.env.example` lists them. In the root compose file the service receives:
 
 - `DATABASE_URL`: from `DATA_DATABASE_URL`, falling back to `DATABASE_URL`.
-- `SECRET_KEY`: from `DATA_SECRET_KEY`; required when `ENVIRONMENT` is
-  `production`.
+- `SECRET_KEY`: from `DATA_SECRET_KEY`; required unless `ENVIRONMENT` is
+  `development`, as are `DATABASE_URL` and `DEBUG=false`.
 - `GATEWAY_INTERNAL_SECRET`: shared with the gateway.
 - `ENVIRONMENT`, `DEBUG`, `LOG_LEVEL`, `CORS_ORIGINS`.
 

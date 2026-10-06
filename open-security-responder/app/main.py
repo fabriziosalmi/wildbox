@@ -120,7 +120,9 @@ from open_security_shared.errors import install_error_handlers as _install_error
 from open_security_shared.observability import install_observability as _install_observability
 
 _install_error_handlers(app)
-_install_observability(app, service_name="responder", service_version="0.1.6")
+_install_observability(
+    app, service_name="responder", service_version=SERVICE_VERSION
+)
 
 
 

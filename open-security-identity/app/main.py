@@ -2,8 +2,11 @@
 FastAPI application for Open Security Identity service.
 """
 
-from fastapi import Depends, FastAPI, Request, Response
+import logging
+
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import OperationalError
 import uvicorn
 
 from .config import settings
@@ -68,46 +71,39 @@ app.add_middleware(
     allow_headers=settings.cors_allow_headers,
 )
 
-# Middleware per aggiungere la sessione DB alla request (NECESSARIO per on_after_register)
-@app.middleware("http")
-async def db_session_middleware(request: Request, call_next):
-    """Database session middleware with proper error handling."""
-    from sqlalchemy.exc import SQLAlchemyError, OperationalError
-    import logging
-    
-    logger = logging.getLogger(__name__)
-    response = Response("Internal server error", status_code=500)
-    
-    try:
-        db_gen = get_db()
-        request.state.db = await db_gen.__anext__()
-        response = await call_next(request)
-    except OperationalError as e:
-        logger.error(f"Database connection error: {e}")
-        request.state.db = None
-        # The canonical body, like every other error of the service: this
-        # answered {"detail": ...}, a shape of its own (#722).
-        return _error_response(
-            code=503,
-            message="Database temporarily unavailable",
-            request_id=_get_request_id(request),
-        )
-    except SQLAlchemyError as e:
-        logger.error(f"Database error in middleware: {e}")
-        request.state.db = None
-        response = await call_next(request)
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Unexpected middleware error: {type(e).__name__}: {e}")
-        request.state.db = None
-        response = await call_next(request)
-    finally:
-        if hasattr(request.state, 'db') and request.state.db:
-            try:
-                await request.state.db.close()
-            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                logger.warning(f"Error closing database session: {e}")
-    
-    return response
+# The service adds no middleware of its own, on purpose.
+#
+# There was one, db_session_middleware. It made a session for
+# request.state.db, which nothing has read since the registration hook moved
+# to fastapi-users' own session, and it wrapped call_next in the same try as
+# that. Its except clauses were written for the session ("fail gracefully":
+# go on without one) and so answered an error a *route* raised (ValueError,
+# KeyError, TypeError, ConnectionError, TimeoutError, any SQLAlchemyError) by
+# calling call_next a second time: a failed request was dispatched again.
+# On the Starlette this service pins the second run was torn down at its
+# first suspension, which here comes before any handler, so nothing was done
+# twice; in an application where nothing suspends before the handler, the
+# handler's body ran twice. That is not this service's to rely on (#735).
+#
+# What it was for is now where it belongs. A connection the pool hands out
+# stale is the pool's to replace (pool_pre_ping and pool_recycle, in
+# app/database.py). A database that cannot be reached is a 503, answered by
+# the exception handler below, once, for the error the route raised, in the
+# canonical body like every other error of the service (#722). Every other
+# error goes to the shared handlers.
+@app.exception_handler(OperationalError)
+async def database_unavailable_handler(request: Request, exc: OperationalError):
+    """503 for a database that cannot be reached; the cause stays in the log."""
+    request_id = _get_request_id(request)
+    logging.getLogger(__name__).error(
+        "Database connection error: %s", exc, extra={"request_id": request_id}
+    )
+    return _error_response(
+        code=503,
+        message="Database temporarily unavailable",
+        request_id=request_id,
+    )
+
 
 # An account a team admin created must change its initial password before
 # anything else (#573). Every router of authenticated routes carries this
@@ -216,7 +212,6 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring."""
-    from .database import get_db
     from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError, OperationalError
@@ -314,7 +309,6 @@ async def get_metrics():
     from sqlalchemy import func, select
     from sqlalchemy.exc import SQLAlchemyError
 
-    from .database import get_db
     from .models import ApiKey, Team, User
 
     # The imports are outside the try: this one used to import APIKey, a
@@ -375,12 +369,13 @@ async def startup_event():
     from .auth import api_key_hash_secret_is_fallback
 
     if api_key_hash_secret_is_fallback():
-        # Names the variables, never their values. Production refuses to
-        # start in this state (Settings); elsewhere it is allowed, loudly.
+        # Names the variables, never their values. Only a development
+        # environment gets here: every other one refuses to start in this
+        # state (Settings).
         logging.getLogger(__name__).warning(
             "API_KEY_HASH_SECRET is not set: API-key digests are keyed by "
             "JWT_SECRET_KEY, so rotating JWT_SECRET_KEY invalidates every API "
-            "key. Set API_KEY_HASH_SECRET (required when ENVIRONMENT=production)."
+            "key. Set API_KEY_HASH_SECRET (required unless ENVIRONMENT=development)."
         )
 
 

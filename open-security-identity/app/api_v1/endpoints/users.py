@@ -426,12 +426,13 @@ async def delete_user(
         
         return {"message": message}
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError):
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete user: {str(e)}"
-        )
+        # Raised again as it is. The shared handler logs it, with the
+        # request id, and answers the canonical 500, which says nothing of
+        # the cause; this used to answer "Failed to delete user: " followed
+        # by the text of the exception.
+        raise
 
 
 @router.patch("/users/{user_id}/superuser")

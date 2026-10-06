@@ -47,6 +47,24 @@ jobs:
           rm -f .env .env.env.backup
           echo "✓ docker-compose.yml is valid"
 
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Every tracked Compose file renders and points at what exists
+        # The step above renders docker-compose.yml and nothing else. The
+        # overlays and the per-service files were never rendered, and three
+        # of the latter could not start: they mounted paths that were not in
+        # the repository or built a stage their Dockerfile lacks, which
+        # `docker compose config` does not notice (#726). This renders every
+        # tracked Compose file, alone or with the files it overlays, every
+        # profile included, and checks in the result that each build
+        # context, Dockerfile, stage and bind-mount source exists.
+        run: |
+          pip install --quiet --require-hashes -r tests/ci-tools/requirements.txt
+          python3 scripts/check_compose_files.py
+
   # Check for critical files
   validate-structure:
     name: Validate Project Structure
@@ -168,7 +186,9 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          pip install flake8 mypy
+          # On top of the service's lock; versions as in
+          # tests/ci-tools/requirements.in (scripts/check_workflow_pins.py).
+          pip install flake8==7.4.1 mypy==2.4.0
 
       - name: Run mypy
         # mypy and pylint were installed in all seven matrix legs and never

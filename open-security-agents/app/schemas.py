@@ -56,7 +56,11 @@ class IOCInput(BaseModel):
         if ioc_type and ioc_type in IOC_REGEX_PATTERNS:
             pattern = IOC_REGEX_PATTERNS[ioc_type]
             if not re.match(pattern, v):
-                raise ValueError(f"Invalid format for {ioc_type.value} IOC: '{v}'")
+                # The type, not the value. A validator's message goes to the
+                # client as it is written, and the shared handler leaves the
+                # refused input out of a 422 so that what was sent is not
+                # sent back; quoting it here put it back.
+                raise ValueError(f"Invalid format for {ioc_type.value} IOC")
         return v
 
     model_config = ConfigDict(

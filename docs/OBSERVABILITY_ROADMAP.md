@@ -64,7 +64,7 @@ docker compose --profile monitoring up -d
 ```
 
 The `prometheus` service in `docker-compose.yml` runs
-`prom/prometheus:v2.55.1`, publishes the UI on `127.0.0.1:9090` only, and
+`prom/prometheus:v3.13.4`, publishes the UI on `127.0.0.1:9090` only, and
 mounts `monitoring/prometheus.yml` and `monitoring/alert_rules.yml`.
 `monitoring/prometheus.yml` scrapes every 30 seconds, in one job named
 `wildbox-services`:

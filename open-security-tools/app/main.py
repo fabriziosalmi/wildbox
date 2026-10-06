@@ -77,13 +77,17 @@ async def lifespan(app: FastAPI):
         if len(api_key) < 32:
             logger.warning("API key is shorter than recommended 32 characters")
         
-        if settings.is_production() and any(pattern in api_key.lower() for pattern in ['test', 'demo', 'default']):
-            logger.error("CRITICAL: Weak API key detected in production environment!")
-            raise ValueError("Insecure API key in production")
+        if settings.production_checks_apply() and any(
+            pattern in api_key.lower() for pattern in ['test', 'demo', 'default']
+        ):
+            logger.error("CRITICAL: Weak API key detected outside a development environment!")
+            raise ValueError("Insecure API key outside a development environment")
             
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"API key validation failed: {e}")
-        if settings.is_production():
+        # Fatal everywhere but in development (#736): it was fatal for the
+        # exact value "production" only.
+        if settings.production_checks_apply():
             raise e
     
     yield

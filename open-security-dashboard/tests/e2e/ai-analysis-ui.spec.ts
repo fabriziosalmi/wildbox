@@ -257,7 +257,9 @@ test.describe('AI analysis page', () => {
               {
                 type: 'value_error',
                 loc: ['body', 'ioc', 'value'],
-                msg: "Value error, Invalid format for ipv4 IOC: 'nope'",
+                // What the service answers: the type, not the value it
+                // refused (#735).
+                msg: 'Value error, Invalid format for ipv4 IOC',
               },
             ],
           },
@@ -270,9 +272,7 @@ test.describe('AI analysis page', () => {
     await value.fill('nope')
     await page.keyboard.press('Enter')
 
-    await expect(page.getByTestId('ioc-value-error')).toHaveText(
-      "Invalid format for ipv4 IOC: 'nope'"
-    )
+    await expect(page.getByTestId('ioc-value-error')).toHaveText('Invalid format for ipv4 IOC')
     await expect(value).toHaveAttribute('aria-invalid', 'true')
     await expect(value).toBeFocused()
     await expect(card(page)).toHaveCount(0)

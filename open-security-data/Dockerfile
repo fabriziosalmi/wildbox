@@ -25,7 +25,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+# --no-install-recommends: only what is named here, not what these packages
+# recommend (fakeroot, manual pages, Perl modules for dpkg-dev, SASL
+# modules), none of which the build or the service uses (#726).
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     libpq-dev \

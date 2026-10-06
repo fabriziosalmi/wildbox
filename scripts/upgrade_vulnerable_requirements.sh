@@ -28,8 +28,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SERVICES=(agents cspm data guardian identity responder sensor tools)
-# Must match compile_requirements.sh.
+SERVICES=(agents cspm data guardian identity responder sensor tools ci-tools)
+# Must match compile_requirements.sh, lock_dir included: `ci-tools` is the
+# lock of the tools the workflows install, in tests/ci-tools.
+lock_dir() {
+  case "$1" in
+    ci-tools) echo "tests/ci-tools" ;;
+    *) echo "open-security-$1" ;;
+  esac
+}
 PYTHON_VERSION="3.11"
 PYTHON_PLATFORM="linux"
 SUMMARY_FILE="${SUMMARY_FILE:-/dev/stdout}"
@@ -61,7 +68,7 @@ upgraded=""
 residual=""
 
 for svc in "${SERVICES[@]}"; do
-  dir="open-security-${svc}"
+  dir="$(lock_dir "$svc")"
   [ -f "${dir}/requirements.in" ] || { echo "skip ${svc}: no requirements.in" >&2; continue; }
 
   audit "${dir}/requirements.txt" "$work/${svc}-before.json"

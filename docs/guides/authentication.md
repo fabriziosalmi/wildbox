@@ -267,10 +267,14 @@ keep an account locked out. To lift a lock early, delete its two keys from
 Redis database 0 (replace the address, lower-cased):
 
 ```bash
-docker compose exec \
-  -e REDISCLI_AUTH="$(sed -n 's/^REDIS_PASSWORD=//p' .env)" wildbox-redis \
+REDISCLI_AUTH="$(sed -n 's/^REDIS_PASSWORD=//p' .env)" \
+  docker compose exec -e REDISCLI_AUTH wildbox-redis \
   redis-cli -n 0 DEL "login:lockout:user@example.com" "login:attempts:user@example.com"
 ```
+
+The password travels in the environment of the command (`-e REDISCLI_AUTH`
+names the variable only), not as an argument, where the process list would
+show it.
 
 A wrong current password counts towards the same lock: on change-password,
 on account deletion and on an email change (below). A locked account is
