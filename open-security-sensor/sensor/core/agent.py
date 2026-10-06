@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Callable, Dict, List, Optional, Any
 import psutil
 import json
 
@@ -23,30 +23,17 @@ from sensor.api.local_api import LocalAPI
 from sensor.utils.resource_monitor import ResourceMonitor
 from sensor.pipeline.delivery import take_delivery
 
-logger = logging.getLogger(__name__)
+# The stop's time limits, and what they add up to. They are in a module of
+# their own because the collectors read their part of them, and a collector
+# cannot import this one.
+from sensor.core.stop_limits import (
+    COLLECTORS_STOP_SECONDS,
+    LAST_WRITES_SECONDS,
+    PIPELINE_STOP_SECONDS,
+    QUEUE_DRAIN_SECONDS,
+)
 
-# The stop's time limits (#765), in the order they are spent. Whoever stops
-# the sensor gives it a time to end in (Compose: stop_grace_period, 30
-# seconds in the repository's files) and kills it after that: everything
-# below, and main.py's START_ABORT_SECONDS and EXIT_SECONDS, add up to less,
-# with room for what is written last (the log positions, the file monitor's
-# baseline, the closing log lines), which nothing limits.
-# tests/unit/test_stop_time_limits.py holds the sum against every Compose
-# file that runs the sensor. They used to be 15, 2 and 15 seconds: 32 against
-# the 30 the sensor was given, so a stop that used them was killed before it
-# had written its positions.
-#
-# Seconds the collectors, and the local API, get to stop: the tasks that
-# read are cancelled, a command that follows a log is ended, a query in
-# progress is killed.
-COLLECTORS_STOP_SECONDS = 8.0
-# Seconds the events already collected get to reach the sender when the
-# sensor stops, before the pipeline is stopped under them.
-QUEUE_DRAIN_SECONDS = 2.0
-# Seconds the processor and the sender get to stop. The sender spends up to
-# data_forwarder.STOP_FLUSH_SECONDS of them on its last batches; the rest is
-# for closing its connections.
-PIPELINE_STOP_SECONDS = 12.0
+logger = logging.getLogger(__name__)
 
 
 class CountingQueue(asyncio.Queue):
@@ -121,6 +108,11 @@ class SecuritySensorAgent:
         # over_limits). The event counters are not kept here: get_stats()
         # reads them from the components that do the counting.
         self.resources: Dict[str, Any] = {}
+
+        # Called, when set, as the stop's last writes are about to begin.
+        # main.py arms the process's exit limit with it: from that moment
+        # the process ends within a known time whatever the writes do.
+        self.before_last_writes: Optional[Callable[[], None]] = None
 
         # Event queues for inter-component communication
         self.event_queue = CountingQueue(maxsize=self.config.performance.max_queue_size)
@@ -240,9 +232,8 @@ class SecuritySensorAgent:
         last events; then the log positions and the file monitor's baseline
         once more, for what those batches delivered.
 
-        Each of the three waits has its limit, at the top of this module;
-        the writes at the end have none, and are what the limits leave room
-        for. It also stops a sensor whose start was abandoned half-way: a
+        Each of the four waits has its limit (sensor/core/stop_limits.py).
+        It also stops a sensor whose start was abandoned half-way: a
         component that never started has nothing to stop.
         """
         collectors = [
@@ -267,11 +258,65 @@ class SecuritySensorAgent:
             await self._drain_queues()
         await self._stop_all(pipeline, PIPELINE_STOP_SECONDS)
         self._report_left_in_queues()
+        await self._last_writes()
 
+    async def _last_writes(self):
+        """Have the log positions and the file monitor's baseline written
+        once more, and say what was not written.
+
+        Each write is made in a worker thread and waited for
+        LAST_WRITES_SECONDS at most. They were two calls in the event loop
+        (#777): each waits for its store's lock, which a periodic write
+        stuck in its thread holds for as long as the data directory does
+        not answer. The loop waited with it, so no limit of the stop could
+        end, and the one that ends the process was not armed yet: the
+        sensor was killed when its grace period ran out, having said
+        nothing.
+        """
+        writes = {}
         if self.log_forwarder:
-            self.log_forwarder.save_positions()
+            writes["the log positions"] = (
+                self.log_forwarder.write_positions,
+                "after the restart the log sources are read from the "
+                "positions last saved, and what was delivered since is "
+                "sent again",
+            )
         if self.file_monitor:
-            self.file_monitor.save_baseline()
+            writes["the file monitor's baseline"] = (
+                self.file_monitor.write_baseline,
+                "after the restart the watched files are compared with the "
+                "baseline last saved, and the changes delivered since are "
+                "reported again",
+            )
+        if not writes:
+            return
+        if self.before_last_writes is not None:
+            self.before_last_writes()
+        problems = await asyncio.gather(
+            *(self._last_write(write) for write, _ in writes.values())
+        )
+        for (what, (_, consequence)), problem in zip(writes.items(), problems):
+            if problem is not None:
+                logger.warning(
+                    "Stopped without writing %s: %s. If that stays so, %s",
+                    what,
+                    problem,
+                    consequence,
+                )
+
+    @staticmethod
+    async def _last_write(write) -> Optional[str]:
+        """Why ``write`` wrote nothing within its limit, or None."""
+        try:
+            return await asyncio.wait_for(write(), LAST_WRITES_SECONDS)
+        except asyncio.TimeoutError:
+            return (
+                f"the write had not ended after {LAST_WRITES_SECONDS:.0f} "
+                f"seconds, and is left to its thread"
+            )
+        except Exception as e:
+            # A collector's mistake must not keep the sensor from ending.
+            return f"{type(e).__name__}: {e}"
 
     @staticmethod
     async def _stop_all(components, seconds: float):
@@ -325,10 +370,10 @@ class SecuritySensorAgent:
         await self.processed_queue.join()
 
     def _report_left_in_queues(self):
-        """Say what the queues, the processor's workers, and the collectors
-        that were waiting for room on the first queue, still held when the
-        pipeline stopped: those events never reached the sender, which
-        counts only its own."""
+        """Say what the queues, the processor's workers, the collectors
+        that were waiting for room on the first queue, and the log
+        forwarder's readers still held when the pipeline stopped: those
+        events never reached the sender, which counts only its own."""
         left = []
         for queue in (self.event_queue, self.processed_queue):
             while not queue.empty():
@@ -341,6 +386,12 @@ class SecuritySensorAgent:
         turned_away = self.event_queue.turned_away
         left.extend(take_delivery(event) for event in turned_away)
         turned_away.clear()
+        if self.log_forwarder:
+            # And the entries the forwarder had read from journalctl or
+            # log stream in the same read as that event, and had not made
+            # events of yet (#777).
+            left.extend(self.log_forwarder.interrupted)
+            self.log_forwarder.interrupted = []
         if self.data_processor:
             # And what its workers held when they were stopped.
             left.extend(self.data_processor.interrupted)

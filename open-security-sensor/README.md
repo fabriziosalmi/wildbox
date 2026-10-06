@@ -407,7 +407,9 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
   processor's workers are stopped with what they hold, and the last log
   lines say how many events that was, and how many of them will be read
   again from their log source. That count includes the event a collector
-  was waiting to put on a full queue when it was stopped.
+  was waiting to put on a full queue when it was stopped and, for the
+  journal and the unified log, the entries read from the command with that
+  one that were not events yet.
 - The stop may be asked for at any moment, the sensor's start included.
   Before anything is started, nothing is, and the sensor says `not
   started: a stop was asked for while it was starting`; while it is
@@ -426,17 +428,33 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
   `env --block-signal=TERM --block-signal=INT` in front of it.
 - Each part of the stop has a limit: 2 seconds for a start that was
   abandoned, 8 for the collectors to stop, the 2 above, 12 for the
-  processor and the sender (10 of them for the last batches); then the
-  positions and the baseline are written; then 2 for the process to end.
-  That is 26 seconds at worst. A worker thread that is still busy when the
-  sensor has stopped (a name lookup the resolver has not answered, a scan
-  in a file system that does not answer) is not waited for beyond those
-  last 2 seconds: the sensor says which threads, and the process ends. The compose files give the
+  processor and the sender (10 of them for the last batches), 2 for the
+  positions and the baseline to be written once more, then 2 for the
+  process to end. That is 28 seconds at worst. A worker thread that is
+  still busy when the sensor has stopped (a name lookup the resolver has
+  not answered, a scan in a file system that does not answer) is not
+  waited for beyond those last 2 seconds: the sensor says which threads,
+  and the process ends. The compose files give the
   sensor 30 seconds (`stop_grace_period`), and the sensor's tests fail if
   that stops being enough; give it at least as much wherever else you run
   it (`docker run --stop-timeout 30`, `terminationGracePeriodSeconds` in
   Kubernetes). Under Docker's default of 10 it can be killed before it has
   finished, which costs a second sending of the last lines, never a line.
+- What a collector waits for when it stops is inside those 8 seconds, a
+  quarter of them each: a command that follows a log (`journalctl`,
+  `log stream`) gets 2 seconds to end when asked and 2 more to be gone once
+  killed; a query in progress is killed and gets 2; a request to the local
+  API gets 2 to finish and 2 more once it is cancelled; a collector's own
+  write of its positions or baseline gets 2.
+- A data directory that stops answering does not hold the stop. Every
+  write of the positions and of the baseline is made in a worker thread,
+  and the stop waits 2 seconds for the last ones. When they have not
+  ended, or have failed, the sensor's last lines say so and what follows
+  from it: `Stopped without writing the log positions: the write had not
+  ended after 2 seconds, and is left to its thread. If that stays so,
+  after the restart the log sources are read from the positions last
+  saved, and what was delivered since is sent again`. The process then
+  ends within the 2 seconds above, with exit status 0.
 - The file holds, for each log file, its device and inode, the offset, and
   SHA-256 digests of its first 256 bytes and of the 64 bytes before the
   offset; no log content. It is written to a temporary file, flushed, and
@@ -507,7 +525,9 @@ entry's fields in `data`.
 - **The unified log has no position.** `log stream` shows what is logged
   while it runs: entries logged while the sensor is stopped, or while the
   command is being started again, are not read, and an entry still in the
-  sensor when it stops is counted under `events_dropped_shutdown`.
+  sensor when it stops is counted under `events_dropped_shutdown`. An entry
+  the sensor had read from the command and not made an event of yet (the
+  queue was full) is in the count of the last log lines, as dropped.
 
 Each source that is not a file reports, under `log_forwarder` in
 `GET /api/v1/components`, its `state` (`starting`, `running`, `restarting`,
@@ -1081,7 +1101,16 @@ An osquery query, from this route or from the sensor's own packs, is one
 `osqueryi` child process the sensor waits for without stopping anything
 else. Queries run one at a time. One may take 30 seconds and print 16 MiB:
 past either it is killed, the sensor logs which, and the query yields no
-rows.
+rows. A request still in flight when the sensor stops is given 2 seconds to
+finish and is then cancelled: its connection is closed without an answer.
+
+The API sends no CORS header and answers no preflight (`OPTIONS` gets
+`405`). A browser therefore lets no page of another origin read its answers
+or send it the key: call it from a script, a server or `curl`, as below.
+It used to allow one origin, its own bind address and port
+(`http://127.0.0.1:8004`, or `http://0.0.0.0:8004` in the container), which
+a page served by the API itself does not need and no other page should
+have.
 
 ```bash
 curl -H "X-API-Key: $SENSOR_API_KEY" http://127.0.0.1:8004/api/v1/status
@@ -1153,15 +1182,24 @@ never measured them, and they were always zero or a constant.
   trust store or `data_lake.ca_bundle`; `data_lake.tls_verify: false` disables
   verification and logs a warning. The ingest key is sent in `X-API-Key` only,
   redirects are not followed and the key is never logged.
+- The log's start-up line names the system, its release, the architecture
+  and the Python version (`Platform: Linux 6.8.0 (x86_64), Python
+  3.11.9`), and nothing of the account the sensor runs under or of its
+  environment.
+- The image installs what the sensor imports and what that needs, from a
+  hash-checked lock (`requirements.txt`): no test runner, no linter.
 
 ## Development
 
 ```bash
 pip install -r requirements.txt
+pip install pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0
 pytest tests/unit/
 ```
 
-The test suite is `tests/unit/`.
+The test suite is `tests/unit/`. `requirements.txt` is the lock the image
+installs and holds no test tool; the second line installs the test runner
+at the versions CI uses (`tests/ci-tools/requirements.in`).
 
 ## Related documentation
 

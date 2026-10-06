@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import sys
 import textwrap
 from pathlib import Path
@@ -541,7 +542,7 @@ async def test_stopping_ends_the_command(tmp_path):
 async def test_a_command_that_ignores_the_request_to_end_is_killed(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(log_forwarder, "CHILD_STOP_SECONDS", 0.3)
+    monkeypatch.setattr(log_forwarder, "CHILD_TERM_SECONDS", 0.3)
     argv = _script(
         tmp_path,
         """
@@ -558,8 +559,228 @@ async def test_a_command_that_ignores_the_request_to_end_is_killed(
     event, _ = await _event(forwarder)
     await asyncio.wait_for(forwarder.stop(), timeout=10)
 
+    # Not there, and not a zombie either, which this would still find: it
+    # was waited for.
     with pytest.raises(ProcessLookupError):
         os.kill(event["data"]["pid"], 0)
+    assert _status(forwarder)["last_exit"] is None  # stopped, not restarted
+
+
+@pytest.mark.asyncio
+async def test_such_a_command_is_killed_and_waited_for_with_its_output_unread(
+    tmp_path, monkeypatch, caplog
+):
+    # The queue is full, so the reader has stopped reading and the command
+    # is writing to a pipe nobody empties; it ignores the request to end.
+    # main killed it after its 5 seconds and then waited, without a limit,
+    # for an exit asyncio (3.11) does not report while output is unread:
+    # the forwarder's stop ended when the agent stopped waiting for it.
+    monkeypatch.setattr(log_forwarder, "CHILD_TERM_SECONDS", 0.3)
+    full = tmp_path / "the-pipe-is-full"
+    argv = _script(
+        tmp_path,
+        """
+        import fcntl, signal
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        entry("running", pid=os.getpid())
+        entry("held")
+        # Until the pipe takes no more and stays full, which is when nobody
+        # reads it: a reader that is only slower empties it in no time.
+        fcntl.fcntl(1, fcntl.F_SETFL, fcntl.fcntl(1, fcntl.F_GETFL) | os.O_NONBLOCK)
+        more = (json.dumps({"MESSAGE": "more", "pad": "p" * 4000}) + "\\n").encode()
+        refused = 0
+        while refused < 50:
+            try:
+                os.write(1, more)
+                refused = 0
+            except BlockingIOError:
+                refused += 1
+                time.sleep(0.01)
+        open(%r, "w").close()
+        time.sleep(600)
+        """
+        % str(full),
+    )
+    forwarder = _forwarder(JOURNAL, queue_size=1)
+    _plays(forwarder, argv)
+
+    await forwarder.start()
+    event, _ = await _event(forwarder)
+    pid = event["data"]["pid"]
+    await _until(full.exists)
+    assert forwarder.event_queue.full()
+
+    with caplog.at_level(logging.ERROR, logger=log_forwarder.__name__):
+        await asyncio.wait_for(forwarder.stop(), timeout=30)
+
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+    # Gone when it was killed, its output read to the end: not given up
+    # after the time a killed command has, with its pipes closed on it.
+    assert [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR] == []
+
+
+@pytest.mark.asyncio
+async def test_a_stop_while_the_command_is_ending_by_itself_does_not_leave_it(
+    tmp_path, monkeypatch
+):
+    # The command has closed its output, which is how one that is ending
+    # looks, and the forwarder is giving it the time to exit by itself:
+    # longer than this test, here. The stop comes then. main went away
+    # from that wait and left the command running, neither asked to end
+    # nor killed.
+    monkeypatch.setattr(log_forwarder, "CHILD_TERM_SECONDS", 600)
+    argv = _script(
+        tmp_path,
+        """
+        import signal
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        entry("running", pid=os.getpid())
+        os.close(1)
+        time.sleep(600)
+        """,
+    )
+    forwarder = _forwarder(JOURNAL)
+    _plays(forwarder, argv)
+    ending = asyncio.Event()
+    end = forwarder._end_command
+    commands = []
+
+    async def watched(process, errors, what, ending_by_itself=False):
+        commands.append(process)
+        if ending_by_itself:
+            ending.set()
+        await end(process, errors, what, ending_by_itself)
+
+    forwarder._end_command = (
+        lambda process, errors, what, ending=False: watched(
+            process, errors, what, ending
+        )
+    )
+
+    await forwarder.start()
+    event, _ = await _event(forwarder)
+    pid = event["data"]["pid"]
+    await asyncio.wait_for(ending.wait(), timeout=10)
+    for _ in range(10):
+        await asyncio.sleep(0)
+    os.kill(pid, 0)  # there, and waited for
+    await asyncio.wait_for(forwarder.stop(), timeout=30)
+
+    # Killed, and waited for before the stop returned: its exit is known,
+    # and no process is left, not even one nobody has waited for.
+    (command,) = commands
+    assert command.returncode == -signal.SIGKILL
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+    assert _status(forwarder)["state"] == "stopped"
+
+
+# -- what a stopped reader holds ----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_reader_stopped_in_the_middle_of_a_read_says_which_lines_it_held():
+    forwarder = _forwarder(JOURNAL)
+    stream = asyncio.StreamReader()
+    stream.feed_data(b"one\ntwo\nthree\n\nfour\nand the beginning of fi")
+    handled, left = [], []
+    held = asyncio.Event()
+
+    async def handle(line, cut):
+        handled.append(line)
+        if line == b"two":
+            held.set()
+            await asyncio.Event().wait()  # as put() on a full queue
+
+    reading = asyncio.ensure_future(forwarder._read_entries(stream, handle, left.append))
+    await asyncio.wait_for(held.wait(), timeout=5)
+    reading.cancel()
+    await asyncio.gather(reading, return_exceptions=True)
+
+    assert handled == [b"one", b"two"]
+    # The lines after the one being handled, as they were read. Not the
+    # beginning of a line: an entry is one when its newline is written.
+    assert left == [[b"three", b"", b"four"]]
+
+
+@pytest.mark.asyncio
+async def test_a_reader_stopped_between_two_reads_holds_no_line():
+    forwarder = _forwarder(JOURNAL)
+    stream = asyncio.StreamReader()
+    stream.feed_data(b"one\ntwo\n")
+    handled, left = [], []
+
+    async def handle(line, cut):
+        handled.append(line)
+
+    reading = asyncio.ensure_future(forwarder._read_entries(stream, handle, left.append))
+    await _until(lambda: len(handled) == 2)
+    reading.cancel()
+    await asyncio.gather(reading, return_exceptions=True)
+
+    assert left == []
+
+
+@pytest.mark.parametrize(
+    "source, with_data_dir, read_again",
+    [
+        (JOURNAL, True, True),
+        # Nothing keeps the cursor.
+        (JOURNAL, False, False),
+        # log stream cannot be asked for an entry again.
+        (UNIFIED, True, False),
+        (UNIFIED, False, False),
+    ],
+)
+def test_the_lines_a_reader_held_are_counted_when_they_are_entries(
+    tmp_path, source, with_data_dir, read_again
+):
+    forwarder = _forwarder(source, tmp_path if with_data_dir else None)
+    runtime = forwarder._system_source(source)
+    long = b'{"MESSAGE": "' + b"A" * MAX_ENTRY_BYTES + b'"}'
+
+    forwarder._not_handled(
+        runtime,
+        [
+            b'{"MESSAGE": "one"}',
+            b"",
+            b"   ",
+            b"not an entry",
+            b"[1, 2]",
+            b'"a string"',
+            long,  # forwarded cut: an event all the same
+            b'{"MESSAGE": "two"}',
+        ],
+    )
+
+    assert len(forwarder.interrupted) == 3
+    assert [
+        delivery is not None and delivery.replayable
+        for delivery in forwarder.interrupted
+    ] == [read_again] * 3
+    # Never settled: they are no events, and settling moves a cursor.
+    for delivery in forwarder.interrupted:
+        if delivery is not None:
+            delivery.settle()
+    assert runtime.accepted_cursor is None and not forwarder._positions_dirty
+
+
+@pytest.mark.parametrize(
+    "line, cut, expected",
+    [
+        (b'{"MESSAGE": "one"}', False, ({"MESSAGE": "one"}, None)),
+        (b'  {"MESSAGE": "one"}\r', False, ({"MESSAGE": "one"}, None)),
+        (b"", False, (None, "blank")),
+        (b" \t ", False, (None, "blank")),
+        (b"Filtering the log data using ...", False, (None, "unparsed")),
+        (b"[1, 2]", False, (None, "unparsed")),
+        (b"null", False, (None, "unparsed")),
+        (b'{"MESSAGE": "cut he', True, ({"raw_message": '{"MESSAGE": "cut he'}, None)),
+    ],
+)
+def test_what_a_line_of_a_commands_output_is(line, cut, expected):
+    assert LogForwarder._entry_data(line, cut) == expected
 
 
 @pytest.mark.asyncio

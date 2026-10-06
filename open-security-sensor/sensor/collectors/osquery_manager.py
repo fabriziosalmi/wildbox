@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
 from sensor.core.config import SensorConfig
+from sensor.core.stop_limits import CHILD_KILL_SECONDS
 from sensor.utils.platform import is_windows, is_linux, is_macos
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,10 @@ QUERY_TIMEOUT = 30
 MAX_QUERY_OUTPUT = 16 * 1024 * 1024
 # Bytes of what osqueryi says on its standard error kept for the log.
 QUERY_STDERR_KEPT = 2048
-# Seconds a killed osqueryi is given to end and close its output.
-KILL_WAIT = 10
+# A killed osqueryi is given CHILD_KILL_SECONDS to end and close its output:
+# a part of the time the collectors have to stop (sensor.core.stop_limits),
+# because the query in progress is killed when the sensor stops. It was 10
+# seconds here, against the 8 the agent waits for the collectors (#777).
 
 
 class _TooMuchOutput(Exception):
@@ -387,7 +390,7 @@ class OsqueryManager:
                 asyncio.gather(
                     emptied(child.stdout), emptied(child.stderr), child.wait()
                 ),
-                timeout=KILL_WAIT,
+                timeout=CHILD_KILL_SECONDS,
             )
         except asyncio.TimeoutError:
             # A process it started still holds its output open: the pipes
@@ -396,7 +399,7 @@ class OsqueryManager:
                 "osqueryi (pid %s) was killed and its output did not end "
                 "within %s seconds: it is closed",
                 child.pid,
-                KILL_WAIT,
+                CHILD_KILL_SECONDS,
             )
             transport = getattr(child, "_transport", None)
             if transport is not None:

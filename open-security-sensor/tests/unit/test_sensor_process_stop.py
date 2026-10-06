@@ -18,9 +18,15 @@ orderly stop, and the exit status says which it was.
 The signal is not timed. An audit hook, put into the child by a
 ``sitecustomize`` module on its path, sends it at the moment the sensor does
 a named thing: imports a module, opens its configuration, lists a watched
-directory, asks for a name. The hook can also hold that call for minutes, as
-a file system or a resolver that does not answer would. One test needs no
-hook: the osqueryi the sensor starts asks its parent to stop.
+directory, asks for a name, puts its position file in place. The hook can
+also hold that call for minutes, as a file system or a resolver that does
+not answer would. One test needs no hook: the osqueryi the sensor starts
+asks its parent to stop.
+
+And a stop while the data directory does not answer ends in time too (#777):
+the write that is held there has the store's lock, the stop's own write
+waited for that lock in the event loop, and nothing was left to end the
+process but whoever had asked it to stop.
 """
 
 import asyncio
@@ -32,6 +38,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -64,7 +71,11 @@ _EVENTS = {
     "open": "open",
     "scandir": "os.scandir",
     "lookup": "socket.gethostbyaddr",
+    "rename": "os.rename",
 }
+# Which argument of the event names the thing: the first, but for a rename,
+# which is named by what it puts in place.
+_NAMED_BY = {"rename": 1}
 _HOLD = float(os.environ.get("SENSOR_TEST_HOLD", "0"))
 _reached = []
 
@@ -72,7 +83,7 @@ _reached = []
 def _hook(event, args):
     if _reached or event != _EVENTS[_KIND]:
         return
-    if str(args[0]) != _WHAT:
+    if str(args[_NAMED_BY.get(_KIND, 0)]) != _WHAT:
         return
     _reached.append(event)
     fd = os.open(os.environ["SENSOR_TEST_MARK"], os.O_WRONLY | os.O_CREAT)
@@ -140,6 +151,7 @@ def sensor(tmp_path):
         at_line=None,
         slow_osquery=None,
         stop_before_it_starts=False,
+        settings=None,
         **collection,
     ):
         enabled = dict.fromkeys(
@@ -166,6 +178,8 @@ def sensor(tmp_path):
                         "paths": [str(watched)] if watched else [],
                     },
                     "network": {"enable_api": False},
+                    # A data directory, log sources.
+                    **(settings or {}),
                 }
             )
         )
@@ -378,6 +392,59 @@ def test_a_running_sensor_does_not_wait_for_a_lookup_the_resolver_never_answers(
     assert "Security Sensor stopped" in run.output
     assert "The process ends without waiting for them" in run.output
     assert run.seconds < GRACE_SECONDS
+
+
+def test_a_stop_while_the_data_directory_does_not_answer_is_not_held_by_it(
+    sensor, tmp_path
+):
+    # The periodic write of the log positions is putting its file in place,
+    # in its worker thread, with the store's lock, and that call does not
+    # return. The stop is asked for then. main wrote the positions once more
+    # from the event loop as the forwarder stopped: the loop waited for the
+    # lock, no limit of the stop could end, the one that ends the process
+    # was not armed yet, and the sensor was there until it was killed.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    log = tmp_path / "app.log"
+    log.write_text("one\n")
+
+    run = sensor(
+        f"rename:{data_dir / 'log-positions.json'}",
+        hold=HOLD_SECONDS,
+        log_forwarding=True,
+        settings={
+            "data_dir": str(data_dir),
+            "log_sources": [{"name": "app", "path": str(log), "format": "raw"}],
+        },
+    )
+
+    assert run.reached, run
+    assert run.code == 0, run  # main: -9, from the test, after a minute
+    assert "Traceback" not in run.output
+    said = [line.split(" - ", 3)[-1] for line in run.output.splitlines()]
+    # The forwarder gives its own write up, the agent the last one, and
+    # says what that means; then the sensor has stopped, and its process
+    # leaves the three threads that are still waiting for that directory.
+    limits = (
+        "The log positions were not written within 2 seconds of the log "
+        f"forwarder's stop: a write to {data_dir} has not ended",
+        "Stopped without writing the log positions: the write had not ended "
+        "after 2 seconds, and is left to its thread. If that stays so, after "
+        "the restart the log sources are read from the positions last saved, "
+        "and what was delivered since is sent again",
+        "Security Sensor stopped",
+    )
+    assert [line for line in said if line in limits] == list(limits), run
+    # Three threads: the write that is held, and the two that wait for it.
+    assert said[-1].startswith(
+        "The sensor has stopped and its process has not ended after 2 "
+        "seconds: it is waiting for threads that are still busy (asyncio_0, "
+        "asyncio_1, asyncio_2"
+    ), run
+    assert said[-1].endswith("The process ends without waiting for them")
+    assert run.seconds < GRACE_SECONDS
+    # Nothing was written, and the sensor did not say that anything was.
+    assert not (data_dir / "log-positions.json").exists()
 
 
 def test_a_stop_of_a_sensor_that_has_started_ends_without_the_exit_limit(sensor):
@@ -711,3 +778,150 @@ async def test_the_exit_limit_is_armed_when_the_daemon_has_stopped(monkeypatch):
 
     assert await sensor_main._run(Daemon()) == 7
     assert armed == [(sensor_main.EXIT_SECONDS, 7)]
+
+
+# -- the limit of the last writes (#777) ---------------------------------------
+
+
+class Noted:
+    """What stands in for the exit limit: how it was armed, and whether it
+    was taken away."""
+
+    def __init__(self):
+        self.armed = []
+        self.cancelled = 0
+
+    def __call__(self, seconds, code, stopped=True):
+        self.armed.append((seconds, code, stopped))
+        return types.SimpleNamespace(cancel=self._cancel)
+
+    def _cancel(self):
+        self.cancelled += 1
+
+
+class Writes:
+    """A log forwarder that has stopped, and whose last write is ``write``."""
+
+    interrupted = ()
+
+    def __init__(self, write):
+        self._write = write
+
+    async def stop(self):
+        pass
+
+    async def write_positions(self):
+        return self._write()
+
+
+@pytest.mark.asyncio
+async def test_the_exit_limit_ends_a_sensor_whose_last_write_holds_the_event_loop(
+    handlers, config, monkeypatch, caplog
+):
+    # What main's last write was: a call that waits in the event loop's own
+    # thread. No timer of the loop can end it; the thread armed before it
+    # does.
+    monkeypatch.setattr(sensor_main, "LAST_WRITES_SECONDS", 0.05)
+    monkeypatch.setattr(sensor_main, "EXIT_SECONDS", 0.05)
+    left = threading.Event()
+    codes = []
+
+    def leave(code):
+        codes.append(code)
+        left.set()
+
+    monkeypatch.setattr(sensor_main.os, "_exit", leave)
+    monkeypatch.setattr(sensor_main.logging, "shutdown", lambda: None)
+
+    def held():
+        # Until the process "ends"; the test gives up long before a hang.
+        assert left.wait(timeout=30), "nothing ended the process"
+
+    async def start(agent):
+        agent.log_forwarder = Writes(held)
+
+    monkeypatch.setattr(SecuritySensorAgent, "start", start)
+    daemon = sensor_main.SensorDaemon(config)
+    running = asyncio.ensure_future(daemon.start())
+    while not daemon.running:
+        await asyncio.sleep(0)
+
+    await daemon.stop()
+    with caplog.at_level(logging.WARNING):
+        assert await asyncio.wait_for(running, timeout=60) == 0
+
+    # With the status of an orderly stop, which is what was asked for.
+    assert codes == [0]
+    assert (
+        "The sensor began to write its log positions and its file monitor's "
+        "baseline for the last time and its process has not ended after 0 "
+        "seconds"
+    ) in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_limit_of_the_last_writes_is_taken_away_when_the_daemon_has_stopped(
+    handlers, config, monkeypatch
+):
+    noted = Noted()
+    monkeypatch.setattr(sensor_main, "_leave_within", noted)
+    seen = []
+
+    async def start(agent):
+        # Not armed while the sensor runs: only as its last writes begin.
+        agent.log_forwarder = Writes(lambda: seen.append(list(noted.armed)))
+
+    monkeypatch.setattr(SecuritySensorAgent, "start", start)
+    daemon = sensor_main.SensorDaemon(config)
+    running = asyncio.ensure_future(daemon.start())
+    while not daemon.running:
+        await asyncio.sleep(0)
+    assert noted.armed == []
+
+    await daemon.stop()
+    assert await asyncio.wait_for(running, timeout=10) == 0
+
+    limit = (sensor_main.LAST_WRITES_SECONDS + sensor_main.EXIT_SECONDS, 0, False)
+    # Armed before the write was begun, once, and not left behind: _run()
+    # arms the limit of the process's end as the daemon returns.
+    assert seen == [[limit]]
+    assert noted.armed == [limit] and noted.cancelled == 1
+
+
+@pytest.mark.asyncio
+async def test_a_start_that_fails_arms_that_limit_with_status_1(
+    handlers, tmp_path, monkeypatch
+):
+    # The agent stops what a failed start had started, by itself, and
+    # writes the positions as it does: the same limit, and the status the
+    # process then ends with.
+    noted = Noted()
+    monkeypatch.setattr(sensor_main, "_leave_within", noted)
+    monkeypatch.setattr(sensor_main, "setup_logging", lambda settings: None)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    log = tmp_path / "app.log"
+    log.write_text("one\n")
+    empty = tmp_path / "bin"
+    empty.mkdir()
+    # No osqueryi: the osquery manager's start fails.
+    monkeypatch.setenv("PATH", str(empty))
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "data_lake": {"endpoint": "https://gateway.example"},
+                "collection": {"process_events": True, "log_forwarding": True},
+                "fim": {"enabled": False},
+                "network": {"enable_api": False},
+                "data_dir": str(data_dir),
+                "log_sources": [{"name": "app", "path": str(log), "format": "raw"}],
+            }
+        )
+    )
+
+    daemon = sensor_main.SensorDaemon(str(path))
+    assert await asyncio.wait_for(daemon.start(), timeout=30) == 1
+
+    limit = (sensor_main.LAST_WRITES_SECONDS + sensor_main.EXIT_SECONDS, 1, False)
+    assert noted.armed == [limit] and noted.cancelled == 1
