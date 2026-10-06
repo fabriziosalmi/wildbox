@@ -141,12 +141,25 @@ def run_cspm_scan_task(
     """
     scan_id = self.request.id
     provider_str = scan_config["provider"]
+    redis_worker = redis_client
+    credential_ref = scan_config.get("credential_ref")
+
+    # A scan cancelled before a worker took it is not run. Celery keeps a
+    # revocation in the memory of the workers that were up when it was
+    # sent: with none up, or after a restart, the task is delivered all
+    # the same. DELETE had answered that the scan was cancelled, and the
+    # account was then scanned (#766). The stored status is what says so
+    # to every worker; the credentials go with it.
+    metadata = scan_store.load_metadata(redis_worker, scan_id)
+    if metadata is not None and metadata.get("status") == "cancelled":
+        if credential_ref:
+            redis_worker.delete(credential_ref)
+        logger.info(f"CSPM scan {scan_id} was cancelled before it started; not run")
+        return {"scan_id": scan_id, "status": "cancelled"}
 
     logger.info(f"Starting CSPM scan {scan_id} for {provider_str}")
 
     # Retrieve credentials from secure Redis reference (not from task args)
-    redis_worker = redis_client
-    credential_ref = scan_config.get("credential_ref")
     if not credential_ref:
         raise ValueError("Missing credential reference in scan config")
 
@@ -198,7 +211,8 @@ def run_cspm_scan_task(
                     account_id=account_id,
                     account_name=account_name,
                     regions=regions,
-                    check_ids=check_ids
+                    check_ids=check_ids,
+                    scan_id=scan_id
                 )
             )
         finally:
