@@ -44,23 +44,6 @@ metrics = ["fastapi>=0.110", "prometheus-client>=0.20"]
 # sqlalchemy[asyncio]: the modules import sqlalchemy.ext.asyncio, which needs
 # greenlet.
 events = ["redis>=5", "sqlalchemy[asyncio]>=2"]
-# tracing: the distributions the module imports at the top, exporters and
-# instrumentations included. No service image installs it, and installing it
-# does not make the module importable today: tracing.py imports the Jaeger
-# Thrift exporter, whose last release (1.21.0) does not import under a
-# current OpenTelemetry SDK. install_observability() logs that and goes on
-# without tracing. The module has to move to OTLP before a service uses it.
-tracing = [
-    "opentelemetry-api",
-    "opentelemetry-sdk",
-    "opentelemetry-exporter-jaeger-thrift",
-    "opentelemetry-exporter-otlp-proto-http",
-    "opentelemetry-instrumentation-fastapi",
-    "opentelemetry-instrumentation-httpx",
-    "opentelemetry-instrumentation-redis",
-    "opentelemetry-instrumentation-sqlalchemy",
-    "opentelemetry-propagator-b3",
-]
 
 [tool.setuptools]
 # The modules live flat in this directory; expose them under the importable
@@ -89,4 +72,3 @@ observability = ["metrics"]
 scopes = []
 security_middleware = ["fastapi"]
 tenancy = ["fastapi"]
-tracing = ["tracing"]

@@ -707,6 +707,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vulnerability, so the list was always empty; and the `file` of an
   attachment would have been a `/media/` URL, which nothing serves. The
   route answers 404 and its serializer is gone. The table stays, unused.
+- **shared: the tracing module, which could not be imported** (#665).
+  `open-security-shared/tracing.py` imported the Jaeger Thrift exporter,
+  whose last release (1.21.0) does not import under a current
+  OpenTelemetry SDK, and no image installed OpenTelemetry at all. Every
+  FastAPI service still tried it at start-up, through
+  `install_observability()`, and logged "Tracing not initialised". The
+  module, the `tracing` extra of the package and the `enable_tracing`
+  argument of `install_observability()` are removed; that log line no
+  longer appears. Nothing traced before, so nothing stops tracing. The
+  observability roadmap now says what tracing needs (an OTLP exporter,
+  locked requirements, a collector) instead of showing the Jaeger
+  example, and the page on architectural patterns loses the section that
+  described the module as written.
 
 ### Fixed
 

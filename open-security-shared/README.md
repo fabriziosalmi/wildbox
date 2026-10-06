@@ -64,7 +64,6 @@ the extras of the modules it uses:
 | `auth` | `auth_utils` | FastAPI, PyJWT, passlib with bcrypt |
 | `metrics` | `observability` | FastAPI, prometheus-client 0.20 or later |
 | `events` | `cqrs`, `event_sourcing`, `feature_flags`; `idempotency` with `fastapi` | Redis, SQLAlchemy 2 with asyncio |
-| `tracing` | `tracing` | the OpenTelemetry API, SDK, exporters and instrumentations |
 
 `[tool.wildbox.module-extras]` in `pyproject.toml` is the same table for
 `scripts/check_shared_dependencies.py`, which fails when a module imports
@@ -72,11 +71,12 @@ something its extras do not require.
 
 The six FastAPI services use `fastapi` and `metrics`. Guardian (Django)
 imports `scopes` only, and the sensor (aiohttp) nothing: both install the
-package without an extra. No image installs
-`auth`, `events` or `tracing` today. `tracing` does not work yet: the module
-imports the Jaeger Thrift exporter, whose last release (1.21.0) does not
-import under a current OpenTelemetry SDK, so `install_observability` logs
-that tracing is not initialized and the service runs without it.
+package without an extra. No image installs `auth` or `events` today.
+
+There is no tracing module. `tracing.py` and its extra were removed: the
+module could not be imported (it needed the Jaeger Thrift exporter, which
+does not import under a current OpenTelemetry SDK) and no image installed
+its requirements.
 
 In a service image the package is installed after the hash-checked lock,
 offline:

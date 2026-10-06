@@ -116,8 +116,8 @@ def test_imports_in_functions_and_for_type_checkers_do_not_count():
             from .auth_utils import AuthConfig
 
         def late():
-            from opentelemetry import trace
-            from .tracing import setup
+            from redis import Redis
+            from .cqrs import QueryBus
         """))
     assert third_party == set() and siblings == set()
 
@@ -129,20 +129,40 @@ def test_imports_in_functions_and_for_type_checkers_do_not_count():
         ("starlette.middleware.base", "fastapi"),
         ("jwt", "pyjwt"),
         ("prometheus_client", "prometheus-client"),
-        ("opentelemetry", "opentelemetry-api"),
-        ("opentelemetry.propagate", "opentelemetry-api"),
-        ("opentelemetry.sdk.trace.export", "opentelemetry-sdk"),
-        ("opentelemetry.propagators.b3", "opentelemetry-propagator-b3"),
-        (
-            "opentelemetry.exporter.otlp.proto.http.trace_exporter",
-            "opentelemetry-exporter-otlp-proto-http",
-        ),
+        ("redis.asyncio", "redis"),
+        ("sqlalchemy.ext.asyncio", "sqlalchemy"),
         ("numpy", None),
     ],
 )
+def test_the_distribution_of_an_import_is_the_one_of_its_prefix(module, distribution):
+    assert csd.provider(module) == distribution
+
+
+@pytest.mark.parametrize(
+    "module, distribution",
+    [
+        ("vendor", "vendor-api"),
+        ("vendor.propagate", "vendor-api"),
+        ("vendor.sdk.trace.export", "vendor-sdk"),
+        ("vendor.sdk.exporter.http.trace_exporter", "vendor-sdk-exporter-http"),
+        ("vendors", None),
+    ],
+)
 def test_the_distribution_of_an_import_is_the_longest_prefix_known(
-    module, distribution
+    monkeypatch, module, distribution
 ):
+    # No module of the package imports a namespace split over several
+    # distributions since tracing.py went (#665); the rule is kept for the
+    # next one, and tested on a table of its own.
+    monkeypatch.setattr(
+        csd,
+        "PROVIDERS",
+        {
+            "vendor": "vendor-api",
+            "vendor.sdk": "vendor-sdk",
+            "vendor.sdk.exporter.http": "vendor-sdk-exporter-http",
+        },
+    )
     assert csd.provider(module) == distribution
 
 
@@ -645,8 +665,27 @@ def test_the_package_has_no_core_dependency():
         "auth",
         "metrics",
         "events",
-        "tracing",
     }
+
+
+def test_tracing_stays_removed():
+    # tracing.py imported the Jaeger Thrift exporter, whose last release does
+    # not import under a current OpenTelemetry SDK, and no image installed
+    # the extra: install_observability() tried it at every start-up and
+    # logged that it had failed. Module, extra and switch were removed
+    # (#665). Tracing comes back with an exporter that imports, an image
+    # that installs it and a collector that receives it, not as a file
+    # nothing can load.
+    shared = REPO / "open-security-shared"
+    document = tomllib.loads((shared / "pyproject.toml").read_text(encoding="utf-8"))
+    assert not (shared / "tracing.py").exists()
+    assert "tracing" not in document["project"]["optional-dependencies"]
+    assert "tracing" not in document["tool"]["wildbox"]["module-extras"]
+    assert not [name for name in csd.PROVIDERS if name.startswith("opentelemetry")]
+
+    observability = (shared / "observability.py").read_text(encoding="utf-8")
+    assert "enable_tracing" not in observability
+    assert "tracing" not in observability.lower()
 
 
 @pytest.mark.parametrize("name", FASTAPI_SERVICES)

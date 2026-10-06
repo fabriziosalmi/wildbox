@@ -36,9 +36,9 @@
   Redis, and the tools API exports the counts
   (`open-security-tools/app/async_metrics.py`)
 - **Grafana dashboards**
-- **Distributed tracing**: `open-security-shared/tracing.py` initializes
-  OpenTelemetry only when its dependencies are installed, and no Compose file
-  runs a trace collector
+- **Distributed tracing**: there is none. No service creates a span, no
+  image installs OpenTelemetry and no Compose file runs a trace collector.
+  What crosses a service boundary today is the `X-Request-ID` header
 - **Log aggregation** (ELK/Loki)
 
 ## Phase 1: Prometheus Metrics (Done)
@@ -165,7 +165,15 @@ volumes:
 
 ## Phase 3: Distributed Tracing
 
-### 3.1 Add Jaeger/Tempo
+Not started, and nothing in the repository implements it. The shared
+package used to have a `tracing.py` module and a `tracing` extra; the
+module imported the Jaeger Thrift exporter, whose last release (1.21.0) does
+not import under a current OpenTelemetry SDK, no image installed the extra,
+and `install_observability()` only logged at every start-up that tracing was
+not initialized. Module, extra and the `enable_tracing` argument were
+removed.
+
+### 3.1 What tracing needs
 
 **For request flow visibility:**
 
@@ -173,22 +181,16 @@ volumes:
 - Track latency at each hop
 - Identify bottlenecks
 
-**OpenTelemetry instrumentation:**
+**To build it:**
 
-```python
-from opentelemetry import trace
-from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
-provider = TracerProvider()
-jaeger_exporter = JaegerExporter(
-    agent_host_name="jaeger",
-    agent_port=6831,
-)
-provider.add_span_processor(BatchSpanProcessor(jaeger_exporter))
-trace.set_tracer_provider(provider)
-```
+- an exporter that is maintained: OTLP
+  (`opentelemetry-exporter-otlp-proto-http`), not the Jaeger Thrift exporter
+- the OpenTelemetry packages locked in the `requirements.in` of each service
+  that traces, behind an extra of `open-security-shared`
+  (see the [dependency guide](DEPENDENCY_MANAGEMENT_GUIDE.md))
+- a collector that receives OTLP (Jaeger or Tempo) in the `monitoring`
+  Compose profile
+- trace context forwarded by the gateway, next to `X-Request-ID`
 
 ## Phase 4: Log Aggregation
 
@@ -353,4 +355,4 @@ After Phase 1 & 2 completion:
 ---
 
 **Document Owner:** Platform Team  
-**Last Updated:** October 3, 2026
+**Last Updated:** October 6, 2026

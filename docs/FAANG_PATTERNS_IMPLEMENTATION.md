@@ -6,9 +6,12 @@
 >
 > - `circuit_breaker.py` is used by the agents service
 >   (`open-security-agents/app/agents/threat_enrichment_agent.py`).
-> - `tracing.py` is loaded by `observability.py` only when its OpenTelemetry
->   dependencies are installed; no Compose file runs Jaeger or another
->   collector.
+> - `tracing.py`, the OpenTelemetry module this page described as its fifth
+>   pattern, was removed: it could not be imported, no image installed its
+>   dependencies and no Compose file ran a collector. The section, and the
+>   steps that named Jaeger, went with it; the
+>   [observability roadmap](OBSERVABILITY_ROADMAP.md) says what tracing
+>   needs.
 > - `idempotency.py`, `event_sourcing.py`, `cqrs.py` and `feature_flags.py`
 >   are not imported by any service, so the endpoints, tables, metrics and
 >   admin API described for them do not exist in the running platform.
@@ -28,12 +31,10 @@
 
 ## Executive Summary
 
-Implemented **7 production-grade architectural patterns** to transform Wildbox from "vibecoding" to enterprise-grade reliability. These patterns are battle-tested by FAANG companies (Netflix, Stripe, Uber, Google) and address critical gaps in resilience, observability, and deployment safety.
+Implemented **6 production-grade architectural patterns** to transform Wildbox from "vibecoding" to enterprise-grade reliability. These patterns are battle-tested by FAANG companies (Netflix, Stripe, Uber, Google) and address critical gaps in resilience, observability, and deployment safety.
 
 **Total Impact:**
 
-- **3,469 lines** of production-ready code
-- **12 new files** across shared libraries, tests, and infrastructure
 - **Zero breaking changes** to existing services (all additive)
 - **100% backward compatible** with gradual adoption path
 
@@ -360,107 +361,7 @@ CREATE INDEX ON team_stats_mv (team_id);
 
 ---
 
-## 5. OpenTelemetry Distributed Tracing 🔍
-
-**File:** `/open-security-shared/tracing.py` (400 lines)
-
-### Problem Solved
-
-Without distributed tracing:
-
-- Can't debug cross-service requests (which service is slow?)
-- No visibility into database query performance
-- Can't correlate logs across services
-
-### Solution
-
-OpenTelemetry with Jaeger backend:
-
-```python
-from shared.tracing import setup_wildbox_service_tracing
-
-# One-line initialization
-setup_wildbox_service_tracing(
-    service_name="identity",
-    app=app,
-    db_engine=engine,
-    redis_client=redis_client
-)
-
-# All endpoints automatically traced:
-# - HTTP requests (path, method, status, duration)
-# - Database queries (SQL, duration, connection pool)
-# - Redis operations (command, duration)
-# - External API calls (URL, status, timeout)
-```
-
-### Trace Visualization
-
-**Request flow:**
-
-```http
-Gateway [200ms]
-  └─> Identity [180ms]
-      ├─> PostgreSQL query [50ms] - SELECT * FROM users
-      ├─> Redis GET [2ms] - cache:user:123
-      └─> OpenAI API [120ms] - POST /chat/completions
-```
-
-**Jaeger UI:** `http://localhost:16686`
-
-- Search traces by service
-- Filter by latency (>1s)
-- View request dependencies
-- Correlate with logs (trace_id in every log line)
-
-### Automatic Instrumentation
-
-- **FastAPI:** All endpoints
-- **SQLAlchemy:** All queries
-- **Redis:** All commands
-- **httpx:** All external API calls
-
-### Manual Spans
-
-```python
-from shared.tracing import trace_function, trace_span
-
-@trace_function("complex_calculation")
-async def analyze_threat(data: dict):
-    # Automatic span with function arguments
-    ...
-
-async with trace_span("external_api", api="openai"):
-    response = await openai.chat.completions.create(...)
-```
-
-### Adoption Plan
-
-1. ✅ Created `/open-security-shared/tracing.py`
-2. ⏳ Add Jaeger to `docker-compose.yml`
-3. ⏳ Add OpenTelemetry dependencies to all services
-4. ⏳ Initialize tracing in all 11 services
-5. ⏳ Update logging format to include trace_id
-
-**Files to modify:**
-
-- `/docker-compose.yml` - Add Jaeger service
-- `/open-security-identity/requirements.txt` - Add `opentelemetry-*` packages
-- `/open-security-identity/app/main.py` - Call `setup_wildbox_service_tracing()`
-
-**Docker Compose addition:**
-
-```yaml
-jaeger:
-  image: jaegertracing/all-in-one:1.50
-  ports:
-    - "16686:16686"  # Jaeger UI
-    - "14268:14268"  # Collector HTTP
-```
-
----
-
-## 6. Chaos Engineering Tests 🧪
+## 5. Chaos Engineering Tests 🧪
 
 **File:** `/tests/chaos/test_chaos_experiments.py` (450 lines)
 
@@ -558,7 +459,7 @@ pytest tests/chaos/ -v -m chaos
 
 ---
 
-## 7. Feature Flags 🚩
+## 6. Feature Flags 🚩
 
 **File:** `/open-security-shared/feature_flags.py` (500 lines)
 
@@ -669,23 +570,11 @@ async def disable_flag(key: str):
 
 - [ ] Add dependencies to all `requirements.txt` files
   - `redis>=5.0.0` (idempotency, CQRS, feature flags)
-  - `opentelemetry-api>=1.20.0`
-  - `opentelemetry-sdk>=1.20.0`
-  - `opentelemetry-instrumentation-fastapi>=0.41b0`
-  - `opentelemetry-exporter-jaeger>=1.20.0`
-- [ ] Add Jaeger to `docker-compose.yml`
 - [ ] Create database migrations
   - `event_store` table (identity DB)
   - `feature_flags` table (identity DB)
 
-### Phase 2: Observability (Week 2)
-
-- [ ] Initialize OpenTelemetry in all 11 services
-- [ ] Verify traces appear in Jaeger UI
-- [ ] Add trace_id to all log lines
-- [ ] Create Grafana dashboards for traces
-
-### Phase 3: Resilience (Week 3)
+### Phase 2: Resilience (Week 2)
 
 - [ ] Add circuit breakers to all external API calls
   - Agents service: OpenAI calls
@@ -697,7 +586,7 @@ async def disable_flag(key: str):
 - [ ] Run chaos tests against staging
 - [ ] Validate circuit breakers trip correctly
 
-### Phase 4: Event Sourcing (Week 4)
+### Phase 3: Event Sourcing (Week 3)
 
 - [ ] Emit events for all critical operations
   - User creation/login (identity)
@@ -706,7 +595,7 @@ async def disable_flag(key: str):
 - [ ] Create audit trail API endpoint
 - [ ] Build compliance report generator
 
-### Phase 5: CQRS (Week 5)
+### Phase 4: CQRS (Week 4)
 
 - [ ] Create materialized views
   - `team_stats_mv` (identity)
@@ -715,14 +604,14 @@ async def disable_flag(key: str):
 - [ ] Add cache invalidation to write operations
 - [ ] Measure query performance improvement
 
-### Phase 6: Feature Flags (Week 6)
+### Phase 5: Feature Flags (Week 5)
 
 - [ ] Create default flags (`WILDBOX_FLAGS`)
 - [ ] Add flag checks to AI analysis
 - [ ] Build admin UI for flag management
 - [ ] Document flag usage in API reference
 
-### Phase 7: Production Validation (Week 7)
+### Phase 6: Production Validation (Week 6)
 
 - [ ] Run full chaos test suite in production
 - [ ] Validate all patterns working together
@@ -753,11 +642,6 @@ async def disable_flag(key: str):
 - **Metric:** `query_cache_hit_rate` (percentage of cached reads)
 - **Target:** >90% cache hit rate for dashboard queries
 
-### OpenTelemetry
-
-- **Metric:** `trace_latency_p99` (99th percentile request latency)
-- **Target:** <500ms for API endpoints
-
 ### Feature Flags
 
 - **Metric:** `feature_flag_evaluations{flag="ai_analysis"}` (checks per second)
@@ -774,7 +658,7 @@ async def disable_flag(key: str):
 
 **Steps:**
 
-1. Check Jaeger for traces showing OpenAI errors
+1. Check the agents service's logs for OpenAI errors
 2. Verify OpenAI API key valid: `curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`
 3. Check OpenAI status page: https://status.openai.com
 4. If OpenAI degraded: Wait for recovery (circuit will auto-close)
@@ -799,20 +683,10 @@ async def disable_flag(key: str):
 
 ### Infrastructure Costs
 
-- **Jaeger:** ~$50/month (1 EC2 t3.medium)
 - **Redis (additional DB):** $0 (using existing Redis instance)
 - **PostgreSQL (additional tables):** $0 (using existing database)
 
-**Total:** ~$50/month
-
-### Engineering Time Saved
-
-- **Debugging without traces:** 2 hours/incident → 15 min (8x faster)
-- **Duplicate transaction debugging:** 1 hour → 0 (prevented by idempotency)
-
-**Annual savings:** ~200 hours engineer time = ~$40,000
-
-**ROI:** 800x (first year)
+**Total:** $0
 
 ---
 
@@ -854,10 +728,9 @@ async def disable_flag(key: str):
 - **Circuit Breaker:** Netflix Hystrix - https://github.com/Netflix/Hystrix/wiki
 - **Event Sourcing:** Greg Young's Event Store - https://www.eventstore.com
 - **CQRS:** Martin Fowler - https://martinfowler.com/bliki/CQRS.html
-- **OpenTelemetry:** Official Docs - https://opentelemetry.io/docs
 - **Chaos Engineering:** Principles of Chaos - https://principlesofchaos.org
 - **Feature Flags:** LaunchDarkly Patterns - https://docs.launchdarkly.com
 
 ---
 
-**Next Steps:** Follow integration roadmap (Phase 1 → Phase 7) for gradual adoption.
+**Next Steps:** Follow integration roadmap (Phase 1 → Phase 6) for gradual adoption.

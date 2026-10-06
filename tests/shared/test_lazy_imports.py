@@ -26,7 +26,7 @@ import pytest
 
 # Third-party modules that only some submodules need. None may be imported as a
 # side effect of importing the package or of using the light-weight helpers.
-OPTIONAL = ("jwt", "opentelemetry", "redis", "sqlalchemy", "prometheus_client")
+OPTIONAL = ("jwt", "redis", "sqlalchemy", "prometheus_client")
 
 
 def _imported_after(code: str) -> set:

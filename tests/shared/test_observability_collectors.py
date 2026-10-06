@@ -79,7 +79,7 @@ def test_the_metrics_route_collects_off_the_event_loop():
     collector = Collector()
     register_collector(collector.name, collector)
     app = FastAPI()
-    install_observability(app, service_name="shared-test", enable_tracing=False)
+    install_observability(app, service_name="shared-test")
 
     response = TestClient(app).get("/metrics")
 
