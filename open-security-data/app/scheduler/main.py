@@ -31,6 +31,16 @@ config = get_config()
 TICK_SECONDS = 60.0
 RETRY_SECONDS = 60.0
 
+# A source is disabled when this many of its collections have failed one
+# after the other (CollectionScheduler._count_failure).
+MAX_FAILURES_IN_A_ROW = 10
+# The errors of a database that cannot be reached: the data service's own
+# failure, not a source's. By name: a collector's result carries the class of
+# its error as a name (error_details["exception_type"]).
+DATABASE_AWAY = ("OperationalError", "InterfaceError")
+# How a run that failed is recorded (collection_runs.status).
+FAILED_RUNS = ("failed", "timeout")
+
 
 def _described(error: BaseException) -> str:
     """What failed, by its class: never the text of the error.
@@ -123,18 +133,92 @@ class CollectionScheduler:
 
         The status is not what stops a failing source. One that fails keeps
         its task and is tried again at its own interval (_run_collection),
-        and _handle_collection_error disables it when a collection raises
-        or times out with ten errors counted: a disabled source is not
-        scheduled, here as before.
+        and is disabled when ten of its collections in a row have failed
+        (_count_failure): a disabled source is not scheduled, here as
+        before.
         """
         enabled = db.query(Source).filter(Source.enabled == True).all()
         return self._collectable(db, enabled)
+
+    @staticmethod
+    def _count_failure(db_source: Source) -> None:
+        """One more collection of this source has failed.
+
+        The rule, one for every way a collection can fail (#788):
+
+        - a collection that fails is counted with its source: one whose
+          collector returns ``failed`` or ``timeout``, one the scheduler's
+          own time limit ends, one that raises;
+        - a collection that completes sets the count back to 0;
+        - a collection that was rate limited is neither: the count stays;
+        - at MAX_FAILURES_IN_A_ROW the source is disabled, and stays so
+          until an operator enables it, which starts its count again
+          (``manage.py sources enable``).
+
+        A failure of the data service's own database (DATABASE_AWAY) says
+        nothing about the source and is not counted: ten minutes of a
+        database that drops connections would disable every source.
+
+        There were two rules. A collection that raised or timed out was
+        counted and disabled its source at ten; one whose collector
+        returned ``failed``, the usual way for a feed to fail, was counted
+        and never disabled anything; and no success ever set the count
+        back, so "ten" meant ten since the row was written.
+        """
+        db_source.error_count = (db_source.error_count or 0) + 1
+        db_source.status = 'error'
+        if db_source.error_count >= MAX_FAILURES_IN_A_ROW:
+            logger.warning(
+                "Disabling source %s: its last %d collections have failed",
+                db_source.name, db_source.error_count,
+            )
+            db_source.enabled = False
+
+    @staticmethod
+    def _correct_counts(db, sources: List[Source]) -> None:
+        """At start: no source counts more failures than its runs show.
+
+        A count written by a release before #788 is of every failure the
+        source ever had, since no success set it back. Left as it is, one
+        more failure would disable a source that had failed nine times in
+        a year. The runs are on record (collection_runs): when one of the
+        source's last runs completed, the count is at most the runs that
+        failed after it. A count that the record does not contradict is
+        left alone, and so is a source with no completed run among them.
+        """
+        corrected = False
+        for source in sources:
+            if not source.error_count:
+                continue
+            statuses = [
+                status
+                for (status,) in db.query(CollectionRun.status)
+                .filter(CollectionRun.source_id == source.id)
+                .order_by(CollectionRun.started_at.desc())
+                .limit(MAX_FAILURES_IN_A_ROW)
+            ]
+            if 'completed' not in statuses:
+                continue
+            since = statuses[:statuses.index('completed')]
+            in_a_row = sum(1 for status in since if status in FAILED_RUNS)
+            if in_a_row < source.error_count:
+                logger.info(
+                    "Source '%s' counted %d errors, and %d of its collections "
+                    "have failed since the last one that completed: its "
+                    "count is %d",
+                    source.name, source.error_count, in_a_row, in_a_row,
+                )
+                source.error_count = in_a_row
+                corrected = True
+        if corrected:
+            db.commit()
 
     async def _load_sources(self):
         """Schedule the sources at start, each from its last collection"""
         db = get_db_session()
         try:
             sources = self._sources_to_schedule(db)
+            self._correct_counts(db, sources)
 
             current_time = datetime.now(timezone.utc)
             
@@ -269,13 +353,16 @@ class CollectionScheduler:
                         db_source.last_success = datetime.now(timezone.utc)
                         db_source.status = 'active'
                         db_source.last_error = None
+                        db_source.error_count = 0
                     elif result.status.value == 'rate_limited':
                         db_source.status = 'rate_limited'
                         db_source.last_error = result.error_message
                     else:
-                        db_source.error_count += 1
                         db_source.status = 'error'
                         db_source.last_error = result.error_message
+                        failed_on = (result.error_details or {}).get("exception_type")
+                        if failed_on not in DATABASE_AWAY:
+                            self._count_failure(db_source)
                     
                     db.commit()
                     
@@ -309,38 +396,41 @@ class CollectionScheduler:
             described = _described(e)
             self._say_failure(source.name, e)
             task.last_error = described
-            await self._record_error(source, described)
+            await self._record_error(
+                source, described, counted=type(e).__name__ not in DATABASE_AWAY
+            )
 
         finally:
             task.running = False
 
-    async def _record_error(self, source: Source, error_message: str):
+    async def _record_error(
+        self, source: Source, error_message: str, counted: bool = True
+    ):
         """Count a failed collection with its source, if the database takes
         it. When it does not, that is said, and the scheduler goes on: the
         error that failed the collection is, as a rule, the same database's."""
         try:
-            await self._handle_collection_error(source, error_message)
+            await self._handle_collection_error(source, error_message, counted)
         except SQLAlchemyError as e:
             logger.error(
                 "The failed collection of source %s could not be recorded: %s",
                 source.name, describe_database_error(e),
             )
 
-    async def _handle_collection_error(self, source: Source, error_message: str):
-        """Handle collection errors"""
+    async def _handle_collection_error(
+        self, source: Source, error_message: str, counted: bool = True
+    ):
+        """Record a collection that raised or timed out; ``counted`` unless
+        the failure was the database's own (_count_failure)."""
         db = get_db_session()
         try:
             db_source = db.query(Source).filter(Source.id == source.id).first()
             if db_source:
-                db_source.error_count += 1
                 db_source.last_error = error_message
                 db_source.status = 'error'
-                
-                # Disable source if too many consecutive errors
-                if db_source.error_count >= 10:
-                    logger.warning(f"Disabling source {source.name} due to excessive errors")
-                    db_source.enabled = False
-                
+                if counted:
+                    self._count_failure(db_source)
+
                 db.commit()
         finally:
             db.close()

@@ -20,11 +20,12 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import manage  # noqa: E402
 import throwaway_postgres  # noqa: E402
 from app import collectors  # noqa: E402
 from app.collectors import (  # noqa: E402
@@ -33,7 +34,7 @@ from app.collectors import (  # noqa: E402
     CollectionStatus,
     CollectorRegistry,
 )
-from app.models import Base, Source  # noqa: E402
+from app.models import Base, CollectionRun, Source  # noqa: E402
 from app.scheduler import main as scheduler_main  # noqa: E402
 from app.scheduler.main import CollectionScheduler  # noqa: E402
 from test_scheduler_one_rule import a_source, db  # noqa: E402,F401
@@ -61,6 +62,8 @@ class Ends:
             raise ending
         if ending == "never":
             await asyncio.Event().wait()
+        if isinstance(ending, CollectionResult):
+            return ending
         return CollectionResult(
             status=CollectionStatus(ending),
             error_message=None if ending == "completed" else f"{ending} (HTTP 503)",
@@ -390,6 +393,257 @@ def test_a_stop_asked_for_while_the_loop_waits_after_an_error_is_obeyed(
     loop = pace.run(scenario)
 
     assert loop.exception() is None and len(failed) == 1
+
+
+# --- One rule for the count (#788) ---------------------------------------------------
+# Ten collections in a row that fail, whichever way, disable a source; one
+# that completes sets the count back to 0. There were two rules: a collection
+# that raised or timed out was counted and disabled its source at ten, one
+# whose collector returned "failed" was counted and disabled nothing, and no
+# success ever set the count back.
+
+TEN = scheduler_main.MAX_FAILURES_IN_A_ROW
+
+
+def _state(row):
+    source = row()
+    return source.error_count, source.enabled, source.status
+
+
+def _fast_timeout(task):
+    """The seconds the scheduler gives a collection, for the endings that
+    never return."""
+    task.source.timeout = 0.01
+
+
+EVERY_WAY_TO_FAIL = {
+    "the collector returns failed": "failed",
+    "the collector returns timeout": "timeout",
+    "the scheduler's time limit": "never",
+    "it raises a builtin error": ValueError(ERROR_TEXT),
+    "it raises any other error": RuntimeError(ERROR_TEXT),
+}
+
+
+def test_the_rule_is_ten():
+    assert TEN == 10
+
+
+@pytest.mark.parametrize("way", list(EVERY_WAY_TO_FAIL))
+def test_ten_failures_in_a_row_disable_a_source_whichever_way_it_fails(
+    one, monkeypatch, caplog, way
+):
+    scheduler, task, row = one
+    _fast_timeout(task)
+    Ends(monkeypatch, EVERY_WAY_TO_FAIL[way])
+
+    _collect(scheduler, task, times=TEN - 1)
+    assert _state(row) == (TEN - 1, True, "error")
+
+    with caplog.at_level(logging.WARNING, logger=scheduler_main.__name__):
+        _collect(scheduler, task)
+
+    # main, for the first two ways: (10, True, "error"), and so on for ever.
+    assert _state(row) == (TEN, False, "error")
+    assert "Disabling source feed: its last 10 collections have failed" in [
+        record.getMessage() for record in caplog.records
+    ]
+    # And a disabled source leaves the schedule at the next reload.
+    asyncio.run(scheduler._reload_sources())
+    assert scheduler.tasks == {}
+
+
+def test_the_ways_to_fail_count_together(one, monkeypatch):
+    scheduler, task, row = one
+    _fast_timeout(task)
+    ways = list(EVERY_WAY_TO_FAIL.values())
+    Ends(monkeypatch, *(ways[index % len(ways)] for index in range(TEN)))
+
+    _collect(scheduler, task, times=TEN - 1)
+    assert _state(row) == (TEN - 1, True, "error")
+    _collect(scheduler, task)
+
+    assert _state(row) == (TEN, False, "error")
+
+
+def test_a_collection_that_completes_sets_the_count_back(one, monkeypatch):
+    scheduler, task, row = one
+    endings = ["failed"] * (TEN - 1) + ["completed"] + ["failed"] * TEN
+    Ends(monkeypatch, *endings)
+
+    _collect(scheduler, task, times=TEN - 1)
+    assert _state(row) == (TEN - 1, True, "error")
+
+    _collect(scheduler, task)
+    # main: (9, True, "active"), and the next failure was "the tenth".
+    assert _state(row) == (0, True, "active")
+    assert row().last_error is None
+
+    # Nine more do not disable it: they are nine in a row, not eighteen.
+    _collect(scheduler, task, times=TEN - 1)
+    assert _state(row) == (TEN - 1, True, "error")
+    _collect(scheduler, task)
+    assert _state(row) == (TEN, False, "error")
+
+
+def test_a_source_that_fails_every_other_time_is_never_disabled(one, monkeypatch):
+    scheduler, task, row = one
+    Ends(monkeypatch, *(["failed", "completed"] * 15))
+
+    _collect(scheduler, task, times=29)
+
+    # main: fifteen errors counted, and nothing done about them.
+    assert _state(row) == (1, True, "error")
+    _collect(scheduler, task)
+    assert _state(row) == (0, True, "active")
+
+
+def test_a_rate_limited_collection_is_neither_a_failure_nor_a_success(one, monkeypatch):
+    scheduler, task, row = one
+    Ends(monkeypatch, *(["failed"] * 5 + ["rate_limited"] + ["failed"] * 5))
+
+    _collect(scheduler, task, times=5)
+    assert _state(row) == (5, True, "error")
+    _collect(scheduler, task)
+    assert _state(row) == (5, True, "rate_limited")
+    _collect(scheduler, task, times=4)
+    assert _state(row) == (9, True, "error")
+    _collect(scheduler, task)
+    assert _state(row) == (TEN, False, "error")
+
+
+def _failed_on(exception_type):
+    return CollectionResult(
+        status=CollectionStatus.FAILED,
+        error_message=exception_type,
+        error_details={"exception_type": exception_type},
+    )
+
+
+@pytest.mark.parametrize(
+    "ending",
+    [
+        _failed_on("OperationalError"),
+        _failed_on("InterfaceError"),
+        OperationalError("SELECT 1", {}, Exception(SERVER_TEXT)),
+        InterfaceError("SELECT 1", {}, Exception(SERVER_TEXT)),
+    ],
+    ids=["returned", "returned, interface", "raised", "raised, interface"],
+)
+def test_a_database_that_is_away_is_not_the_sources_failure(one, monkeypatch, ending):
+    """The data service's own database dropping connections for a while
+    must not disable every source it has."""
+    scheduler, task, row = one
+    Ends(monkeypatch, "failed", "failed", ending)
+
+    _collect(scheduler, task, times=2)
+    assert _state(row) == (2, True, "error")
+    _collect(scheduler, task, times=2 * TEN)
+
+    # Said with the source, and not counted against it.
+    assert _state(row) == (2, True, "error")
+    assert row().last_error.startswith(("OperationalError", "InterfaceError"))
+
+
+@pytest.mark.parametrize(
+    "ending",
+    [
+        _failed_on("IntegrityError"),
+        IntegrityError("INSERT", {}, Exception("duplicate key")),
+    ],
+    ids=["returned", "raised"],
+)
+def test_a_database_that_refuses_what_a_source_brings_is_the_sources_failure(
+    one, monkeypatch, ending
+):
+    scheduler, task, row = one
+    Ends(monkeypatch, ending)
+
+    _collect(scheduler, task, times=TEN)
+
+    assert _state(row) == (TEN, False, "error")
+
+
+def test_a_source_an_operator_enables_starts_its_count_again(one, monkeypatch):
+    scheduler, task, row = one
+    Ends(monkeypatch, "failed")
+    _collect(scheduler, task, times=TEN)
+    assert _state(row) == (TEN, False, "error")
+    monkeypatch.setattr(manage, "get_db_session", scheduler_main.get_db_session)
+
+    assert manage.enable_source("feed") is True
+
+    # main: (10, True, "active"), disabled again by its first failure.
+    assert _state(row) == (0, True, "active")
+    _collect(scheduler, task)
+    assert _state(row) == (1, True, "error")
+
+
+# The count a release before this one left: every failure the source ever
+# had. The runs are on record, newest first here.
+@pytest.mark.parametrize(
+    "counted, runs, corrected",
+    [
+        # Failed nine times in a year, the last time yesterday.
+        (9, ["failed", "completed", "completed", "failed"], 1),
+        (37, ["completed", "failed", "failed"], 0),
+        (37, ["timeout", "failed", "rate_limited", "completed", "failed"], 2),
+        # Nothing the record contradicts: left as it is.
+        (37, ["failed"] * 10, 37),
+        (37, ["failed"] * 12 + ["completed"], 37),
+        (4, [], 4),
+        (1, ["failed", "failed", "completed"], 1),
+        (0, ["failed", "completed"], 0),
+    ],
+)
+def test_a_count_from_an_earlier_release_is_held_to_the_record_of_runs_at_start(
+    db, counted, runs, corrected  # noqa: F811
+):
+    source = a_source("feed", error_count=counted, status="error")
+    db.add(source)
+    now = datetime.now(timezone.utc)
+    for age, status in enumerate(runs):
+        db.add(
+            CollectionRun(
+                source_id=source.id,
+                status=status,
+                started_at=now - timedelta(hours=age + 1),
+            )
+        )
+    db.commit()
+
+    scheduler = CollectionScheduler()
+    asyncio.run(scheduler._load_sources())
+
+    db.expire_all()
+    assert db.query(Source).one().error_count == corrected
+    assert len(scheduler.tasks) == 1
+
+
+def test_such_a_source_outlives_its_next_failure(db, monkeypatch):  # noqa: F811
+    """What the correction is for: nine failures in a year and one more."""
+    source = a_source("feed", error_count=9, status="active")
+    db.add(source)
+    now = datetime.now(timezone.utc)
+    for age, status in enumerate(["completed", "failed", "completed"]):
+        db.add(
+            CollectionRun(
+                source_id=source.id,
+                status=status,
+                started_at=now - timedelta(hours=age + 1),
+            )
+        )
+    db.commit()
+    scheduler = CollectionScheduler()
+    asyncio.run(scheduler._load_sources())
+    (task,) = scheduler.tasks.values()
+    Ends(monkeypatch, "failed")
+
+    asyncio.run(scheduler._run_collection(task))
+
+    db.expire_all()
+    row = db.query(Source).one()
+    assert (row.error_count, row.enabled) == (1, True)
 
 
 # --- The same, on a PostgreSQL that stops answering ---------------------------------

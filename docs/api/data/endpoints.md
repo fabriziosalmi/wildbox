@@ -314,6 +314,11 @@ The sources the caller can see, by name.
 Each item has `id`, `name`, `description`, `source_type`, `enabled`,
 `status`, `last_collection`, `collection_count` and `error_count`.
 
+`error_count` is the number of the source's collections that have failed one
+after the other: a collection that completes sets it back to 0, and at 10 the
+scheduler disables the source. Until 0.12.2 it counted every failure since the
+source was created and was never set back.
+
 ### GET /api/v1/data/feeds/realtime
 
 Recent indicators as newline-delimited JSON (`application/x-ndjson`), most
