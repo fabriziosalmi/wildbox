@@ -15,17 +15,19 @@ ENV WILDBOX_GIT_SHA=$GIT_SHA \
 LABEL org.opencontainers.image.revision=$GIT_SHA \
       org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.source="https://github.com/fabriziosalmi/wildbox"
-# Install dependencies including build tools and luarocks
+# What the image uses, and nothing else: curl for the HEALTHCHECK below,
+# openssl for the certificate the entrypoint generates when none is mounted,
+# wget and ca-certificates to fetch lua-resty-http over HTTPS in this build.
+# gettext, unzip, make, gcc and musl-dev were installed as well, "build tools
+# and luarocks" for a luarocks that was never installed: nothing is compiled
+# or unpacked here and nothing calls envsubst, so the image that faces the
+# network shipped a compiler for no reason (#776).
+# tests/scripts/test_gateway_unused_parts.py asks for a user of each package.
 RUN apk add --no-cache \
     curl \
     openssl \
     ca-certificates \
-    gettext \
-    unzip \
-    wget \
-    make \
-    gcc \
-    musl-dev
+    wget
 
 # Create directories
 RUN mkdir -p /etc/nginx/lua \
