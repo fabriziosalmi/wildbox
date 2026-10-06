@@ -6,16 +6,17 @@ the modules it imports and locks what those need (#722). That only works if
 importing the package does not immediately import the dependencies of
 submodules the service never uses.
 
-It did. `__init__.py` did `from .auth_utils import ...` at module level, and
-auth_utils does `from jose import JWTError, jwt`. Four services import the
-shared package and none of them pin python-jose, so `import app.main` in the
-tools service died with:
+It did. `__init__.py` imported a module of JWT helpers at module level, which
+imported `jose`. Four services import the shared package and none of them
+pinned python-jose, so `import app.main` in the tools service died with:
 
     ModuleNotFoundError: No module named 'jose'
 
 -- the service could not start. The names are resolved lazily now (PEP 562);
-these tests fail if an eager import comes back. (auth_utils has since moved
-from python-jose to PyJWT, so the module to watch is `jwt`.)
+these tests fail if an eager import comes back. That module (`auth_utils`) and
+the others no service imported are gone (#665), so what is left to keep
+apart is FastAPI, for guardian and the sensor, which install the package
+without it, and prometheus_client, which only `observability` needs.
 """
 
 import subprocess
@@ -25,8 +26,9 @@ import textwrap
 import pytest
 
 # Third-party modules that only some submodules need. None may be imported as a
-# side effect of importing the package or of using the light-weight helpers.
-OPTIONAL = ("jwt", "redis", "sqlalchemy", "prometheus_client")
+# side effect of importing the package or of using the modules that need no
+# extra.
+OPTIONAL = ("fastapi", "starlette", "pydantic", "prometheus_client")
 
 
 def _imported_after(code: str) -> set:
@@ -51,18 +53,30 @@ def test_importing_the_package_pulls_in_nothing_optional():
     assert _imported_after("import open_security_shared") == set()
 
 
-def test_error_helpers_do_not_pull_in_auth_dependencies():
+def test_the_modules_without_an_extra_pull_in_nothing():
+    """guardian (Django) imports scopes; it must not need FastAPI for it."""
+    loaded = _imported_after(
+        "from open_security_shared import scopes, environment, api_docs\n"
+        "        from open_security_shared import circuit_breaker"
+    )
+    assert loaded == set()
+
+
+def test_error_helpers_do_not_pull_in_the_metrics_dependency():
     loaded = _imported_after(
         "from open_security_shared import install_error_handlers, error_body"
     )
-    assert "jwt" not in loaded
+    assert "fastapi" in loaded
+    assert "prometheus_client" not in loaded
 
 
-def test_observability_helpers_do_not_pull_in_auth_dependencies():
+def test_observability_helpers_resolve_without_the_error_module():
     loaded = _imported_after(
-        "from open_security_shared import install_observability, outcome_counter"
+        "import sys\n"
+        "        from open_security_shared import install_observability\n"
+        "        assert 'open_security_shared.errors' not in sys.modules"
     )
-    assert "jwt" not in loaded
+    assert "prometheus_client" in loaded
 
 
 def test_lazy_names_still_resolve():

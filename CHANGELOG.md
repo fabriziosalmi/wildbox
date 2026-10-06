@@ -846,6 +846,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where the file stays: `open-security-cspm/Makefile` and
   `open-security-responder/Makefile` printed a `/docs` URL, which answers
   `404` unless `ENVIRONMENT=development`.
+- **shared: six modules that no service imported** (#665).
+  `auth_utils`, `security_middleware`, `idempotency`, `event_sourcing`,
+  `cqrs` and `feature_flags` were libraries written ahead of a use that
+  never came: no service's code imported any of them, and no image
+  installed the `auth` and `events` extras they needed (PyJWT, passlib,
+  Redis, SQLAlchemy). They are removed with the two extras, the eight
+  names `open_security_shared` re-exported from `auth_utils`, the tests
+  of `auth_utils`, and `docs/FAANG_PATTERNS_IMPLEMENTATION.md`, the page
+  that described them as implemented. The package is now eight modules,
+  each imported by at least one service, with the `fastapi` and
+  `metrics` extras; a test fails for a module that no service imports.
+  Nothing a running service used has changed.
 
 ### Fixed
 

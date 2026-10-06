@@ -60,10 +60,8 @@ the extras of the modules it uses:
 | Extra | Modules | Requires |
 | --- | --- | --- |
 | none | `api_docs`, `circuit_breaker`, `environment`, `scopes` | the standard library |
-| `fastapi` | `errors`, `gateway_auth`, `tenancy`, `security_middleware` | FastAPI, Pydantic 2 |
-| `auth` | `auth_utils` | FastAPI, PyJWT, passlib with bcrypt |
+| `fastapi` | `errors`, `gateway_auth`, `tenancy` | FastAPI, Pydantic 2 |
 | `metrics` | `observability` | FastAPI, prometheus-client 0.20 or later |
-| `events` | `cqrs`, `event_sourcing`, `feature_flags`; `idempotency` with `fastapi` | Redis, SQLAlchemy 2 with asyncio |
 
 `[tool.wildbox.module-extras]` in `pyproject.toml` is the same table for
 `scripts/check_shared_dependencies.py`, which fails when a module imports
@@ -71,12 +69,16 @@ something its extras do not require.
 
 The six FastAPI services use `fastapi` and `metrics`. Guardian (Django)
 imports `scopes` only, and the sensor (aiohttp) nothing: both install the
-package without an extra. No image installs `auth` or `events` today.
+package without an extra.
 
-There is no tracing module. `tracing.py` and its extra were removed: the
-module could not be imported (it needed the Jaeger Thrift exporter, which
-does not import under a current OpenTelemetry SDK) and no image installed
-its requirements.
+Every module here is imported by at least one service;
+`tests/scripts/test_check_shared_dependencies.py` fails for one that is not.
+Seven that were not have been removed, with the `auth`, `events` and
+`tracing` extras: `tracing` (it needed the Jaeger Thrift exporter, which does
+not import under a current OpenTelemetry SDK, so it could not be imported at
+all), `auth_utils`, `security_middleware`, `idempotency`, `event_sourcing`,
+`cqrs` and `feature_flags`. A service that needs one of these writes it where
+it is used, or brings the module back together with its first caller.
 
 In a service image the package is installed after the hash-checked lock,
 offline:
@@ -98,4 +100,4 @@ adds the extra to that line and the packages to its `requirements.in`
 For local work, from a service directory:
 `pip install -r requirements.txt ../open-security-shared`. To run this
 package's own tests (`tests/shared`):
-`pip install "./open-security-shared[fastapi,auth,metrics]"`.
+`pip install "./open-security-shared[fastapi,metrics]"`.

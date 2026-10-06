@@ -9,7 +9,9 @@ the lock. These feed the checker modules, Dockerfiles and locks as text, run
 it on small trees, then on the repository itself.
 """
 
+import ast
 import importlib.util
+import re
 import subprocess
 import sys
 import textwrap
@@ -662,10 +664,91 @@ def test_the_package_has_no_core_dependency():
     assert document["project"]["dependencies"] == []
     assert set(document["project"]["optional-dependencies"]) == {
         "fastapi",
-        "auth",
         "metrics",
-        "events",
     }
+
+
+def _imports_of_the_package(source: str) -> set:
+    """The modules of open_security_shared a source file imports."""
+    init = (REPO / "open-security-shared" / "__init__.py").read_text(encoding="utf-8")
+    exports = dict(re.findall(r'"(\w+)": "(\w+)"', init))
+    found = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            parts = node.module.split(".")
+            if parts[0] != csd.PACKAGE:
+                continue
+            if len(parts) > 1:
+                found.add(parts[1])
+            else:
+                # from open_security_shared import <module or lazy export>
+                found.update(exports.get(a.name, a.name) for a in node.names)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                parts = alias.name.split(".")
+                if parts[0] == csd.PACKAGE and len(parts) > 1:
+                    found.add(parts[1])
+    return found
+
+
+def _modules_the_services_import() -> set:
+    used = set()
+    for service in sorted(REPO.glob("open-security-*")):
+        if service.name == "open-security-shared":
+            continue
+        for path in service.rglob("*.py"):
+            parts = set(path.relative_to(service).parts)
+            if parts & {"tests", "test", "node_modules", "venv", ".venv"}:
+                continue
+            used |= _imports_of_the_package(path.read_text(encoding="utf-8"))
+    return used
+
+
+def test_the_imports_of_the_package_are_read_in_every_form():
+    source = textwrap.dedent("""
+        import open_security_shared.scopes as scopes
+        from open_security_shared.gateway_auth import GatewayUser
+        from open_security_shared import install_error_handlers, tenancy
+
+        def late():
+            from open_security_shared.observability import outcome_counter
+        """)
+    assert _imports_of_the_package(source) == {
+        "scopes",
+        "gateway_auth",
+        "errors",
+        "tenancy",
+        "observability",
+    }
+    assert _imports_of_the_package("import fastapi\nfrom .errors import x\n") == set()
+
+
+def test_every_module_of_the_package_is_imported_by_a_service():
+    # Seven of the fifteen modules were imported by no service: tracing.py
+    # could not even be imported, and cqrs, event_sourcing, feature_flags,
+    # idempotency, security_middleware and auth_utils were libraries written
+    # ahead of a use that never came, each with requirements to lock and
+    # advisories to follow (#665). A module is here because a service's own
+    # code imports it, directly or through a module that one does; tests do
+    # not count, or a module with a test of its own would pass for used.
+    shared = REPO / "open-security-shared"
+    modules = {path.stem for path in shared.glob("*.py")} - {"__init__"}
+    used = _modules_the_services_import() & modules
+    assert used, "no service imports the package: the scan is wrong"
+    while True:
+        through = set()
+        for module in used:
+            source = (shared / f"{module}.py").read_text(encoding="utf-8")
+            _, siblings = csd.module_imports(source)
+            through |= siblings | _imports_of_the_package(source)
+        if through & modules <= used:
+            break
+        used |= through & modules
+    assert modules - used == set(), (
+        f"{sorted(modules - used)} of open-security-shared: no service imports "
+        "them. Remove the module, its row in [tool.wildbox.module-extras] and "
+        "any extra only it needed."
+    )
 
 
 def test_tracing_stays_removed():
@@ -715,7 +798,7 @@ def test_every_lock_meets_every_floor_of_the_package():
     package = csd.load_shared(REPO)
     floors = {
         csd.canonicalize_name(requirement.name): requirement
-        for extra in ("fastapi", "auth", "metrics")
+        for extra in ("fastapi", "metrics")
         for requirement in package.extras[extra]
     }
     locks = sorted(REPO.glob("open-security-*/requirements.txt"))

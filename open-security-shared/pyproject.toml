@@ -32,18 +32,12 @@ dependencies = []
 #
 # A floor here must be met by the lock of every service that uses the extra.
 
-# errors, gateway_auth, tenancy, security_middleware. Starlette comes with
-# FastAPI, in the range FastAPI supports.
+# errors, gateway_auth, tenancy. Starlette comes with FastAPI, in the range
+# FastAPI supports.
 fastapi = ["fastapi>=0.110", "pydantic>=2"]
-# auth_utils: JWT and password hashing helpers.
-auth = ["fastapi>=0.110", "passlib[bcrypt]>=1.7", "PyJWT>=2.10"]
 # observability: request metrics and the /metrics route. Without
 # prometheus-client the module still imports, and serves no metric.
 metrics = ["fastapi>=0.110", "prometheus-client>=0.20"]
-# cqrs, event_sourcing, feature_flags; idempotency with the fastapi extra.
-# sqlalchemy[asyncio]: the modules import sqlalchemy.ext.asyncio, which needs
-# greenlet.
-events = ["redis>=5", "sqlalchemy[asyncio]>=2"]
 
 [tool.setuptools]
 # The modules live flat in this directory; expose them under the importable
@@ -59,16 +53,10 @@ open_security_shared = "."
 # scripts/check_shared_dependencies.py.
 [tool.wildbox.module-extras]
 api_docs = []
-auth_utils = ["auth"]
 circuit_breaker = []
-cqrs = ["events"]
 environment = []
 errors = ["fastapi"]
-event_sourcing = ["events"]
-feature_flags = ["events"]
 gateway_auth = ["fastapi"]
-idempotency = ["fastapi", "events"]
 observability = ["metrics"]
 scopes = []
-security_middleware = ["fastapi"]
 tenancy = ["fastapi"]

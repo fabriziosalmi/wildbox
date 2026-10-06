@@ -35,9 +35,9 @@ for the build backend.
 ## The Shared Package
 
 `open-security-shared` has no dependency of its own. Its
-`pyproject.toml` defines one extra per group of modules (`fastapi`, `auth`,
-`metrics`, `events`) and a table, `[tool.wildbox.module-extras]`,
-that says which module needs which. A service's Dockerfile installs the
+`pyproject.toml` defines one extra per group of modules (`fastapi` and
+`metrics`) and a table, `[tool.wildbox.module-extras]`, that says which
+module needs which. A service's Dockerfile installs the
 package after the lock, with the extras of the modules the service imports and
 without `--no-deps`:
 
