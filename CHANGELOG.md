@@ -710,6 +710,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **gateway: the redirect guardian answers a path without its trailing
+  slash leads to the route** (#665). For `/api/v1/guardian/assets/assets`
+  Django's `APPEND_SLASH` answers `301` with the path alone,
+  `/api/v1/assets/assets/`. The gateway rewrote a `Location` on guardian's
+  internal name and not this one, so the client was sent to a path under
+  `/api/` that no location serves and got the gateway's
+  `404 endpoint_not_found`. The guardian location now rewrites it to
+  `/api/v1/guardian/...` too. `open-security-gateway/test/redirect_tests.sh`
+  checks the three forms of `Location` against the production image, in the
+  Gateway Tests workflow.
 - **agents and data report one version** (#743). Each passed one
   version literal to the application and a second to the middleware
   that writes the `X-API-Version` header of every response. Both now

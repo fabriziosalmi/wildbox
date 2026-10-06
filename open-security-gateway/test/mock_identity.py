@@ -25,6 +25,13 @@ service the mock stands in for (#711).
 GET /__mock/counts returns per-token /internal/authorize call counts, which
 lets tests prove the gateway's auth cache short-circuits repeat validations.
 
+Redirects (#665). The paths in ``REDIRECT_FIXTURES`` answer 301 with the
+``Location`` a Django service writes, so that tests can read what the
+gateway makes of it: a path alone, as ``APPEND_SLASH`` writes it for a
+request without its trailing slash, and an absolute URL on the name the
+gateway presents to guardian, as guardian's HTTPS redirect writes it. The
+values are constants: nothing a client sends is written into the header.
+
 A dropped connection (#609). For a token starting with ``drop-once-`` the
 mock closes the connection without answering the first time it sees it, as
 identity does when its keep-alive timeout closes a connection the gateway is
@@ -227,6 +234,20 @@ SERVICE_CORS_ORIGINS = {
 }
 
 
+# What a Django service answers a request it redirects, keyed by the path the
+# request arrives on (#665). Guardian is the only Django service: the gateway
+# maps /api/v1/guardian/<x> to its /api/v1/<x>.
+REDIRECT_FIXTURES = {
+    # APPEND_SLASH (django.middleware.common): the path with its slash,
+    # no scheme and no host.
+    "/api/v1/redirect-fixture/append-slash": "/api/v1/redirect-fixture/append-slash/",
+    # SECURE_SSL_REDIRECT and reverse() with a request: absolute, on the Host
+    # the gateway presents to guardian.
+    "/api/v1/redirect-fixture/absolute-https": "https://open-security-guardian/api/v1/redirect-fixture/absolute-https/",
+    "/api/v1/redirect-fixture/absolute-http": "http://open-security-guardian/api/v1/redirect-fixture/absolute-http/",
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -243,6 +264,15 @@ class Handler(BaseHTTPRequestHandler):
                 }
             },
         )
+
+    def _redirect(self, location):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            self.rfile.read(length)  # drain body to keep the connection clean
+        self.send_response(301)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _reply(self, status, payload):
         body = json.dumps(payload).encode()
@@ -409,6 +439,8 @@ class Handler(BaseHTTPRequestHandler):
             self._authorize()
         elif self.path in ("/__mock/revoke", "/__mock/remove_member"):
             self._revoke()
+        elif self.path in REDIRECT_FIXTURES:
+            self._redirect(REDIRECT_FIXTURES[self.path])
         else:
             self._echo()
 
@@ -428,6 +460,8 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif self.path == "/__mock/counts":
             self._reply(200, dict(authorize_calls))
+        elif self.path in REDIRECT_FIXTURES:
+            self._redirect(REDIRECT_FIXTURES[self.path])
         else:
             self._echo()
 

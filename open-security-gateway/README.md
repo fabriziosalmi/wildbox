@@ -434,7 +434,9 @@ CI runs two checks on this directory:
   location of `wildbox_gateway.conf` requires, per method, with the mock
   answering for every upstream. `test/upstream_header_tests.sh`
   runs against the same image: which of Wildbox's own headers each
-  proxying location sends its upstream. `test/cors_tests.sh` checks CORS against it and against the test
+  proxying location sends its upstream. `test/redirect_tests.sh` checks, on
+  the same image, that a `Location` guardian writes reaches the client as an
+  address the gateway serves. `test/cors_tests.sh` checks CORS against it and against the test
   configuration. `test/production_image_tests.sh` checks the
   image as built, with nothing mounted over `/etc/nginx`: only this
   project's configuration is loaded, port 80 answers `/health` and

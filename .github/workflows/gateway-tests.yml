@@ -132,6 +132,13 @@ jobs:
       - name: Run gateway upstream header tests
         run: bash open-security-gateway/test/upstream_header_tests.sh
 
+      # A Location guardian writes reaches the client as an address the
+      # gateway serves: the path alone that Django's APPEND_SLASH answers a
+      # request without its trailing slash with, and the absolute ones
+      # (#665).
+      - name: Run gateway redirect tests
+        run: bash open-security-gateway/test/redirect_tests.sh
+
       # CORS against the configuration that ships, and the same checks
       # against the test configuration: preflights for the origins in
       # CORS_ORIGINS and only those, and no OPTIONS answered 405 that a
