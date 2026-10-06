@@ -1074,10 +1074,13 @@ def test_a_rule_reports_the_scans_it_queued_not_assets_it_found(dispatched):
 
     result = tasks.execute_discovery_rule.apply(args=(rule.pk,)).get()
 
+    # With what it did not queue, since #775: nothing, here.
     assert result == {
         "status": "completed",
         "rule_name": rule.name,
         "networks_queued": 2,
+        "networks_skipped_count": 0,
+        "networks_skipped": [],
     }
     assert dispatched == ["apps.assets.tasks.discover_assets"] * 2
     # No function is left that "discovers" by logging that it does not.

@@ -143,9 +143,12 @@ jobs:
           # Read the admin out of .env rather than sourcing it: a generated
           # secret is not shell syntax.
           env_value() { sed -n "s/^$1=//p" ../.env | head -1; }
-          export TEST_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
-          export TEST_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
+          # Assigned, then exported: `export NAME="$(...)"` answers with the
+          # status of export, whatever the command inside returned (SC2155).
+          TEST_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
+          TEST_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
           echo "::add-mask::$TEST_PASSWORD"
+          export TEST_EMAIL TEST_PASSWORD
           # One retry, not the config's two: a red run with two retries per
           # test outlives the job timeout before it reports anything.
           npx playwright test --project=backend-chromium --retries=1

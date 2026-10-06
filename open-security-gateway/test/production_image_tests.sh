@@ -90,6 +90,53 @@ else
     fail "Docker reports the container '$STATE' after ${waited}s: $(docker inspect --format '{{range .State.Health.Log}}exit {{.ExitCode}}; {{end}}' "$CONTAINER" 2>/dev/null)"
 fi
 
+# 5. The image holds what it runs and no build tool (#776). It installed
+#    gcc, make, musl-dev, gettext and unzip, which nothing in it used: the
+#    container that faces the network carried a compiler. Asked of the
+#    package database, not of PATH: busybox answers to `unzip` by itself.
+UNUSED=$(inside apk info -e gcc make musl-dev gettext unzip binutils 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+if [ -z "$UNUSED" ]; then
+    pass "no compiler, make, gettext or unzip package is installed"
+else
+    fail "installed and used by nothing: $UNUSED"
+fi
+for tool in gcc cc make envsubst; do
+    if inside sh -c "command -v $tool" > /dev/null 2>&1; then
+        fail "the image has '$tool' on its PATH"
+    else
+        pass "the image has no '$tool'"
+    fi
+done
+#    And what it does run is there: the entrypoint and the script it calls,
+#    curl for the HEALTHCHECK, openssl for the certificate the entrypoint
+#    generates when none is mounted -- which this container, started with
+#    nothing mounted, has just done.
+for needed in /usr/local/bin/docker-entrypoint.sh /usr/local/bin/render_rate_limits.sh; do
+    if inside test -x "$needed"; then
+        pass "$needed is executable"
+    else
+        fail "$needed is missing or not executable"
+    fi
+done
+for tool in curl openssl; do
+    if inside sh -c "command -v $tool" > /dev/null 2>&1; then
+        pass "the image has '$tool'"
+    else
+        fail "the image has no '$tool'"
+    fi
+done
+if inside sh -c 'openssl x509 -in /etc/ssl/wildbox/wildbox.crt -noout -ext subjectAltName 2>/dev/null | grep -q "DNS:localhost"'; then
+    pass "the entrypoint generated a certificate that names localhost"
+else
+    fail "no certificate naming localhost at /etc/ssl/wildbox/wildbox.crt"
+fi
+SHIPPED=$(inside sh -c 'ls /usr/local/bin' 2>&1 | tr '\n' ' ' | sed 's/ $//')
+if [ "$SHIPPED" = "docker-entrypoint.sh render_rate_limits.sh" ]; then
+    pass "/usr/local/bin holds the two scripts the image runs and nothing else"
+else
+    fail "/usr/local/bin holds '$SHIPPED': only docker-entrypoint.sh and render_rate_limits.sh belong there"
+fi
+
 echo
 echo "== Results: $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

@@ -215,6 +215,23 @@ requests from one address (identity also locks an account after repeated
 failed logins, whatever this rate is); the third only keeps one address
 from hammering the assets.
 
+The bursts in the last column are not settings. A burst is how far ahead of
+its rate one address may get: of the requests an address sends at the same
+instant the gateway serves the burst plus one (11 under the first setting, 4
+on the login route, 3 on registration and on forgotten password, 201 for
+static assets) and answers `429` to the rest, whatever the rate is. After
+that it makes room for one more request every 1/rate seconds. With the
+defaults, 30 API requests that arrive from one address within 50 ms get
+about 16 answers and 14 refusals: the 11 of the burst, and 5 for the 50 ms
+at 100 a second. A page that starts many requests at once, or many users behind one
+NAT address, meet this limit and not the rate. Raising
+`GATEWAY_RATE_LIMIT_PER_SECOND` makes room again sooner (every millisecond
+at 1000, where it is every 10 ms at 100), so a volley spread over some
+milliseconds passes; it does not change how many requests may arrive in the
+same millisecond, which stays 11. The bursts are written beside the routes
+in `open-security-gateway/nginx/conf.d/wildbox_gateway.conf`; no setting in
+`.env` changes them.
+
 These are operator settings. The gateway counts by the address of the
 connection, never by a header, so nothing a client sends changes a limit or
 moves it to another counter. That also means that behind a NAT, a load
@@ -717,6 +734,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api tools-
 - **Entries.** CIDR ranges with their host bits zero, IP addresses and
   host names, comma-separated. A name is matched exactly. A bad entry
   stops both containers at start-up; `docker compose logs api` names it.
+- **An IPv4 entry covers IPv4 addresses only.** The same hosts written as
+  IPv4-mapped IPv6 addresses are not covered: with `10.20.0.0/16` listed,
+  the target `::ffff:10.20.3.4` is still refused. To allow that spelling
+  too, list the mapped range as well, `::ffff:10.20.0.0/112` (the IPv6
+  prefix length is 96 plus the IPv4 one). A mapped entry does not cover
+  the IPv4 spelling either.
 - **Keep the stack out.** Every caller of every network tool can scan
   what is listed. Do not list the stack's Docker networks (by default in
   `172.16.0.0/12`); its service names stay refused unless listed by name.
@@ -754,6 +777,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d guardian g
 - **A network must be inside the list.** A discovery of `192.168.50.0/23`
   is refused when only `192.168.50.0/24` is listed. The limit of 1,024
   addresses for each discovery applies to listed ranges too.
+- **An IPv4 entry covers IPv4 addresses only.** The same hosts written as
+  IPv4-mapped IPv6 addresses are not covered: with `10.20.0.0/16` listed, a
+  discovery of `::ffff:10.20.3.0/120` is still refused. To allow that
+  spelling too, list the mapped range as well, `::ffff:10.20.0.0/112` (the
+  IPv6 prefix length is 96 plus the IPv4 one). A mapped entry does not
+  cover the IPv4 spelling either.
+- **IPv6 targets need an IPv6 route.** A port scan connects over IPv6 to an
+  IPv6 asset (since 0.12.1), from `guardian-worker`. The stack's Docker
+  networks are IPv4 only, as Docker creates them unless told otherwise:
+  from such a worker a public IPv6 address is unreachable, and its scan
+  completes with no open port. Give the worker's network IPv6 if you scan
+  IPv6 assets.
 - **Guardian's list, not the tools service's.** `TOOLS_ALLOWED_INTERNAL_TARGETS`
   opens nothing for Guardian, and this variable nothing for the tools. Set
   both if both scan the lab.
@@ -761,9 +796,11 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d guardian g
   is listed. Do not list the stack's Docker networks (by default in
   `172.16.0.0/12`), loopback or `169.254.169.254`.
 - **Rules and assets stored before the upgrade** keep their networks and
-  addresses. A rule's run skips each internal network that is not listed, and
-  `guardian-worker` logs the network and the variable; the rule cannot be
-  saved again with that network until it is.
+  addresses. A rule's run skips each internal network that is not listed.
+  The rule's record says so, in `last_run_result`: each skipped network
+  with the reason, which names the variable, and status `skipped` when no
+  network was left to scan (since 0.12.1; `guardian-worker` logs the same).
+  The rule cannot be saved again with that network until it is listed.
 
 ### The sensor's telemetry
 
@@ -939,22 +976,36 @@ docker compose start postgres
 docker compose up -d
 ```
 
-`restore_postgres.sh` restores what the archive holds, into the database
-that is there. A table created after the backup, by the migrations of a
-later release for instance, is not in the archive and is left in place
-([#773](https://github.com/fabriziosalmi/wildbox/issues/773)): the release
-that made it then fails to migrate again, with `relation ... already
-exists`. To have a database exactly as it was when the backup was taken,
-which is what going back to an earlier release needs, drop it and create
-it empty before the restore, between the second and the third command
-above:
+`restore_postgres.sh --overwrite-live-databases` leaves each database with
+what its archive holds, and with no other table, view, materialized view or
+sequence in the schemas the archive holds. One made after the backup, by the
+migrations of a later release for instance, is dropped in the transaction of
+the restore together with what depends on it, and the script lists what it
+removed. That is what going back to an earlier release needs: the release
+that made a table can migrate again afterwards. Up to 0.12.0 such a table
+was left in place, and the next upgrade stopped on `relation ... already
+exists`
+([#773](https://github.com/fabriziosalmi/wildbox/issues/773)); the
+databases no longer have to be dropped and created before a restore.
 
-```bash
-for db in identity data guardian; do
-  docker compose exec -T postgres psql -U postgres \
-    -c "DROP DATABASE \"$db\" WITH (FORCE)" -c "CREATE DATABASE \"$db\""
-done
-```
+The restore leaves alone what an extension owns, what is not a relation (a
+function or a type made after the backup stays), and every schema the
+archive does not hold, such as one you made after the backup: it drops no
+table, view or sequence there. If one of them is in the way (a view on a
+restored table or on a table the restore has to remove, a foreign key to a
+restored table), the restore of that database fails, names it and changes
+nothing: drop it, or its schema, and run the same command again. What only
+refers from such a schema to a table or a sequence made after the backup, a
+foreign key or a column default, goes with it, and PostgreSQL's notices say
+so. A database restored with `--into-suffix` that is already there keeps
+what the archive does not hold.
+
+The script works in a directory it makes under `TMPDIR` (`/tmp` by default)
+and removes when it ends. It holds every archive without its outer gzip,
+which is about the size of the backup files, and the SQL of one database at
+a time, gzipped, which is about the size of that database's archive again.
+Set `TMPDIR` to a disk with room for the backup files plus the largest of
+them.
 
 Both restores destroy everything written since the backup, so each runs only
 with its flag. `--overwrite-live-databases` restores over the databases the
@@ -990,7 +1041,11 @@ empty Redis.
 A restore that fails leaves the data that was there.
 
 `restore_postgres.sh` reads every archive before it touches a database, and
-restores each database in one transaction (`pg_restore --single-transaction`).
+restores each database in one transaction. `pg_restore` writes the archive
+as SQL to a file, and `psql` is given one stream: `BEGIN`, the removal of
+what was made after the backup, that SQL, `COMMIT`. The file is used only if
+`pg_restore` succeeded and it ends where a complete dump ends; a stream that
+ends early for any other reason has no `COMMIT`, so it commits nothing.
 If anything in it fails, PostgreSQL rolls that database back to what it was.
 The three databases are three transactions, because PostgreSQL has none that
 spans databases: if the second fails, the first is restored and the other two

@@ -404,6 +404,16 @@ containers (the root `docker-compose.yml` does). Do not list the stack's
 own Docker networks: a listed range is open to every caller of every
 network tool.
 
+An IPv4 entry covers IPv4 addresses only. The same hosts written as
+IPv4-mapped IPv6 addresses are not covered: with `10.20.0.0/16` listed, the
+target `::ffff:10.20.3.4` is still refused, and so is a name that resolves
+to it. This is the policy's design
+(`tests/shared/target_policy_vectors.json`): a range is open only in the
+spelling the operator wrote. To allow the mapped spelling too, list it as
+well, `::ffff:10.20.0.0/112` for `10.20.0.0/16` (the IPv6 prefix length is
+96 plus the IPv4 one). A mapped entry does not cover the IPv4 spelling
+either.
+
 This list is separate from `AUTHORIZED_TARGETS_FILE` (above). That one
 names the targets a caller may attack through a tool that acts for the
 caller, among public ones, and never lifts the SSRF guard; this one opens

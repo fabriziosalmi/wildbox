@@ -266,7 +266,9 @@ Notes:
 
 - `/api/v1/guardian/*` presents `Host: open-security-guardian` to the Django
   service and forwards the caller's host as `X-Forwarded-Host`; redirects are
-  rewritten back to `/api/v1/guardian/`. It also sends
+  rewritten back to `/api/v1/guardian/` and leave as a path alone, with no
+  scheme, host or port, so a client follows them on the address it called,
+  whatever port the gateway is published on. It also sends
   `X-Forwarded-Prefix: /api/v1/guardian`, a literal that replaces any value
   the client sent: guardian writes its pagination links under that path, as
   relative references without a host (#643).
@@ -362,6 +364,15 @@ nginx starts, and `nginx.conf` includes that file. The bursts are written in
   its default.
 - The gateway logs the rates it runs with at start:
   `Per-address request limits: global 100 r/s, auth 5 r/s, static assets 500 r/s.`
+- The bursts are not settings: each is the number written on its `limit_req`
+  line (`burst=10` for the `global` zone). Of the requests one
+  address sends at the same instant, nginx serves the burst plus one (11, 4
+  on the login route, 3 on registration and forgotten password, 201 for
+  static assets) and answers `429` to the rest, whatever the rate is; it
+  then makes room for one more every 1/rate seconds. A higher rate lets a
+  volley spread over some milliseconds through, and leaves what may arrive
+  in the same millisecond at 11. `test/rate_limit_tests.py` measures the
+  volley at the default rates.
 - A change takes effect when the container is started again
   (`docker compose up -d gateway`), not on an nginx reload.
 - Nothing a client sends changes a limit or the counter it is counted in:
@@ -408,12 +419,11 @@ reads the three rates.
 | `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` | `5` | The same for the login, registration and forgotten-password routes |
 | `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` | `500` | The same for the dashboard's static assets |
 
-The Compose file also sets `GATEWAY_DEBUG`. It has no effect: it is stored in
-the configuration but never used. The error log level is fixed at `warn` in
-`nginx.conf`. `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`, `NGINX_ENVSUBST_OUTPUT_DIR`,
+The error log level is fixed at `warn` in `nginx.conf`. `GATEWAY_DEBUG`,
+`WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`, `NGINX_ENVSUBST_OUTPUT_DIR`,
 `ENVIRONMENT` and, under the production overlay, `LOG_LEVEL` used to be
-passed to the gateway as well; nothing in it read them, and they are no
-longer passed.
+passed to the gateway as well; nothing in it used them, and they are no
+longer passed. A `GATEWAY_DEBUG` line left in `.env` is ignored.
 
 ### CORS
 
@@ -498,12 +508,13 @@ CI runs two checks on this directory:
   runs against the same image: which of Wildbox's own headers each
   proxying location sends its upstream. `test/redirect_tests.sh` checks, on
   the same image, that a `Location` guardian writes reaches the client as an
-  address the gateway serves. `test/cors_tests.sh` checks CORS against it and against the test
+  address the gateway serves, on the host and port the client called. `test/cors_tests.sh` checks CORS against it and against the test
   configuration. `test/production_image_tests.sh` checks the
   image as built, with nothing mounted over `/etc/nginx`: only this
   project's configuration is loaded, port 80 answers `/health` and
-  redirects the rest whatever the `Host`, and Docker reports the container
-  healthy by the image's own `HEALTHCHECK`. `test/rate_limit_tests.py`
+  redirects the rest whatever the `Host`, Docker reports the container
+  healthy by the image's own `HEALTHCHECK`, and the image holds the tools
+  it runs and no compiler. `test/rate_limit_tests.py`
   checks the per-address limits at their default rates against the same
   container, and `test/startup_config_tests.sh` checks, for both images,
   that a rate that is not a whole number in range stops the gateway.

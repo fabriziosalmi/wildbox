@@ -250,6 +250,16 @@ REDIRECT_FIXTURES = {
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # An answer leaves in one piece (#776). The handler's default is an
+    # unbuffered socket writer, so end_headers() sent the headers and the
+    # body's write sent the body: two small segments. On a connection that
+    # is kept open -- every one nginx holds to an upstream -- the kernel
+    # keeps the second back until the first is acknowledged (Nagle), and the
+    # gateway's end delays that acknowledgement, about 40 ms on Linux: a
+    # request the test gateway proxied to the mock took 40 ms for an answer
+    # that was ready at once. Buffered, the two are written together when
+    # handle_one_request() flushes, after the method returns.
+    wbufsize = -1
 
     def _error(self, status, message, error_type="HTTPException"):
         """Answer an error as identity does: the canonical body."""

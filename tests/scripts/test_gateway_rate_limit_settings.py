@@ -253,6 +253,75 @@ def test_a_refusal_is_answered_429_wherever_the_production_configuration_limits(
     assert not re.search(r"limit_req_status (?!429;)", server)
 
 
+# --- the test configuration limits as production does (#776) ---------------------
+
+
+def limits(text):
+    """(zone, burst, nodelay) of every limit_req directive of an nginx file."""
+    return [
+        (zone, int(burst), bool(nodelay))
+        for zone, burst, nodelay in re.findall(
+            r"^\s*limit_req\s+zone=(\w+)\s+burst=(\d+)(\s+nodelay)?;", code(text), re.M
+        )
+    ]
+
+
+def test_every_limit_req_is_written_the_way_these_tests_read_it():
+    """One written another way would escape the comparison below."""
+    for path in SERVER_CONFS:
+        text = code(path.read_text())
+        directives = re.findall(r"^\s*limit_req\s", text, re.M)
+        assert directives, path.name
+        assert len(limits(text)) == len(directives), path.name
+
+
+def test_the_test_configuration_limits_with_the_bursts_production_has():
+    """It had bursts of its own: 10 for login and registration, not 3 and 2."""
+    production = set(limits(SERVER_CONFS[0].read_text()))
+    test = limits(SERVER_CONFS[1].read_text())
+
+    assert ("global", 10, True) in production  # the file was read
+    assert test
+    for limit in test:
+        assert limit in production, (
+            f"wildbox_gateway_test.conf: limit_req zone={limit[0]} "
+            f"burst={limit[1]} is not a limit wildbox_gateway.conf has"
+        )
+
+
+def test_the_test_configuration_answers_a_refusal_as_production_does():
+    """It set no limit_req_status: nginx's default, 503, where production says 429."""
+
+    def statuses(text):
+        return re.findall(r"^\s*limit_req_status\s+(\S+);", code(text), re.M)
+
+    production = set(statuses(SERVER_CONFS[0].read_text()))
+    assert production == {"429"}
+
+    text = code(SERVER_CONFS[1].read_text())
+    # The server that limits; the internal listener after it has no limit_req.
+    server = text[text.index("listen 80;") :]
+    assert "limit_req " not in server[server.index("listen 8081;") :]
+    # Set for the server, before any location, so no limit_req is without it.
+    assert re.search(r"^\s*limit_req_status 429;", server[: server.index("location ")], re.M)
+    assert set(statuses(text)) == production
+
+
+def test_no_connection_zone_is_defined_that_no_limit_conn_names():
+    """nginx.conf had limit_conn_zone ... zone=addr:10m, and nothing used it."""
+    defined = r"^\s*limit_conn_zone\s+\S+\s+zone=(\w+):"
+    used = r"^\s*limit_conn\s+(\w+)\s"
+    sample = "    limit_conn_zone $binary_remote_addr zone=addr:10m;\n"
+    assert re.findall(defined, sample, re.M) == ["addr"]
+    assert re.findall(used, sample + "    limit_conn addr 20;\n", re.M) == ["addr"]
+
+    files = (NGINX_CONF,) + SERVER_CONFS
+    files += tuple((GATEWAY / "nginx" / "includes").glob("*.conf"))
+    text = "\n".join(code(path.read_text()) for path in files)
+
+    assert set(re.findall(defined, text, re.M)) == set(re.findall(used, text, re.M))
+
+
 # --- what starts nginx runs the script first -----------------------------------
 
 

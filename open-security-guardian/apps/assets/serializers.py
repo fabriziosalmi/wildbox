@@ -155,7 +155,11 @@ class AssetDiscoveryRuleSerializer(TeamScopedModelSerializer):
     class Meta:
         model = AssetDiscoveryRule
         fields = '__all__'
-        read_only_fields = ['last_run', 'next_run', 'created_at', 'updated_at']
+        # last_run_result is what the last run did (#775): the task writes
+        # it, and a request cannot.
+        read_only_fields = [
+            'last_run', 'next_run', 'last_run_result', 'created_at', 'updated_at'
+        ]
 
     def validate_target_specification(self, value):
         """Validate target specification format"""

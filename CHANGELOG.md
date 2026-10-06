@@ -38,20 +38,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same `500`, and identity's `503` for a database that cannot be
   reached, which is still logged with its cause.
 
-### Removed
-
-- **Four dashboard types nothing uses** (#778). `ComplianceScan`,
-  `ComplianceFinding` and `RemediationGuide` in
-  `open-security-dashboard/src/types/index.ts` described a compliance
-  scan in a shape no cspm route returns, and were imported by nothing;
-  the compliance page declares the finding it reads itself.
-  `Vulnerability`, the only other type that named `RemediationGuide`, was
-  imported by nothing either: the vulnerability pages use
-  `GuardianVulnerability`. Types only: nothing the dashboard renders or
-  sends changes.
-
 ### Fixed
 
+- **A restore over a live database removes the tables made after the
+  backup** (#773). `scripts/restore_postgres.sh
+  --overwrite-live-databases` ran `pg_restore --clean`, which drops what
+  the archive holds and loads it again; a table made after the backup is
+  in no archive, so it stayed. A stack upgraded from 0.11.2 to 0.12.0 and
+  taken back from its backup kept guardian's
+  `core_teammembershiprevocation`, and the next upgrade stopped on
+  `relation "core_teammembershiprevocation" already exists`. A view on a
+  restored table, or a table with a foreign key to one, made the restore
+  fail instead. Each database is now left with what its archive holds and
+  with no other table, view, materialized view or sequence in the schemas
+  the archive holds: the others are dropped in the transaction of the
+  restore, with what depends on them, and the script lists them. What an
+  extension owns and what is not a relation are left alone, and no table,
+  view or sequence is dropped in a schema the archive does not hold: if
+  one of them is in the way, a view on a restored table for instance, the
+  restore fails, names it and changes nothing. A database restored with
+  `--into-suffix` that is already there keeps what the archive does not
+  hold, as before.
+
+  What 0.12.0 established (#740) is unchanged: every archive is read before a
+  database is touched, and each database is restored in one transaction
+  or is as it was. The transaction is now one stream to `psql`: `BEGIN`,
+  the removal, the archive as SQL, `COMMIT`. `pg_restore` writes that SQL
+  to a file first, which is used only if `pg_restore` succeeded and the
+  file ends where a complete dump ends, and a stream that ends early has
+  no `COMMIT`. The script reports a database as restored only when the
+  server has answered after the `COMMIT`: `psql` exits with status 0 when
+  its input ends, wherever that is. The work directory under `TMPDIR`
+  now also holds the SQL of one database at a time, gzipped, which is
+  about the size of that database's archive; the deployment guide says
+  how much room a restore needs.
+- **A redirect from guardian keeps the port the client called.** The
+  gateway writes guardian's `Location` back to its own
+  `/api/v1/guardian/` path, and nginx completed that path into an
+  absolute URL with the request's host name and the port nginx listens
+  on, 443, which it leaves out. A gateway reached on any other port,
+  published as 8443 or behind a balancer or a NAT that maps one, sent
+  the client to `https://<host>/api/v1/guardian/...`, where the gateway
+  does not answer; a request without its trailing slash, which Django
+  redirects, failed there. The `Location` now leaves as a path alone,
+  with no scheme, host or port, and the client resolves it against the
+  URL it called. No host is written at all, so the one a client sends
+  in `Host` is no longer echoed in the header either (#776).
 - **cspm answers when Redis accepts the connection and then says
   nothing** (#778). A Redis that is down refuses the connection and the
   routes answer 503 at once (#766). One that accepts it and never
@@ -157,6 +189,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collector, whatever its status, which is also what the scheduler does
   with a source that fails while it runs: it is tried again at its own
   interval. A disabled source is not scheduled, as before.
+
+### Removed
+
+- **The gateway image no longer ships a compiler.** It installed
+  `gcc`, `musl-dev`, `make`, `gettext` and `unzip` as build tools, and
+  nothing in the image compiled, unpacked or called `envsubst`. The
+  image that faces the network is about half the size (69 MB instead of
+  136 MB in a local build) and holds `curl`, `openssl`, `wget` and
+  `ca-certificates`, each of which it uses (#776).
+- **`GATEWAY_DEBUG` is gone.** Compose passed it, `nginx.conf` kept it
+  for the workers and `auth_handler.lua` read it into a field no line
+  of Lua looked at, so setting it changed nothing. With it go the
+  `$gateway_debug` variable of the two server configurations and
+  `utils.set_debug_headers`, the function that read that variable and
+  that nothing called. A `GATEWAY_DEBUG` line left in `.env` is ignored
+  (#776).
+- **The gateway's unused connection zone.** `nginx.conf` defined
+  `limit_conn_zone ... zone=addr:10m`, and no `limit_conn` named it: it
+  limited nothing and held 10 MB of shared memory. The gateway does not
+  limit connections per address, and did not before (#776).
+- **Four dashboard types nothing uses** (#778). `ComplianceScan`,
+  `ComplianceFinding` and `RemediationGuide` in
+  `open-security-dashboard/src/types/index.ts` described a compliance
+  scan in a shape no cspm route returns, and were imported by nothing;
+  the compliance page declares the finding it reads itself.
+  `Vulnerability`, the only other type that named `RemediationGuide`, was
+  imported by nothing either: the vulnerability pages use
+  `GuardianVulnerability`. Types only: nothing the dashboard renders or
+  sends changes.
+
+### Documentation
+
+- **The bursts of the gateway's per-address limits are not settings,
+  and the deployment guide now says what that means.** Of the requests
+  one address sends at the same instant the gateway serves the burst
+  plus one (11 under `GATEWAY_RATE_LIMIT_PER_SECOND`, 4 on the login
+  route, 201 for static assets) and answers `429` to the rest, whatever
+  the rate is; a higher rate only makes room again sooner. A page that
+  starts many requests at once, or many users behind one NAT address,
+  meet the burst and not the rate. The deployment guide, the gateway's
+  README and the comment in `.env.example` describe it; the bursts
+  themselves are unchanged (#776).
+- **guardian refuses a second finding for the same asset and CVE when
+  neither has a port.** `POST vulnerabilities/` answered 201 twice: the
+  unique set `(asset, cve_id, port)` did not hold for a missing port,
+  which the serializer's validator skips and the database's unique index
+  takes for a value of its own each time. The second request now answers
+  the `400` a duplicate with a port gets. Findings with neither a CVE nor
+  a port are all kept, as before. The duplicates a deployment already
+  holds stay as they are: the check is the API's, and a database
+  constraint is left for a minor release (#775).
+- **A port scan of an IPv6 asset connects over IPv6.** guardian opened
+  IPv4 sockets whatever the asset's address, so the scan of an IPv6 asset
+  completed with every port closed. It now connects over the family of
+  the address the scan target check returned; an internal IPv6 address is
+  refused before a socket is opened, as an IPv4 one is. The worker needs
+  an IPv6 route to reach such an asset: the stack's Docker networks are
+  IPv4 only, and from a worker without one the scan still finds no open
+  port (#775).
+- **A discovery rule says what its last run skipped.** A rule whose
+  networks were all refused by the scan target check (one stored before
+  0.12.0, or before the operator narrowed
+  `GUARDIAN_ALLOWED_INTERNAL_TARGETS`) ended `completed` with
+  `networks_queued: 0`, and the reason was in `guardian-worker`'s log
+  only. The rule's record now has `last_run_result`, read-only: the
+  status, the number of discoveries queued, and each network left out
+  with the reason. A run that queued nothing is `skipped`, with `reason`
+  `no_network_queued`, and the task's result says the same. One nullable
+  column is added to guardian's database at start (#775).
+- **`scan_asset_ports` bounds its `port_range`.** The task parsed the
+  argument without a limit: `1-4000000000` was that many connection
+  attempts in one task. It now takes one port or a range of at most 1,024
+  ports from 1 to 65535, and ends `refused`, with nothing dialed, for
+  anything else. No route passes the argument (#775).
+- An IPv4 entry of `GUARDIAN_ALLOWED_INTERNAL_TARGETS` or
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` does not cover the same range written
+  as IPv4-mapped IPv6 addresses (`::ffff:10.20.3.4`), by design. The
+  deployment guide, the two services' READMEs and `.env.example` now say
+  so, and how to list the mapped range (#775).
+
+### CI
+
+- **The integration tests of guardian's e-mail are skipped on a stack that
+  has not opted in to it** (#779). Three tests of
+  `tests/integration/test_guardian_notifications.py` need
+  `GUARDIAN_CONTACTS_SECRET` on identity and guardian-worker. A stack made
+  by `make generate-secrets` has it; one upgraded from an earlier release
+  has it only once its operator sets it, and there identity answers `503
+  Team contacts are not configured`, as documented, and the three tests
+  failed on that answer: the suite run against the stack upgraded to
+  0.12.0 reported 244 passed and 3 failed. They now ask identity first and
+  skip with the reason, as the suite does for its other optional parts.
+  Where `REQUIRE_ALL_SERVICES` says the stack must have everything, as in
+  the CI jobs, a missing secret fails them instead.
+- **Two integration tests of the gateway that could not fail are
+  removed.** `test_rate_limiting_burst_protection` and
+  `test_rate_limit_headers` in `tests/integration/test_gateway_hardening.py`
+  set `passed = True` in every branch, whether or not a request was
+  refused and whether or not a header was there. The per-address limits
+  are measured against the gateway image by
+  `open-security-gateway/test/rate_limit_tests.py`, and the per-team
+  budget and its `X-RateLimit-*` headers by `test_rate_limiting` in
+  `test_gateway_security.py`, which does assert (#776).
+- **The gateway's test image refuses a request as the production image
+  does.** Its configuration set no `limit_req_status`, so a request past
+  a limit got nginx's default `503` where production answers `429`, and
+  its bursts were its own: 10 on the login and registration routes,
+  where production has 3 and 2. Those two routes now carry production's
+  status and bursts, `tests/scripts/test_gateway_rate_limit_settings.py`
+  fails when the two files differ on either, and `ci_auth_tests.sh`
+  sends a volley and reads the answers. The limit the test configuration
+  put on its authenticated routes is removed: the harness sends them
+  nearly all of its requests, one after another from one address, and
+  the limits are measured against the production image (#776).
+- **The gateway harness's mock upstream answers in one write.** It sent
+  the headers of each answer and the body separately, and on a
+  connection nginx keeps open the second segment waited for a delayed
+  acknowledgement: about 40 ms for each request the test gateway
+  proxied, 2 ms now (#776).
+- **`e2e-fullstack.yml` passes actionlint.** The two `export
+  NAME="$(...)"` lines that shellcheck reported (SC2155) assign first
+  and export afterwards (#776).
 
 ## [0.12.0] - 2026-10-06
 
