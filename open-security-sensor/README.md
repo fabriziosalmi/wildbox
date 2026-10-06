@@ -789,6 +789,16 @@ file is used, what became of the one found at start (`loaded`), when it was
 last written, why it could not be (`problem`), and how many changes are
 found and not delivered yet (`changes_not_delivered`).
 
+The first baseline of a path is written before the monitor says it has
+started, and that write gets 2 seconds, like the one at the stop. When the
+data directory does not answer in that time the monitor starts all the
+same, with a warning (`the first baseline was not written within 2 seconds
+of the monitor's start`): it reports changes against the baseline it holds
+in memory and tries the write again every 5 seconds. A sensor that is
+restarted before one succeeds takes what it finds under those paths as
+their baseline. Until 0.12.2 that write had no limit, and a data directory
+that hung at start kept the whole sensor from starting.
+
 Without `data_dir` the baseline is in memory only, as it always was: the
 status says so, and what changes while the sensor is stopped is not
 reported. The shipped container configurations set `data_dir` to the

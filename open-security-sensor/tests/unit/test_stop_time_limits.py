@@ -26,6 +26,7 @@ ending, and each must stop before the agent stops waiting.
 """
 
 import asyncio
+import contextlib
 import gc
 import json
 import logging
@@ -86,11 +87,12 @@ class Leaping(asyncio.SelectorEventLoop):
     def __init__(self):
         super().__init__()
         self.leapt = 0.0
+        self.leaps = True
         select = self._selector.select
 
         def leap(timeout=None):
             ready = select(0)
-            if ready or timeout is None:
+            if ready or timeout is None or not self.leaps:
                 return ready if ready else select(timeout)
             self.leapt += max(timeout, 0)
             return ready
@@ -99,6 +101,17 @@ class Leaping(asyncio.SelectorEventLoop):
 
     def time(self):
         return super().time() + self.leapt
+
+    @contextlib.contextmanager
+    def at_its_own_pace(self):
+        """No leap meanwhile: for a wait with a limit on work that is really
+        done, in a worker thread, by a disk that answers. A leap would spend
+        the limit before the thread has had its few milliseconds."""
+        self.leaps = False
+        try:
+            yield
+        finally:
+            self.leaps = True
 
 
 @pytest.fixture
@@ -640,7 +653,8 @@ def test_the_file_monitor_stops_in_time_with_a_write_that_never_ends(
 
     async def scenario():
         monitor = FileMonitor(config, asyncio.Queue())
-        await monitor.start()  # the first baseline is written
+        with leaping.at_its_own_pace():
+            await monitor.start()  # the first baseline is written
         disk.hold(monitor.baseline)
         # As an accepted change leaves it: the periodic write is made.
         monitor._baseline_dirty = True
@@ -659,6 +673,94 @@ def test_the_file_monitor_stops_in_time_with_a_write_that_never_ends(
         "The file monitor's baseline was not written within 2 seconds of the "
         f"monitor's stop: a write to {config.data_dir} has not ended"
     ]
+
+
+def test_the_file_monitor_starts_in_time_with_a_first_write_that_never_ends(
+    leaping, tmp_path, disk, caplog
+):
+    # The start too (#788): the first baseline is written before the
+    # monitor says it has started, and that write had no limit. The
+    # monitor's start is the sensor's, which waited with it.
+    watched = tmp_path / "etc"
+    watched.mkdir()
+    (watched / "hosts").write_text("127.0.0.1 localhost\n")
+    config = _collector_config(
+        tmp_path,
+        collection=CollectionConfig(file_monitoring=True),
+        fim=FIMConfig(enabled=True, paths=[str(watched)]),
+    )
+
+    async def scenario():
+        monitor = FileMonitor(config, asyncio.Queue())
+        disk.hold(monitor.baseline)
+        # A start that waits without a limit ends as a failure, and not
+        # never: the disk answers after half a minute of real time, and the
+        # start has then cost nothing on the clock, and said nothing. Not a
+        # timer of the loop, which would leap to it while the first scan is
+        # in its thread.
+        guard = threading.Timer(30, disk.released.set)
+        guard.start()
+        began = leaping.time()
+        try:
+            await monitor.start()
+        finally:
+            guard.cancel()
+        took = leaping.time() - began
+        status = monitor.get_status()
+        # The write is tried again: the baseline is still to be written.
+        dirty = monitor._baseline_dirty
+        with caplog.at_level(logging.CRITICAL, logger=file_monitor.__name__):
+            await asyncio.wait_for(monitor.stop(), timeout=3600)
+        return took, status, dirty
+
+    with caplog.at_level(logging.WARNING, logger=file_monitor.__name__):
+        took, status, dirty = leaping.run_until_complete(scenario())
+
+    assert took == pytest.approx(stop_limits.STATE_WRITE_SECONDS, abs=0.5)
+    # It runs, and watches: the baseline is the one it holds.
+    assert status["running"] is True
+    assert dirty is True
+    assert [record.getMessage() for record in caplog.records] == [
+        "File integrity monitoring: the first baseline was not written within "
+        f"2 seconds of the monitor's start: a write to {config.data_dir} has "
+        "not ended. The monitor starts, and reports changes against the "
+        "baseline it holds in memory; the write is tried again every 5 "
+        "seconds. A sensor that is restarted before one succeeds has no saved "
+        "baseline for the paths that had none: it takes what it finds under "
+        "them then as their baseline, and what changed there in between is "
+        "not reported"
+    ]
+
+
+def test_a_first_write_that_ends_is_not_waited_for_and_nothing_is_said(
+    leaping, tmp_path, caplog
+):
+    watched = tmp_path / "etc"
+    watched.mkdir()
+    (watched / "hosts").write_text("127.0.0.1 localhost\n")
+    config = _collector_config(
+        tmp_path,
+        collection=CollectionConfig(file_monitoring=True),
+        fim=FIMConfig(enabled=True, paths=[str(watched)]),
+    )
+
+    async def scenario():
+        monitor = FileMonitor(config, asyncio.Queue())
+        began = leaping.time()
+        with leaping.at_its_own_pace():
+            await asyncio.wait_for(monitor.start(), timeout=60)
+        took = leaping.time() - began
+        written = (tmp_path / "data" / "fim-baseline.json").exists()
+        await asyncio.wait_for(monitor.stop(), timeout=3600)
+        return took, written
+
+    with caplog.at_level(logging.WARNING, logger=file_monitor.__name__):
+        took, written = leaping.run_until_complete(scenario())
+
+    # On disk before the monitor says it has started, as it was.
+    assert written is True
+    assert took == pytest.approx(0, abs=0.5)
+    assert caplog.records == []
 
 
 def test_the_osquery_manager_stops_in_time_with_a_query_that_never_ends(
