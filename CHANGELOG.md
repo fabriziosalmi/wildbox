@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **How to run a service's unit tests, where 0.12.2 had left it wrong.**
+  The images' locks hold no test tool since 0.12.2 (#788). The READMEs of
+  agents and responder still said `make test` and nothing else, which
+  fails without `pytest`: they now give the install line the other
+  services' READMEs have. cspm's said `pip install -r
+  requirements-dev.txt`, which pip refuses for a file that adds unhashed
+  pins to a hash-pinned one: it now gives the same install line, and says
+  what the file is for and that `uv` reads it.
+- **The data service's document describes three columns of a source as
+  they are.** `error_count` is the number of failures in a row, not a
+  total, and `last_error` the class of the error, not its message, both
+  since 0.12.2; `source_type` is the name of a registered collector, where
+  the document listed types no collector has had since 0.12.0.
+- **`tests/README.md` no longer carries an example workflow.** The one it
+  had checked out the repository with `actions/checkout@v3`, installed
+  `pytest` without a version and waited for the stack with `sleep 60`,
+  none of which the repository's own workflows do. A table names the
+  workflow that runs each suite.
+
 ## [0.12.2] - 2026-10-06
 
 A second patch for 0.12.0, which closes what the first one listed as found
