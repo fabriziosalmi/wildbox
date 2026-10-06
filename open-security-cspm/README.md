@@ -481,7 +481,21 @@ server that accepts and never answers: every route and `/health` answer 503
 in 3 seconds; with the store answering and the queue not, `POST
 /api/v1/scans` in 6. `socket_timeout` and `socket_connect_timeout` in the
 query string of `REDIS_URL` or `CELERY_RESULT_BACKEND` replace the two
-limits of that client. The worker keeps Celery's own waits.
+limits of that client. The worker keeps Celery's own waits for its broker
+and its result backend.
+
+The worker's own scan store client has the same two limits (until 0.12.2 it
+had none: a Redis that never answered held a scan's task without end, at its
+first read or at its last write, with the account already scanned). A limit
+can fail the write that ends a scan, so that write is made up to four times,
+1, 3 and 9 seconds apart, and the worker logs each attempt that fails:
+`Scan <id>: its report could not be written, attempt 2 of 4 (TimeoutError):
+trying again in 3 seconds`. When the report cannot be stored the scan ends
+as `failed`, with `"failure_reason": "report_not_stored"` in its record. When
+Redis stays away for those four attempts as well (25 seconds at most for
+each write), the worker goes on to its next task and logs `Scan <id> failed
+and could not be marked failed`: the scan keeps the status it had, and its
+record expires with `CSPM_REPORT_RETENTION_DAYS` like any other.
 
 The routes that ask Redis or the queue are plain functions, which FastAPI
 runs in threads: requests that wait do so side by side, and `/health/live`,

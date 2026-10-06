@@ -207,6 +207,7 @@ def _end_scan(
     time_field: str,
     at: str,
     report: Optional[Dict[str, Any]] = None,
+    reason: Optional[str] = None,
 ) -> Optional[str]:
     """Give a scan in progress its final status, in one transaction (#778).
 
@@ -244,6 +245,8 @@ def _end_scan(
                     return metadata["status"]
                 metadata["status"] = status
                 metadata[time_field] = at
+                if reason is not None:
+                    metadata["failure_reason"] = reason
                 ttl = retention_seconds()
                 pipe.multi()
                 if report is not None:
@@ -278,9 +281,19 @@ def complete_scan(
     return refused is None
 
 
-def fail_scan(redis, scan_id: str, failed_at: str) -> None:
-    """Mark a scan that is still in progress as failed."""
-    _end_scan(redis, scan_id, "failed", "failed_at", failed_at)
+# Why a scan failed, when the worker knows a reason that is not in the
+# task's own error: kept in the scan's metadata as ``failure_reason``.
+#
+# The scan ran to its end and the store did not take its report (#788).
+REPORT_NOT_STORED = "report_not_stored"
+
+
+def fail_scan(
+    redis, scan_id: str, failed_at: str, reason: Optional[str] = None
+) -> None:
+    """Mark a scan that is still in progress as failed, with ``reason`` in
+    its metadata (``failure_reason``) when there is one to keep."""
+    _end_scan(redis, scan_id, "failed", "failed_at", failed_at, reason=reason)
 
 
 def cancel_scan(redis, scan_id: str, cancelled_at: str) -> bool:

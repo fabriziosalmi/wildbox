@@ -887,8 +887,16 @@ accepts the connection and then sends nothing is given a limited time by the API
 - `socket_timeout` and `socket_connect_timeout` in the query string of `REDIS_URL`
   (in seconds) replace the store's two limits, and in `CELERY_RESULT_BACKEND` the
   backend's. The broker's are not read from its URL.
-- The limits are the API's. The worker keeps Celery's own: it waits on its broker
-  connection for as long as no scan is queued.
+- The limits of the task queue are the API's. The worker keeps Celery's own: it
+  waits on its broker connection for as long as no scan is queued.
+- The worker's scan store client has the store's limits too, since 0.12.2. Until
+  then it had none, and a Redis that never answered held a scan's task without end.
+  The write that ends a scan (its report, or its failure) is made up to four
+  times, 1, 3 and 9 seconds apart, and each failed attempt is in the worker's log.
+  A scan whose report could not be stored in that time reads `failed`; when the
+  store stays away for the failure's four attempts as well, the scan keeps the
+  status it had, the worker's log names it, and its record expires with the
+  retention.
 
 ---
 
