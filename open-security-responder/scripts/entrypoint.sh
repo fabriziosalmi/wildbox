@@ -4,9 +4,12 @@
 
 set -e
 
+# Nothing of REDIS_URL is printed: in the stack it carries the Redis
+# password, and this line wrote it to the container's log at every start.
+# ENVIRONMENT is what decides development or not; the line said
+# "Environment: false", the value of DEBUG.
 echo "Starting Open Security Responder..."
-echo "Environment: ${DEBUG:-production}"
-echo "Redis URL: ${REDIS_URL}"
+echo "Environment: ${ENVIRONMENT:-not set}"
 
 # Start Dramatiq worker in background
 echo "Starting Dramatiq worker for playbook execution..."
