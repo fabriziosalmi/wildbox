@@ -84,9 +84,14 @@ def discovery_rule_next_run(sender, instance, **kwargs):
     if not instance._state.adding and instance.pk is not None:
         previous = (
             AssetDiscoveryRule.objects.filter(pk=instance.pk)
-            .values('schedule', 'enabled', 'next_run', 'last_run')
+            .values('schedule', 'enabled', 'next_run', 'last_run', 'last_run_result')
             .first()
         )
+    if previous is not None:
+        # The run's, always: only execute_discovery_rule writes it, in a
+        # partial save. A rule read before a run ended and saved after it
+        # (an edit through the API) would put the run before back (#775).
+        instance.last_run_result = previous['last_run_result']
     rescheduled = (
         previous is None
         or previous['schedule'] != instance.schedule

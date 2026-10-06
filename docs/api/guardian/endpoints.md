@@ -322,7 +322,7 @@ Custom actions:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `assets/assets/{id}/scan/` | Queues a port scan of the asset's `ip_address`. Returns `message` and `task_id`; `400` with `error` if the asset has no IP address, or has an [internal one](#scan-targets), and then nothing is queued |
+| `POST` | `assets/assets/{id}/scan/` | Queues a port scan of the asset's `ip_address`, IPv4 or IPv6 (before #775 the scan of an IPv6 address found every port closed; it still does where the deployment's worker has no IPv6 route, see the [deployment guide](../../guides/deployment.md#internal-targets-of-guardians-scans)). Returns `message` and `task_id`; `400` with `error` if the asset has no IP address, or has an [internal one](#scan-targets), and then nothing is queued |
 | `POST` | `assets/assets/{id}/add_software/` | Adds a software record to the asset (`201`) |
 | `POST` | `assets/assets/{id}/add_port/` | Adds a port record to the asset (`201`) |
 | `POST` | `assets/assets/{id}/add_tag/` | Body `{"tag": "..."}` |
@@ -351,6 +351,35 @@ bound is the one the tools service puts on a scan target. Before #724 neither
 `discover/` nor a rule checked the size of a network, and `discover/` did not check
 that `network_range` was one. A rule stored with a larger network keeps it, and
 its runs skip that network.
+
+A rule's record says what its last run did, in `last_run_result` (since #775;
+read-only, and `null` until the rule has run under this version):
+
+```json
+{
+  "status": "skipped",
+  "reason": "no_network_queued",
+  "networks_queued": 0,
+  "networks_skipped_count": 1,
+  "networks_skipped": [
+    {"network": "10.0.0.0/24", "reason": "10.0.0.0/24 includes 10.0.0.0, an internal address (private, loopback, link-local, multicast, reserved or cloud metadata). guardian scans an internal address only if the operator of this deployment lists its range in GUARDIAN_ALLOWED_INTERNAL_TARGETS."}
+  ]
+}
+```
+
+- `status` is `completed` when the run queued a discovery for at least one network,
+  and `skipped`, with `"reason": "no_network_queued"`, when it queued none. Before
+  #775 such a run was `completed` too, and only the worker's log said that nothing
+  had been swept.
+- `networks_queued` counts the discoveries queued, not the assets they find.
+- `networks_skipped` names each network the run left out and why: the message a
+  request that names the network gets (an [internal address](#scan-targets), more
+  than 1,024 addresses, not a network), or `The scan of this network could not be
+  queued.` when the task queue did not take it. It holds at most 32 entries;
+  `networks_skipped_count` is how many there were.
+
+`last_run` is when that run started. A rule that is disabled, or of a type guardian
+does not implement, does not run and keeps the result it had.
 
 Filters of `assets/assets/`:
 
@@ -400,7 +429,8 @@ inside the stack's networks. So an internal address is not scanned (since #748):
   discovery rule answers `400` on `target_specification`; `scan/` answers `400` with
   `error`. Nothing is queued. The worker checks again when the task runs: a rule or
   an asset stored before this version keeps its network or address, and its runs
-  skip it.
+  skip it. A rule says so in `last_run_result`, with the reason for each network
+  (since #775).
 - **An asset is still recorded.** `POST assets/assets/` accepts any `ip_address`, as
   an inventory must; an asset at an internal address is not port scanned when it is
   created.
@@ -413,6 +443,9 @@ The refusal says what to ask for:
 
 `GUARDIAN_ALLOWED_INTERNAL_TARGETS` is the operator's setting, empty by default; a
 network is then accepted when every internal address of it is inside a listed range.
+A listed IPv4 range does not cover the same addresses written inside an IPv6 one:
+with `10.20.0.0/16` listed, `::ffff:10.20.3.4` is still refused, unless
+`::ffff:10.20.0.0/112` is listed as well.
 See [Internal targets of Guardian's scans](../../guides/deployment.md#internal-targets-of-guardians-scans).
 The tools service applies the same policy to its network tools, with a setting of
 its own.
@@ -453,10 +486,12 @@ vulnerability's `evidence` or `references` fields.
 A vulnerability needs `title`, `description` and `asset` (an asset ID); `cve_id`
 is optional (before #724 a request without it answered `400`, so send `"cve_id":
 ""` to an older guardian). Guardian keeps one finding for an asset, a CVE and a
-port: a second one with the same `port` answers `400`. The rule does not hold
-when `port` is omitted: two findings for the same asset and CVE without a
-port are both accepted. The answer to the creation carries the new
-record's `id` (since #724). `severity`
+port: a second one with the same `port` answers `400`, with `non_field_errors`.
+So does a second one for the same asset and CVE when neither has a `port`. Both
+were accepted before #775; the duplicates a deployment already holds are kept as
+they are. Findings without a `cve_id` and without a `port` are the exception:
+nothing tells two of them apart, and all are accepted. The answer to the
+creation carries the new record's `id` (since #724). `severity`
 is one of `critical`, `high`, `medium`, `low`, `info`; `status` is one of `open`,
 `in_progress`, `resolved`, `accepted`, `false_positive`, `duplicate`; `priority` is
 one of `p1` to `p4`. `cvss_v3_score` must be between 0.0 and 10.0.
