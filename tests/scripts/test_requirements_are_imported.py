@@ -579,3 +579,43 @@ def test_the_guardian_postgresql_job_installs_the_tools_of_the_unit_test_leg():
     del unit["pytest-cov"]
     assert postgresql == unit
     assert "pytest-django" in postgresql
+
+
+# --- Celery and the one redis-py its result consumer cannot reconnect with ---
+#
+# When the pub/sub connection of Celery's Redis result backend is found
+# closed with nothing subscribed, ``ResultConsumer._reconnect_pubsub`` takes
+# a new one and calls ``register_connect_callback`` on it. redis-py 5.0.1,
+# and no other release, named that method ``_register_connect_callback``: the
+# call raised AttributeError, seen as "Exception ignored in
+# AsyncResult.__del__" when a result was dropped. cspm and guardian locked
+# 5.0.1 beside Celery, with a Redis result backend (#788). No Celery release
+# calls the other name, so the release to avoid is redis-py's.
+
+
+def pinned(service: str) -> dict[str, str]:
+    """{distribution: version} of the service's lock."""
+    lock = REPO / f"open-security-{service}" / "requirements.txt"
+    versions = {}
+    for line in lock.read_text(encoding="utf-8").splitlines():
+        match = _PINNED.match(line.split(" ")[0])
+        if match:
+            versions[canonical(match.group(1))] = match.group(2)
+    return versions
+
+
+def test_no_lock_pairs_celery_with_the_redis_py_that_renamed_the_callback():
+    beside_celery = {
+        service: pinned(service).get("redis")
+        for service in SERVICES
+        if "celery" in pinned(service)
+    }
+    # The services that run Celery, each with redis-py for its broker.
+    assert set(beside_celery) == {"agents", "cspm", "guardian", "tools"}
+    assert all(beside_celery.values()), beside_celery
+    renamed = sorted(s for s, version in beside_celery.items() if version == "5.0.1")
+    assert not renamed, (
+        f"the lock of {renamed} pins redis==5.0.1 beside Celery: its "
+        "Connection has no register_connect_callback, which Celery's Redis "
+        "result consumer calls when it reconnects. 5.0.2 and later have it."
+    )
