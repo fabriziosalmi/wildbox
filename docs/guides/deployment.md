@@ -939,6 +939,23 @@ docker compose start postgres
 docker compose up -d
 ```
 
+`restore_postgres.sh` restores what the archive holds, into the database
+that is there. A table created after the backup, by the migrations of a
+later release for instance, is not in the archive and is left in place
+([#773](https://github.com/fabriziosalmi/wildbox/issues/773)): the release
+that made it then fails to migrate again, with `relation ... already
+exists`. To have a database exactly as it was when the backup was taken,
+which is what going back to an earlier release needs, drop it and create
+it empty before the restore, between the second and the third command
+above:
+
+```bash
+for db in identity data guardian; do
+  docker compose exec -T postgres psql -U postgres \
+    -c "DROP DATABASE \"$db\" WITH (FORCE)" -c "CREATE DATABASE \"$db\""
+done
+```
+
 Both restores destroy everything written since the backup, so each runs only
 with its flag. `--overwrite-live-databases` restores over the databases the
 services use, and `--replace-redis-data` replaces the Redis data volume.

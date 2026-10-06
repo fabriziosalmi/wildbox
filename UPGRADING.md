@@ -109,7 +109,7 @@ container (section 1).
    ```
 
 7. **Start the new stack (required).** One `up -d` recreates the gateway,
-   the services and Redis together (sections 1 and 4). guardian's
+   the services, PostgreSQL and Redis together (sections 1 and 4). guardian's
    migrations run in the image's entrypoint (section 5); no other service
    has a schema change.
 
@@ -173,6 +173,47 @@ container (section 1).
       (section 26).
     - API keys: scopes checked on every route, `/api/v1/automations/` gone
       (sections 7 and 27).
+
+### Going back to 0.11.2
+
+The backup of step 3 is the way back: six of guardian's migrations cannot
+be reversed in data (section 5). With `COMPOSE_FILE` set as in step 1, and
+the 0.12.0 checkout still in place for its scripts:
+
+```bash
+docker compose stop
+docker compose start postgres
+for db in identity data guardian; do
+  docker compose exec -T postgres psql -U postgres \
+    -c "DROP DATABASE \"$db\" WITH (FORCE)" -c "CREATE DATABASE \"$db\""
+done
+./scripts/restore_postgres.sh --timestamp <timestamp of step 3> --overwrite-live-databases
+git checkout v0.11.2
+docker compose build
+docker compose up -d
+```
+
+Use your `POSTGRES_USER` for `-U`. Everything written since the backup is
+lost.
+
+**Drop and create each database before the restore**, as above.
+`restore_postgres.sh` restores what the archive holds into the database
+that is there, and leaves a table made after the backup: the one this
+release adds (`core_teammembershiprevocation`, in guardian) would stay.
+0.11.2 runs with it, and the next upgrade then stops in guardian's
+migrations with `relation "core_teammembershiprevocation" already exists`
+([#773](https://github.com/fabriziosalmi/wildbox/issues/773)). If you
+already went back without dropping the databases, drop that one table
+before upgrading again:
+
+```bash
+docker compose exec -T postgres psql -U postgres -d guardian \
+  -c 'DROP TABLE core_teammembershiprevocation'
+```
+
+The `.env` of step 5 can stay as it is: 0.11.2 ignores what this release
+added. Redis needs no restore to go back; to have it as it was too, see
+`scripts/restore_redis.sh` in the deployment guide.
 
 ### 1. Rebuild every image and start them together (required)
 
@@ -267,11 +308,14 @@ The gateway now answers CORS preflight requests itself, from
   is not an origin, with a message naming the entry. Nothing to do for a
   deployment whose dashboard is served by the gateway.
 
-### 4. Redis is recreated, and its health check authenticates (nothing to do)
+### 4. PostgreSQL and Redis are recreated; Redis's health check authenticates (nothing to do)
 
-The definition of the Redis container changed (an environment variable and
-the health check), so the next `docker compose up -d` recreates it. The
-data volume is kept; the services are without Redis for those seconds.
+The definitions of both containers changed, so the `docker compose up -d`
+of step 7 recreates them: the images are now pinned by digest
+(`postgres:15` and `redis:7-alpine` at the digests the repository names), and
+Redis has a new environment variable and health check. The data volumes
+are kept; the services are without their database and without Redis for
+those seconds, in the same `up -d` that recreates them too.
 
 A Redis that refuses the password it was created with is now `unhealthy`.
 After a `REDIS_PASSWORD` rotation that is the case until the command the
@@ -296,7 +340,8 @@ rotation prints has been run (section 13).
 None needs an operator step on a database guardian itself wrote.
 `vulnerabilities.0003`, `assets.0003`, the two that delete credentials and
 the two that drop columns or a table cannot be reversed in data: going back
-needs the backup of step 3.
+needs the backup of step 3, restored as
+[Going back to 0.11.2](#going-back-to-0112) says.
 
 **If someone wrote rows into `vulnerabilities_vulnerabilityattachment` by
 hand**, guardian stops at start with `AttachmentsExist` and the number of

@@ -838,7 +838,8 @@
     "externalsystem",
     "notificationchannel",
     "vulnerabilityattachment",
-    "webhookendpoint"
+    "webhookendpoint",
+    "teammembershiprevocation"
   ],
   "ignoreWords": [
     "APIKEY",

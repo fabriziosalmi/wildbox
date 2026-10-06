@@ -36,6 +36,26 @@ An existing deployment has things to do, and some of them before the new
 images start: follow
 [Upgrading to 0.12.0](UPGRADING.md#upgrading-to-0120).
 
+The upgrade was run end to end on a Linux host before the release, on a
+stack that holds data created under 0.10.0, following that checklist step
+by step. Every image was rebuilt and all eighteen services were healthy
+after one `docker compose up -d`; the 0.11.2 gateway went on answering
+between the checkout and the restart; guardian's ten migrations applied at
+start; no table of the three databases lost a row, each compared with the
+backup taken before the upgrade; an API key issued under 0.10.0 still
+authenticated; a scanner credential stored under 0.11.2 was deleted, and
+the migration said so; a discovery rule on a private network was kept and
+could not be saved again; `make health` and `make restore-drill` passed.
+The integration suite, run against the upgraded stack, passed (244 passed,
+13 skipped) but for the three tests of guardian's e-mail, which need
+`GUARDIAN_CONTACTS_SECRET`, a setting an upgraded deployment does not have
+until it opts in. The test then went back to 0.11.2 from the backup and
+upgraded again, and that found two things, both now in UPGRADING.md: the
+PostgreSQL container is recreated in the upgrade, as Redis is, and a
+restore over a database the upgrade has migrated leaves the table the
+migration made, so going back drops each database and creates it empty
+before the restore (#773).
+
 
 ### Security
 
