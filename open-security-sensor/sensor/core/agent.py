@@ -248,31 +248,48 @@ class SecuritySensorAgent:
         more (its buffer is full), waiting would not help: it gives up after
         QUEUE_DRAIN_SECONDS.
         """
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + QUEUE_DRAIN_SECONDS
-        while (
-            self.event_queue.qsize()
-            or self.data_processor.in_flight
-            or self.processed_queue.qsize()
-        ):
-            if loop.time() >= deadline:
-                break
-            await asyncio.sleep(0.02)
+        try:
+            await asyncio.wait_for(self._handed_over(), QUEUE_DRAIN_SECONDS)
+        except asyncio.TimeoutError:
+            pass
+
+    async def _handed_over(self):
+        """Return when every event collected has reached the sender, or has
+        been filtered or dropped with a count on its way.
+
+        Each queue is asked, and each answers for its reader: an event is
+        unfinished from the moment it is put until whoever took it says
+        ``task_done()``, which the processor does when the event is on the
+        processed queue (or filtered) and the sender when it holds the event
+        (or has dropped it). This used to be a look, every 20 ms, at the
+        size of the two queues and at a count the processor's workers kept:
+        an event a worker had taken and not counted yet was in none of the
+        three, and a look at that moment ended the wait and lost the event
+        (#754). In this order: the processor adds to the second queue until
+        the first one is finished.
+        """
+        await self.event_queue.join()
+        await self.processed_queue.join()
 
     def _report_left_in_queues(self):
-        """Say what the queues still held when the pipeline stopped: those
-        events never reached the sender, which counts only its own."""
+        """Say what the queues, and the processor's workers, still held when
+        the pipeline stopped: those events never reached the sender, which
+        counts only its own."""
         left = []
         for queue in (self.event_queue, self.processed_queue):
             while not queue.empty():
-                left.append(queue.get_nowait())
+                left.append(take_delivery(queue.get_nowait()))
+                # Counted here: the queue has nothing unfinished left.
+                queue.task_done()
+        if self.data_processor:
+            # And what its workers held when they were stopped.
+            left.extend(self.data_processor.interrupted)
+            self.data_processor.interrupted = []
         if not left:
             return
-        returned = 0
-        for event in left:
-            delivery = take_delivery(event)
-            if delivery is not None and delivery.replayable:
-                returned += 1
+        returned = sum(
+            1 for delivery in left if delivery is not None and delivery.replayable
+        )
         logger.warning(
             "Stopped with %d events still on their way to the sender: %d are "
             "dropped, %d will be read again from their log source after the "
@@ -294,7 +311,8 @@ class SecuritySensorAgent:
         * events_dropped: events that left the sensor unsent (the reasons
           are under data_forwarder in /api/v1/components).
         * events_in_pipeline: events waiting in the two queues and in the
-          sender's buffer.
+          sender's buffer, and those in hand between them (a worker's, and
+          the one the sender holds while its buffer is full).
         * errors: errors of the processor and of the sender (network errors
           and error answers of the gateway).
         * last_activity: when the last event was collected, or null.
@@ -304,7 +322,8 @@ class SecuritySensorAgent:
         """
         processor = self.data_processor.stats if self.data_processor else {}
         forwarder = self.data_forwarder.stats if self.data_forwarder else {}
-        buffered = len(self.data_forwarder.buffer) if self.data_forwarder else 0
+        buffered = self.data_forwarder.held if self.data_forwarder else 0
+        in_hand = self.data_processor.in_flight if self.data_processor else 0
         last_put = self.event_queue.last_put
         uptime = 0
         if self.start_time:
@@ -316,7 +335,10 @@ class SecuritySensorAgent:
             'events_forwarded': forwarder.get('events_forwarded', 0),
             'events_dropped': forwarder.get('events_dropped', 0),
             'events_in_pipeline': (
-                self.event_queue.qsize() + self.processed_queue.qsize() + buffered
+                self.event_queue.qsize()
+                + in_hand
+                + self.processed_queue.qsize()
+                + buffered
             ),
             'errors': (
                 processor.get('errors', 0)
