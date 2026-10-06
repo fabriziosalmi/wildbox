@@ -71,10 +71,13 @@ There are 22 AWS checks, one class per file under `app/checks/aws/`:
 | SQS | `AWS_SQS_001` queue encryption |
 | VPC | `AWS_VPC_001` flow logs, `AWS_VPC_002` default security group, `AWS_VPC_003` security groups open to the internet |
 
-`GET /api/v1/checks` returns each check's metadata: title, description,
-service, category, severity, compliance frameworks, references and
-remediation. A scan runs every check in every requested region; without
-`regions` it uses `us-east-1`, `us-west-2` and `eu-west-1`.
+`GET /api/v1/checks` is meant to return this catalog, and answers 500
+(`Failed to list checks`) whenever at least one check matches the request:
+the entries the runner returns (`get_available_checks` in
+`app/checks/runner.py`) lack the `remediation` field its response model
+requires (`CheckMetadataSchema` in `app/schemas.py`). The number of checks is
+in `GET /api/v1/providers`. A scan runs every check in every requested
+region; without `regions` it uses `us-east-1`, `us-west-2` and `eu-west-1`.
 
 ### Compliance frameworks
 
@@ -96,8 +99,10 @@ In the Wildbox stack, from the repository root:
 docker compose up -d cspm cspm-worker
 ```
 
-The root `docker-compose.yml` requires `CSPM_SECRET_KEY`,
-`CSPM_CREDENTIAL_KEY`, `REDIS_PASSWORD` and `GATEWAY_INTERNAL_SECRET`. The
+The root `docker-compose.yml` requires `ENVIRONMENT`, `CSPM_SECRET_KEY`,
+`CSPM_CREDENTIAL_KEY` and `REDIS_PASSWORD`, and passes
+`GATEWAY_INTERNAL_SECRET`, without which every `/api/v1/*` route answers
+503. The
 service listens on `127.0.0.1:8019` on the host; its `/health` and
 `/health/live` answer there without authentication.
 
@@ -121,18 +126,19 @@ another team's scan answers 403.
 ## API
 
 Service paths; through the gateway, replace `/api/v1/` with
-`/api/v1/cspm/`.
+`/api/v1/cspm/`. The reference, with every field and status code, is
+[docs/api/cspm/endpoints.md](../docs/api/cspm/endpoints.md).
 
 | Method | Path | Description |
 | --- | --- | --- |
 | POST | `/api/v1/scans` | Start a scan (202) |
 | GET | `/api/v1/scans/{scan_id}` | Scan status |
 | GET | `/api/v1/scans/{scan_id}/report` | Full report of a completed scan |
-| GET | `/api/v1/scans/{scan_id}/compliance` | Per-framework results of one scan; optional `framework` filter |
+| GET | `/api/v1/scans/{scan_id}/compliance` | Per-framework results of one scan; optional `framework` filter. Answers 500 for every completed scan: the handler gives `generated_at` a date where the response model declares a string |
 | DELETE | `/api/v1/scans/{scan_id}` | Cancel a scan |
 | POST | `/api/v1/batch/scans` | Start several scans |
 | GET | `/api/v1/providers` | Providers that can be scanned |
-| GET | `/api/v1/checks` | Check catalog; optional `provider`, `category`, `severity` filters |
+| GET | `/api/v1/checks` | Check catalog; optional `provider`, `category`, `severity` filters. Answers 500 when a check matches; see [Checks](#checks) |
 | GET | `/api/v1/dashboard/summary` | Team summary; `days` 1 to 365, default 30 |
 | GET | `/api/v1/compliance/summary` | Team compliance; `days`, `provider` |
 | GET | `/api/v1/compliance/findings` | Check verdicts; `framework`, `severity`, `status`, `days`, `provider`, `limit`, `offset` |
@@ -191,17 +197,19 @@ number of regions and checks, not a measurement.
   "started_at": "2026-10-03T10:30:00",
   "completed_at": null,
   "progress": {
-    "current_status": "running",
-    "total_checks": 22,
-    "completed_checks": 9,
-    "current_region": "us-west-2"
+    "current_status": "initializing",
+    "total_checks": null,
+    "completed_checks": null,
+    "current_region": null
   }
 }
 ```
 
-`status` is `queued`, `running`, `completed`, `failed` or `cancelled`.
-`progress` is set only while the scan runs; `completed_at` only once it
-completed.
+`status` is `queued`, `running`, `completed`, `failed` or `cancelled`
+(`unknown` for a task state the route does not map). `progress` is set only
+while the scan runs: `current_status` is `running` or `initializing`, and
+the worker reports no counts, so the other three fields are always `null`.
+`completed_at` is set only once the scan completed.
 
 ### Scan report
 
@@ -351,7 +359,7 @@ Settings are read from the environment (`app/config.py`); the root
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed origins, as a JSON list |
 | `DEBUG` | `false` | Auto-reload and a single worker when the module is run directly (`python -m app.main`) |
 | `LOG_LEVEL` | `INFO` | Log level |
-| `ENVIRONMENT` | none | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development`; unset or empty is not |
+| `ENVIRONMENT` | none | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development`; unset or empty is not. Required by the stack |
 
 The `docker-compose.yml` in this directory is for standalone development.
 It does not set `GATEWAY_INTERNAL_SECRET` or `CSPM_CREDENTIAL_KEY`, so use

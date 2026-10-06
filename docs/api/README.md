@@ -18,7 +18,7 @@ service and the endpoint.
 | **Guardian** | [endpoints.md](guardian/endpoints.md) |
 | **Responder** | [endpoints.md](responder/endpoints.md) |
 | **Agents** | [endpoints.md](agents/endpoints.md) |
-| **CSPM** | Not written yet. The service scans AWS only, with 22 checks; a scan request for GCP or Azure is refused with `400`. `GET /api/v1/cspm/providers` lists the providers a scan can be submitted for and their check counts. Its routes are under `/api/v1/cspm/` |
+| **CSPM** | [endpoints.md](cspm/endpoints.md). The service scans AWS only, with 22 checks; a scan request for GCP or Azure is refused with `400` |
 
 ### OpenAPI Schemas
 
@@ -141,8 +141,8 @@ For each endpoint, document:
 
 To contribute API documentation:
 
-1. **Choose a service** without a reference (currently CSPM), or one whose
-   reference has drifted from the code
+1. **Choose a reference** in the table above that has drifted from the code,
+   or a route its reference does not list
 2. **Follow the template** in [TEMPLATE.md](https://github.com/fabriziosalmi/wildbox/blob/main/docs/api/TEMPLATE.md)
 3. **Test examples** with running services
 4. **Include real examples** from live API responses
