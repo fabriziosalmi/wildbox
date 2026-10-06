@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### CI
+
+- **The integration tests of guardian's e-mail are skipped on a stack that
+  has not opted in to it** (#779). Three tests of
+  `tests/integration/test_guardian_notifications.py` need
+  `GUARDIAN_CONTACTS_SECRET` on identity and guardian-worker. A stack made
+  by `make generate-secrets` has it; one upgraded from an earlier release
+  has it only once its operator sets it, and there identity answers `503
+  Team contacts are not configured`, as documented, and the three tests
+  failed on that answer: the suite run against the stack upgraded to
+  0.12.0 reported 244 passed and 3 failed. They now ask identity first and
+  skip with the reason, as the suite does for its other optional parts.
+  Where `REQUIRE_ALL_SERVICES` says the stack must have everything, as in
+  the CI jobs, a missing secret fails them instead.
+
 ## [0.12.0] - 2026-10-06
 
 This release closes what the audits of 0.11.0 found, service by service.
