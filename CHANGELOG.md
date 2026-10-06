@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The responder no longer writes the Redis password to its log when it
+  starts.** `open-security-responder/scripts/entrypoint.sh` printed
+  `Redis URL: ${REDIS_URL}` at every start of the container (since
+  v0.1.8), and since v0.6.1 that URL holds `REDIS_PASSWORD`
+  (`redis://:<password>@wildbox-redis:6379/2`). The value went to the
+  container's log: `docker logs open-security-responder`, the json-file
+  Docker keeps for it, and wherever a deployment ships container logs.
+  The line is gone, with the one above it, which printed the value of
+  `DEBUG` as the environment. If those logs were readable by someone
+  who should not hold the password, or left the host, rotate it:
+  `./scripts/rotate_secrets.sh --secret REDIS_PASSWORD`. Redis is not
+  published outside the stack's Docker network, so the password by
+  itself reaches nothing: it is worth something to whoever can also
+  connect to that network. It is the class #755 closed for Python
+  (#758); that guard did not read shell. A test now reads every tracked
+  shell script, the `RUN`, `CMD`, `ENTRYPOINT` and `HEALTHCHECK` of
+  every Dockerfile and the `command`, `entrypoint` and health check of
+  every Compose service, and fails on a command that writes to standard
+  output or standard error a variable whose name says it holds a
+  secret or a URL that can carry one, and on `set -x`. On this tree it
+  found that line and nothing else that prints a value.
 - **The data service's statistics no longer count other teams' collection
   runs** (#755). `GET /api/v1/data/stats` answered `recent_collections` as
   the number of collection runs of every team's sources in the last 24
