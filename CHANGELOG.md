@@ -80,9 +80,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   line in `guardian-worker`'s log beside it held the exception's text,
   which names the broker and its address and may hold the URL it was
   given. The line now names the network and the class of the error.
-
-### Fixed
-
 - **Every redirect the gateway writes keeps the client on the port it
   called** (#788). 0.12.1 fixed this for guardian's location (#776).
   The `301` nginx writes for the eight other proxied prefixes asked
