@@ -30,7 +30,10 @@ pydantic-settings==2.10.1
 jinja2==3.1.6
 pyyaml==6.0.2
 httpx==0.28.1
-pytest==9.0.3
-pytest-asyncio==1.3.0
-pytest-cov==6.0.0
 python-dotenv==1.2.2
+
+# No test runner: the lock made from this file is what the image installs.
+# pytest, pytest-asyncio and pytest-cov were named here, so the image shipped
+# them with everything they bring (#788). The unit-test job installs its own
+# on top of this lock (.github/workflows/test.yml), at the versions
+# tests/ci-tools/requirements.in gives.
