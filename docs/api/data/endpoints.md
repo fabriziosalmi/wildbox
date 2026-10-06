@@ -567,7 +567,8 @@ current window in `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
 limit it answers 429 with `Retry-After`. `RATE_LIMIT_PER_HOUR` must be a
 whole number from 1 to 1000000000; any other value stops the gateway at
 startup. The gateway also limits each client IP to 100 requests per second with a
-burst of 10.
+burst of 10 (`GATEWAY_RATE_LIMIT_PER_SECOND`, 100 unless the operator
+changed it).
 
 ## Examples
 

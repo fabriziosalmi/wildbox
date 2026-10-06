@@ -95,7 +95,10 @@ def _load(relative: str, name: str):
 
 def test_the_base_file_requires_the_variable_of_every_service_it_gives_it_to():
     values = environments(BASE)
-    assert len(values) == 18, sorted(values)
+    # Eighteen until #756: the gateway was given the variable and read it
+    # nowhere, so it is no longer passed to it, here or in the overlay.
+    assert len(values) == 17, sorted(values)
+    assert "gateway" not in values
     for service, value in values.items():
         assert REQUIRED.match(value), (service, value)
 
@@ -221,7 +224,7 @@ def test_the_rendered_production_stack_is_production_whatever_the_env_file_says(
         for name, service in services.items()
         if "ENVIRONMENT" in (service.get("environment") or {})
     }
-    assert len(rendered) == 18, sorted(rendered)
+    assert len(rendered) == 17, sorted(rendered)
     assert set(rendered.values()) == {"production"}, rendered
 
 

@@ -8,12 +8,14 @@ longer than 128, containing the account's email or its local part, or one of
 the most common passwords.
 
 Registration is sent the way the dashboard sends it, to the gateway's
-/auth/register. That route is rate limited (burst 2), so a 429 is retried.
+/auth/register. That route is rate limited per address (5 a second, burst
+2). A 429 used to be retried here; the stack the suite runs against is now
+given a rate the suite does not reach (conftest.py, #756), and a 429 is an
+answer like any other: the assertions below fail on it.
 """
 
 import os
 import secrets
-import time
 
 import requests
 
@@ -34,14 +36,9 @@ def strong_password():
 
 
 def register(email, password):
-    for attempt in range(6):
-        response = requests.post(
-            REGISTER, json={"email": email, "password": password}, timeout=TIMEOUT
-        )
-        if response.status_code != 429:
-            return response
-        time.sleep(1 + attempt)
-    return response
+    return requests.post(
+        REGISTER, json={"email": email, "password": password}, timeout=TIMEOUT
+    )
 
 
 def assert_refused(response, mention):

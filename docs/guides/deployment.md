@@ -180,6 +180,49 @@ figure (at least one request a minute), and reports it on every response in
 `RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start. Restart
 the gateway after changing it (`docker compose up -d gateway`).
 
+### The gateway's per-address rate limits
+
+Before it authenticates anything, the gateway limits how fast one client
+address may send. Past the limit it answers nginx's own `429`, an HTML page
+without `Retry-After`. Three settings in `.env` hold the rates, in requests
+per second:
+
+| Setting | Default | Applies to | Burst |
+|---------|---------|------------|-------|
+| `GATEWAY_RATE_LIMIT_PER_SECOND` | `100` | every route that has no limit of its own | 10 |
+| `GATEWAY_AUTH_RATE_LIMIT_PER_SECOND` | `5` | login (`/auth/jwt/`), registration and forgotten password, counted together | 3, 2 and 2 |
+| `GATEWAY_STATIC_RATE_LIMIT_PER_SECOND` | `500` | the dashboard's static assets | 200 |
+
+The defaults are the limits the gateway always had; a deployment that sets
+nothing keeps them. What they protect: the first keeps one address from
+flooding the gateway and, behind it, identity, since a request without a
+valid credential is refused here before anything is asked of identity; the
+second slows password guessing, mass registration and forgotten-password
+requests from one address (identity also locks an account after repeated
+failed logins, whatever this rate is); the third only keeps one address
+from hammering the assets.
+
+These are operator settings. The gateway counts by the address of the
+connection, never by a header, so nothing a client sends changes a limit or
+moves it to another counter. That also means that behind a NAT, a load
+balancer or another reverse proxy every user reaches the gateway from one
+address and shares one allowance: that is when to raise a rate. Raising the
+second gives a client that guesses passwords that many more attempts a
+second.
+
+Each value must be a whole number from 1 to 100000, in digits only. With
+any other value the gateway logs
+`GATEWAY_RATE_LIMIT_PER_SECOND must be a whole number of requests per second between 1 and 100000 ...`
+(with the name of the setting at fault) and does not start. At start it logs
+the rates it runs with:
+`Per-address request limits: global 100 r/s, auth 5 r/s, static assets 500 r/s.`
+Restart the gateway after changing one (`docker compose up -d gateway`); an
+nginx reload does not read them.
+
+The repository's test suites send every request from one address, faster
+than these defaults allow, so the stacks CI starts for them set the three
+rates to 10000. Do not copy that into a deployment.
+
 ### Guardian's per-user rate limit
 
 Under the gateway's limit, guardian allows each user
@@ -664,6 +707,48 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api tools-
   `172.16.0.0/12`); its service names stay refused unless listed by name.
 
 The tools README, "Network targets", lists the fields checked per tool.
+
+### Internal targets of Guardian's scans
+
+Guardian's asset discovery and port scans connect from `guardian-worker`,
+which is on the stack's networks: with every service in `docker-compose.yml`,
+and on `data` (PostgreSQL, Redis, identity) and `egress` in the production
+overlay. They refuse internal targets, by the same policy as the network
+tools: private, loopback, link-local, multicast, reserved, shared and
+cloud-metadata addresses, IPv4 and IPv6, and any network that contains one,
+even in part. A discovery, a discovery rule or a port scan aimed at one
+answers 400 with the reason, and nothing is queued; the worker checks again
+when the task runs. Guardian scans addresses only, so there is no host name
+to check. An asset at an internal address is still recorded in the
+inventory; it is not port scanned.
+
+Nothing internal is scanned by default, your own LAN included. To scan it,
+list its ranges in `.env`, then recreate `guardian` and `guardian-worker`:
+
+```bash
+GUARDIAN_ALLOWED_INTERNAL_TARGETS=192.168.50.0/24,10.20.0.0/16
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d guardian guardian-worker
+```
+
+- **Entries.** CIDR ranges with their host bits zero and IP addresses,
+  comma-separated. No host names. A bad entry stops both containers at
+  start-up; `docker compose logs guardian` names the variable and the entry.
+- **A network must be inside the list.** A discovery of `192.168.50.0/23`
+  is refused when only `192.168.50.0/24` is listed. The limit of 1,024
+  addresses for each discovery applies to listed ranges too.
+- **Guardian's list, not the tools service's.** `TOOLS_ALLOWED_INTERNAL_TARGETS`
+  opens nothing for Guardian, and this variable nothing for the tools. Set
+  both if both scan the lab.
+- **Keep the stack out.** Every owner and admin of every team can scan what
+  is listed. Do not list the stack's Docker networks (by default in
+  `172.16.0.0/12`), loopback or `169.254.169.254`.
+- **Rules and assets stored before the upgrade** keep their networks and
+  addresses. A rule's run skips each internal network that is not listed, and
+  `guardian-worker` logs the network and the variable; the rule cannot be
+  saved again with that network until it is.
 
 ### The sensor's telemetry
 

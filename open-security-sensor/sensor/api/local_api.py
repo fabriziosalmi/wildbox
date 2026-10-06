@@ -223,6 +223,7 @@ class LocalAPI:
                 ),
                 'performance': {
                     'query_interval': self.config.performance.query_interval,
+                    'inventory_interval': self.config.performance.inventory_interval,
                     'max_memory_mb': self.config.performance.max_memory_mb,
                     'max_cpu_percent': self.config.performance.max_cpu_percent,
                     'worker_threads': self.config.performance.worker_threads

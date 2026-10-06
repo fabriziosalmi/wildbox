@@ -69,25 +69,20 @@ export function bearer(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` }
 }
 
-/* The gateway limits the auth routes to 5 requests/s per address (burst 3).
-   Setup and the API helpers below are the only callers that might trip it;
-   retrying a 429 here keeps them deterministic. UI logins are never retried. */
-async function withAuthRateLimit<T extends { status(): number }>(
-  call: () => Promise<T>
-): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    const response = await call()
-    if (response.status() !== 429 || attempt === 5) return response
-    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
-  }
-}
+/* The gateway limits the auth routes per address: 5 requests a second, with a
+   burst of 3 for login and 2 for registration, in a deployment. The helpers
+   below used to retry a 429 for that, which also retried a 429 that meant
+   something else: identity answers 429 for a locked account. They no longer
+   retry anything. The stack these specs run against is started with rates
+   they do not reach (GATEWAY_RATE_LIMIT_PER_SECOND and
+   GATEWAY_AUTH_RATE_LIMIT_PER_SECOND in .env, see tests/README.md); the
+   limits themselves are tested at their deployment rates by the gateway
+   harness, open-security-gateway/test/rate_limit_tests.py (#756). */
 
 export async function apiLogin(api: APIRequestContext, account: Account): Promise<string> {
-  const response = await withAuthRateLimit(() =>
-    api.post('/auth/jwt/login', {
-      form: { username: account.email, password: account.password },
-    })
-  )
+  const response = await api.post('/auth/jwt/login', {
+    form: { username: account.email, password: account.password },
+  })
   expect(response.status(), `login of ${account.email}: ${await response.text()}`).toBe(200)
   const body = await response.json()
   return body.access_token as string
@@ -95,9 +90,7 @@ export async function apiLogin(api: APIRequestContext, account: Account): Promis
 
 /** Revokes `token` the way the dashboard's Logout button does; returns the HTTP status. */
 export async function apiLogout(api: APIRequestContext, token: string): Promise<number> {
-  const response = await withAuthRateLimit(() =>
-    api.post('/auth/jwt/logout', { headers: bearer(token) })
-  )
+  const response = await api.post('/auth/jwt/logout', { headers: bearer(token) })
   return response.status()
 }
 
@@ -106,9 +99,9 @@ export async function registerUser(
   api: APIRequestContext,
   account: Account
 ): Promise<{ id: string; email: string }> {
-  const response = await withAuthRateLimit(() =>
-    api.post('/auth/register', { data: { email: account.email, password: account.password } })
-  )
+  const response = await api.post('/auth/register', {
+    data: { email: account.email, password: account.password },
+  })
   expect(response.status(), `register ${account.email}: ${await response.text()}`).toBe(201)
   return response.json()
 }
@@ -205,11 +198,9 @@ export async function throwawayAccount(
 
 /** Status of a password login, for checking which password an account has. */
 export async function loginStatus(api: APIRequestContext, account: Account): Promise<number> {
-  const response = await withAuthRateLimit(() =>
-    api.post('/auth/jwt/login', {
-      form: { username: account.email, password: account.password },
-    })
-  )
+  const response = await api.post('/auth/jwt/login', {
+    form: { username: account.email, password: account.password },
+  })
   return response.status()
 }
 
