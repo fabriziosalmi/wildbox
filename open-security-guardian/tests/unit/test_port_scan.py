@@ -424,3 +424,252 @@ def test_the_address_is_checked_before_the_range(allow, network):
         assert result["status"] == "refused"
         assert ALLOWLIST_VARIABLE in result["reason"]
     assert network.sockets == []
+
+
+# --- a probe that fails, and its socket (#788) ----------------------------------------
+#
+# ``_scan_port`` closed its socket after ``connect_ex`` returned, so not when
+# it raised; and it read every error as "closed", a network it could not
+# reach like a port that refused. The result of a scan has no place for the
+# difference yet (#787): the socket is always closed, and what is not about
+# the port is logged, once for the scan.
+
+
+class _Probe:
+    """One socket: what its connection ends with, and whether it was closed."""
+
+    def __init__(self, outcome):
+        self.outcome, self.closed = outcome, False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+    def settimeout(self, value):
+        pass
+
+    def close(self):
+        self.closed = True
+
+    def connect_ex(self, address):
+        if isinstance(self.outcome, BaseException):
+            raise self.outcome
+        return self.outcome
+
+    def connect(self, address):
+        code = self.connect_ex(address)
+        if code:
+            raise OSError(code, "not connected")
+
+    def recv(self, size):
+        return b""
+
+
+@pytest.fixture
+def probes(monkeypatch):
+    """Every socket tasks.py opens ends as ``probes.outcome`` says."""
+
+    class Probes(list):
+        outcome = errno.ECONNREFUSED
+
+        def socket(self, *args):
+            self.append(_Probe(self.outcome))
+            return self[-1]
+
+    made = Probes()
+    monkeypatch.setattr(tasks.socket, "socket", made.socket)
+    return made
+
+
+ADDRESS = ipaddress.ip_address(PUBLIC_V4)
+
+RAISED = [
+    OSError(errno.ENETUNREACH, "Network is unreachable"),
+    socket.gaierror(socket.EAI_NONAME, "Name or service not known"),
+    OverflowError("connect_ex(): port must be 0-65535."),
+    RuntimeError("anything else"),
+]
+
+
+@pytest.mark.parametrize("raised", RAISED, ids=lambda error: type(error).__name__)
+def test_the_socket_is_closed_when_the_connection_raises(probes, raised):
+    probes.outcome = raised
+
+    assert tasks._scan_port(ADDRESS, 443) is False
+
+    (probe,) = probes
+    assert probe.closed
+
+
+@pytest.mark.parametrize("code", [0, errno.ECONNREFUSED, errno.EHOSTUNREACH])
+def test_the_socket_is_closed_when_the_connection_returns(probes, code):
+    probes.outcome = code
+
+    assert tasks._scan_port(ADDRESS, 443) is (code == 0)
+
+    (probe,) = probes
+    assert probe.closed
+
+
+@pytest.mark.parametrize("raised", [None, *RAISED], ids=repr)
+def test_the_banner_probes_socket_is_closed_too(probes, raised):
+    probes.outcome = raised or 0
+
+    tasks._detect_service(ADDRESS, 443)
+
+    (probe,) = probes
+    assert probe.closed
+
+
+NOT_OPEN = [errno.ECONNREFUSED, errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK]
+NOT_THE_PORT = [
+    (errno.ENETUNREACH, "ENETUNREACH"),
+    (errno.EHOSTUNREACH, "EHOSTUNREACH"),
+    (errno.EACCES, "EACCES"),
+    (OSError(errno.EMFILE, "Too many open files"), "EMFILE"),
+    # The number a resolver's error carries is not an errno: by its class.
+    (socket.gaierror(socket.EAI_NONAME, "Name or service not known"), "gaierror"),
+    (RuntimeError("redis://:hunter2@broker:6379/1"), "RuntimeError"),
+]
+
+
+@pytest.mark.parametrize("code", NOT_OPEN, ids=lambda code: errno.errorcode[code])
+def test_a_port_that_refuses_or_does_not_answer_is_not_open_and_not_a_failure(
+    probes, code
+):
+    probes.outcome = code
+    failures = {}
+
+    assert tasks._scan_port(ADDRESS, 443, failures=failures) is False
+    assert failures == {}
+
+
+@pytest.mark.parametrize(("outcome", "reason"), NOT_THE_PORT, ids=lambda v: str(v)[:24])
+def test_an_error_that_is_not_about_the_port_is_counted_by_its_name(
+    probes, outcome, reason
+):
+    probes.outcome = outcome
+    failures = {}
+
+    for port in (22, 80, 443):
+        assert tasks._scan_port(ADDRESS, port, failures=failures) is False
+
+    assert failures == {reason: 3}
+
+
+def _scan_log(caplog):
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "apps.assets.tasks" and record.levelname == "WARNING"
+    ]
+
+
+@pytest.mark.django_db
+def test_a_scan_that_could_not_reach_the_host_says_so_once(allow, probes, caplog):
+    """Nineteen ports, one line: and the result is the one it was."""
+    asset = _asset(PUBLIC_V4)
+    probes.outcome = errno.ENETUNREACH
+
+    with caplog.at_level("DEBUG", logger="apps.assets.tasks"):
+        result = _scan(asset)
+
+    assert result == {
+        "status": "completed",
+        "asset_name": asset.name,
+        "ports_scanned": COMMON_PORTS,
+        "new_open_ports": 0,
+    }
+    (line,) = _scan_log(caplog)
+    assert f"{COMMON_PORTS} of {COMMON_PORTS} ports could not be tried" in line
+    assert f"ENETUNREACH x{COMMON_PORTS}" in line and asset.name in line
+    assert all(probe.closed for probe in probes) and len(probes) == COMMON_PORTS
+    assert not AssetPort.objects.exists()
+
+
+@pytest.mark.django_db
+def test_the_line_holds_the_name_of_an_error_and_not_its_text(allow, probes, caplog):
+    asset = _asset(PUBLIC_V4)
+    probes.outcome = RuntimeError("redis://:hunter2@broker:6379/1")
+
+    with caplog.at_level("DEBUG", logger="apps.assets.tasks"):
+        assert _scan(asset, "443")["status"] == "completed"
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "RuntimeError x1" in logged
+    assert "hunter2" not in logged and "broker" not in logged
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("code", NOT_OPEN, ids=lambda code: errno.errorcode[code])
+def test_a_scan_of_closed_ports_logs_no_failure(allow, probes, caplog, code):
+    asset = _asset(PUBLIC_V4)
+    probes.outcome = code
+
+    with caplog.at_level("DEBUG", logger="apps.assets.tasks"):
+        assert _scan(asset)["new_open_ports"] == 0
+
+    assert _scan_log(caplog) == []
+
+
+# --- the name of a host found at an address (#788) --------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("address", "name"),
+    [
+        ("93.184.215.14", "host-93-184-215-14"),
+        ("10.0.0.5", "host-10-0-0-5"),
+        (PUBLIC_V6, "host-2606-2800-021f-cb07-6820-80da-af6b-8b2c"),
+        ("2001:db8::1", "host-2001-0db8-0000-0000-0000-0000-0000-0001"),
+        ("2001:db8::", "host-2001-0db8-0000-0000-0000-0000-0000-0000"),
+        ("::ffff:93.184.215.14", "host-0000-0000-0000-0000-0000-ffff-5db8-d70e"),
+    ],
+)
+def test_a_host_without_a_name_is_named_after_its_address(address, name):
+    """An IPv4 host as it always was; an IPv6 one without its colons."""
+    assert tasks._host_name(address) == name
+    # A label a host name could hold: letters, digits and hyphens, at most
+    # 63 of them, neither first nor last a hyphen.
+    assert len(name) <= 63 and name == name.strip("-")
+    assert set(name) <= set("abcdefghijklmnopqrstuvwxyz0123456789-")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("address", "name"),
+    [
+        (PUBLIC_V4, "host-93-184-215-14"),
+        (PUBLIC_V6, "host-2606-2800-021f-cb07-6820-80da-af6b-8b2c"),
+    ],
+)
+def test_a_discovered_host_is_stored_under_that_name(address, name):
+    team = uuid.uuid4()
+
+    # No name resolves, and the scan a new asset queues needs no broker.
+    with mock.patch.object(tasks, "_resolve_hostname", return_value=None):
+        with mock.patch("apps.assets.signals.scan_asset_ports"):
+            asset, created = tasks._discover_host(address, "basic", str(team))
+
+    assert created and asset.name == name and ":" not in asset.name
+    assert asset.ip_address == address and asset.hostname == ""
+    assert str(asset.team_id) == str(team)
+
+
+@pytest.mark.django_db
+def test_a_host_stored_under_the_old_name_keeps_it(network):
+    """The team's asset at an address is found by the address: a host named
+    with its colons before is seen again, not renamed and not stored twice."""
+    team = uuid.uuid4()
+    old = f"host-{PUBLIC_V6}"
+    with mock.patch("apps.assets.signals.scan_asset_ports"):
+        Asset.objects.create(team_id=team, name=old, ip_address=PUBLIC_V6)
+
+    with mock.patch.object(tasks, "_resolve_hostname", return_value=None):
+        asset, created = tasks._discover_host(PUBLIC_V6, "basic", str(team))
+
+    assert not created and asset.name == old
+    assert Asset.objects.filter(team_id=team).count() == 1

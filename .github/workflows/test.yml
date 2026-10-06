@@ -213,7 +213,12 @@ jobs:
   shared-package-tests:
     name: Shared Package Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # observed max 0.4 min
+    # The comment here said "observed max 0.4 min" under a limit of 10: true
+    # when the job ran tests/shared alone. It runs tests/scripts too, whose
+    # backup, restore and rotation tests start PostgreSQL and Redis with the
+    # runner's Docker, and took 5 min 51 s on #782, more than half the limit
+    # (#788). Three times and more what was observed.
+    timeout-minutes: 20  # observed max 5.9 min (4.1 to 5.8 over the last ten runs on main, 2026-10-06)
     steps:
       - uses: actions/checkout@v7
 

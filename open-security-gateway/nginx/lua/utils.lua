@@ -229,23 +229,6 @@ function _M.http_request(method, url, options)
     return res, nil
 end
 
--- Validate team access (user belongs to team)
-function _M.validate_team_access(user_id, team_id, auth_data)
-    if not auth_data or not auth_data.team_id then
-        return false, "no team data"
-    end
-
-    if auth_data.team_id ~= team_id then
-        return false, "team mismatch"
-    end
-
-    if auth_data.user_id ~= user_id then
-        return false, "user mismatch"
-    end
-
-    return true, nil
-end
-
 -- Generate request ID for tracing
 function _M.generate_request_id()
     return ngx.var.request_id or string.format("%s-%s",

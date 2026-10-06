@@ -255,6 +255,31 @@ def test_a_scan_that_could_not_be_queued_is_not_counted_and_is_named():
         assert "hunter2" not in text and "redis" not in text and "broker" not in text
 
 
+@pytest.mark.django_db
+def test_the_log_of_a_scan_that_could_not_be_queued_names_the_error_not_its_text(
+    caplog,
+):
+    """The result was guardian's own words and the log line was not (#788):
+    it held the broker exception's text, the broker's URL with it."""
+    rule = _rule(uuid.uuid4(), ["8.8.8.0/30"])
+    failure = ConnectionError("Error 111 connecting to redis://:hunter2@broker:6379/1")
+
+    with caplog.at_level("DEBUG", logger="apps.assets.tasks"):
+        with mock.patch.object(tasks.discover_assets, "delay", side_effect=failure):
+            _run(rule)
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "hunter2" not in logged and "redis://" not in logged
+    assert "broker:6379" not in logged
+    # What happened, to which network, and what kind of error it was.
+    (line,) = [
+        record
+        for record in caplog.records
+        if record.levelname == "ERROR" and "8.8.8.0/30" in record.getMessage()
+    ]
+    assert "ConnectionError" in line.getMessage()
+
+
 # --- what is kept is bounded, and is the run's ------------------------------------------
 
 

@@ -1,10 +1,26 @@
 """
 Management command to import vulnerability data from external sources
+
+A file, CSV or JSON, holds one finding per row or per object of its
+``vulnerabilities`` list, under these names:
+
+    title (or vulnerability), description, severity, cvss_score,
+    cve_id (or cve), hostname (or host, or target), port, protocol
+
+They are not all the model's names, and the command used to hand them to
+the models as they were (#788): ``cvss_score`` and ``discovered_at`` to
+``Vulnerability``, which has ``cvss_v3_score`` and sets ``first_discovered``
+itself; ``hostname`` to it too, which is the asset's; and to ``Asset`` an
+``environment`` that is a text where the model has a foreign key, an
+``is_active`` and a ``created_at`` it does not take. No file could be
+imported: the first row ended the run with a FieldError. ``finding_fields``
+is now the one place where a row becomes the fields of the model, for both
+formats, and the model's own validation says whether it takes them.
 """
 
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.utils import timezone
 from apps.vulnerabilities.models import Vulnerability
 from apps.assets.models import Asset
 import json
@@ -14,6 +30,21 @@ import requests
 import logging
 
 logger = logging.getLogger(__name__)
+
+# The sources the command accepts and has no code for. They printed "not yet
+# implemented" and ended with status 0, as an import that worked does.
+NOT_IMPLEMENTED = ('nist', 'nessus', 'openvas')
+
+# Field of Vulnerability -> the name a file gives it, where they differ: an
+# error names the column the operator wrote.
+FILE_NAMES = {'cvss_v3_score': 'cvss_score'}
+
+MAX_PORT = 65535
+
+
+def _text(value):
+    """A value of a row as text: '' for one that is missing or null."""
+    return '' if value is None else str(value).strip()
 
 
 class Command(BaseCommand):
@@ -63,11 +94,15 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        source = options['source']
+        if source in NOT_IMPLEMENTED:
+            # Nothing was imported, and the exit status says so.
+            raise CommandError(f'{source} import is not implemented')
+
         self.stdout.write(
             self.style.SUCCESS('Starting vulnerability import...')
         )
 
-        source = options['source']
         self.team_id = options['team_id']
         dry_run = options['dry_run']
         force = options['force']
@@ -77,10 +112,6 @@ class Command(BaseCommand):
                 self.import_from_csv(options['file'], dry_run, force)
             elif source == 'json':
                 self.import_from_json(options['file'], dry_run, force)
-            elif source == 'nist':
-                self.import_from_nist(options.get('url'), dry_run, force)
-            elif source in ['nessus', 'openvas']:
-                self.import_from_scanner(source, options, dry_run, force)
             else:
                 raise CommandError(f'Unsupported source: {source}')
 
@@ -93,59 +124,9 @@ class Command(BaseCommand):
             raise CommandError('File path is required for CSV import')
 
         self.stdout.write(f'Importing from CSV: {file_path}')
-        
-        imported_count = 0
-        updated_count = 0
-        
-        with open(file_path, 'r') as csvfile:
-            reader = csv.DictReader(csvfile)
-            
-            with transaction.atomic():
-                for row in reader:
-                    if dry_run:
-                        self.stdout.write(f'Would import: {row.get("title", "Unknown")}')
-                        imported_count += 1
-                        continue
-                    
-                    # Process row
-                    vuln_data = self.normalize_csv_data(row)
-                    
-                    # Check if vulnerability exists
-                    existing = Vulnerability.objects.filter(
-                        asset__team_id=self.team_id,
-                        cve_id=vuln_data.get('cve_id'),
-                        asset__hostname=vuln_data.get('hostname')
-                    ).first()
-                    
-                    if existing and not force:
-                        self.stdout.write(
-                            self.style.WARNING(f'Skipping existing: {vuln_data.get("cve_id")}')
-                        )
-                        continue
-                    
-                    # Get or create asset
-                    asset = self.get_or_create_asset(vuln_data.get('hostname'))
-                    
-                    if existing:
-                        # Update existing
-                        for key, value in vuln_data.items():
-                            if key != 'hostname':
-                                setattr(existing, key, value)
-                        existing.save()
-                        updated_count += 1
-                    else:
-                        # Create new
-                        Vulnerability.objects.create(
-                            asset=asset,
-                            **vuln_data
-                        )
-                        imported_count += 1
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f'CSV import completed: {imported_count} imported, {updated_count} updated'
-            )
-        )
+        with open(file_path, 'r', newline='') as csvfile:
+            self.import_rows('CSV', csv.DictReader(csvfile), dry_run, force)
 
     def import_from_json(self, file_path, dry_run, force):
         """Import vulnerabilities from JSON file"""
@@ -153,93 +134,149 @@ class Command(BaseCommand):
             raise CommandError('File path is required for JSON import')
 
         self.stdout.write(f'Importing from JSON: {file_path}')
-        
+
         with open(file_path, 'r') as jsonfile:
             data = json.load(jsonfile)
-        
+
+        rows = data.get('vulnerabilities') if isinstance(data, dict) else None
+        if not isinstance(rows, list):
+            raise CommandError(
+                'The JSON file must be an object with a "vulnerabilities" list'
+            )
+
+        self.import_rows('JSON', rows, dry_run, force)
+
+    def import_rows(self, label, rows, dry_run, force):
+        """Store the findings of a file, all of them or none.
+
+        A finding the team already has is skipped, or updated with --force.
+        """
         imported_count = 0
-        
-        vulnerabilities = data.get('vulnerabilities', [])
-        
+        updated_count = 0
+
         with transaction.atomic():
-            for vuln_data in vulnerabilities:
+            for number, row in enumerate(rows, start=1):
+                # Checked in a dry run too: it says what an import would do.
+                hostname, fields = self.finding_fields(row, number)
+
                 if dry_run:
-                    self.stdout.write(f'Would import: {vuln_data.get("title", "Unknown")}')
+                    self.stdout.write(f'Would import: {fields["title"]}')
                     imported_count += 1
                     continue
-                
-                # Get or create asset
-                asset = self.get_or_create_asset(vuln_data.get('hostname'))
-                
-                # Create vulnerability
-                Vulnerability.objects.create(
-                    asset=asset,
-                    title=vuln_data.get('title'),
-                    description=vuln_data.get('description'),
-                    severity=vuln_data.get('severity', 'medium'),
-                    cvss_score=vuln_data.get('cvss_score', 5.0),
-                    cve_id=vuln_data.get('cve_id'),
-                    discovered_at=timezone.now()
-                )
-                imported_count += 1
+
+                existing = self.existing_finding(hostname, fields)
+
+                if existing and not force:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'Skipping existing: {fields["cve_id"] or fields["title"]}'
+                        )
+                    )
+                    continue
+
+                if existing:
+                    for key, value in fields.items():
+                        setattr(existing, key, value)
+                    existing.save()
+                    updated_count += 1
+                else:
+                    Vulnerability.objects.create(
+                        asset=self.get_or_create_asset(hostname),
+                        **fields
+                    )
+                    imported_count += 1
 
         self.stdout.write(
-            self.style.SUCCESS(f'JSON import completed: {imported_count} imported')
+            self.style.SUCCESS(
+                f'{label} import completed: {imported_count} imported, '
+                f'{updated_count} updated'
+            )
         )
 
-    def import_from_nist(self, url, dry_run, force):
-        """Import vulnerabilities from NIST NVD"""
-        if not url:
-            url = 'https://services.nvd.nist.gov/rest/json/cves/1.0'
-        
-        self.stdout.write(f'Importing from NIST NVD: {url}')
-        
-        # This would implement NIST NVD API integration
-        # For now, just a placeholder
-        self.stdout.write(
-            self.style.WARNING('NIST import not yet implemented')
-        )
+    def finding_fields(self, row, number):
+        """One row of a file as (hostname, fields of Vulnerability).
 
-    def import_from_scanner(self, scanner_type, options, dry_run, force):
-        """Import from vulnerability scanners"""
-        self.stdout.write(f'Importing from {scanner_type}')
-        
-        # This would implement scanner-specific import logic
-        self.stdout.write(
-            self.style.WARNING(f'{scanner_type} import not yet implemented')
-        )
+        The values are checked by the model's fields, so what a file may hold
+        is what the model holds: a severity of its choices, a score from 0 to
+        10, texts of its lengths. A row it does not take stops the import
+        with the row's number and title.
+        """
+        if not isinstance(row, dict):
+            raise CommandError(f'row {number}: not an object with named values')
 
-    def normalize_csv_data(self, row):
-        """Normalize CSV row data to vulnerability format"""
-        return {
-            'title': row.get('title', row.get('vulnerability', 'Unknown')),
-            'description': row.get('description', ''),
-            'severity': row.get('severity', 'medium').lower(),
-            'cvss_score': float(row.get('cvss_score', 5.0)),
-            'cve_id': row.get('cve_id', row.get('cve')),
-            'hostname': row.get('hostname', row.get('host', row.get('target'))),
-            'port': int(row.get('port', 0)) if row.get('port') else None,
-            'protocol': row.get('protocol', 'tcp'),
+        title = _text(row.get('title')) or _text(row.get('vulnerability')) or 'Unknown'
+        hostname = (
+            _text(row.get('hostname')) or _text(row.get('host'))
+            or _text(row.get('target')) or 'unknown-host'
+        )
+        port = _text(row.get('port'))
+        fields = {
+            'title': title,
+            'description': _text(row.get('description')),
+            'severity': (_text(row.get('severity')) or 'medium').lower(),
+            # No score is no score: 5.0 was written for a finding without one.
+            'cvss_v3_score': _text(row.get('cvss_score')) or None,
+            'cve_id': _text(row.get('cve_id')) or _text(row.get('cve')),
+            # 0 is how a scanner's export writes "no port".
+            'port': None if port in ('', '0') else port,
+            'protocol': _text(row.get('protocol')),
         }
 
+        finding = Vulnerability(**fields)
+        # description: the model asks for one, and a file may have none.
+        checked = set(fields) - {'description'}
+        try:
+            finding.clean_fields(
+                exclude=[
+                    field.name for field in Vulnerability._meta.fields
+                    if field.name not in checked
+                ]
+            )
+        except ValidationError as error:
+            problems = '; '.join(
+                f'{FILE_NAMES.get(name, name)}: {" ".join(messages)}'
+                for name, messages in sorted(error.message_dict.items())
+            )
+            raise CommandError(f'row {number} ({title}): {problems}')
+        if finding.port is not None and finding.port > MAX_PORT:
+            raise CommandError(
+                f'row {number} ({title}): port: a port is a number from 0 to {MAX_PORT}'
+            )
+
+        # As the fields converted them: the score a float, the port a number.
+        return hostname, {name: getattr(finding, name) for name in fields}
+
+    def existing_finding(self, hostname, fields):
+        """The team's finding this row is, by what the model tells findings
+        apart by: the asset, the CVE and the port.
+
+        A row with neither a CVE nor a port has nothing to be known by; it is
+        always a new finding, as it is for the API.
+        """
+        if not fields['cve_id'] and fields['port'] is None:
+            return None
+        return Vulnerability.objects.filter(
+            asset__team_id=self.team_id,
+            asset__hostname=hostname,
+            cve_id=fields['cve_id'],
+            port=fields['port'],
+        ).first()
+
     def get_or_create_asset(self, hostname):
-        """Get or create asset by hostname"""
-        if not hostname:
-            hostname = 'unknown-host'
-        
+        """Get or create the team's asset by hostname"""
         asset, created = Asset.objects.get_or_create(
             team_id=self.team_id,
             hostname=hostname,
             defaults={
+                'name': hostname,
                 'asset_type': 'server',
-                'environment': 'unknown',
                 'criticality': 'medium',
-                'is_active': True,
-                'created_at': timezone.now()
+                'status': 'active',
+                'discovered_by': 'import_vulnerabilities',
             }
         )
-        
+
         if created:
             self.stdout.write(f'Created asset: {hostname}')
-        
+
         return asset
