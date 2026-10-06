@@ -735,7 +735,9 @@ def _apply_env_overrides(config_data: Dict[str, Any]) -> Dict[str, Any]:
                 try:
                     current[final_key] = int(env_value)
                 except ValueError:
-                    logger.warning(f"Invalid integer value for {env_var}: {env_value}")
+                    # The variable, not its value: what is set by mistake
+                    # can be a secret meant for another variable (#755).
+                    logger.warning(f"{env_var} is not an integer and is ignored")
             else:
                 current[final_key] = env_value
     

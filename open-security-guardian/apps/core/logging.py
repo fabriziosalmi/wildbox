@@ -69,62 +69,8 @@ class SecurityLogger:
     def __init__(self, name):
         self.logger = get_logger(name)
     
-    def log_login_attempt(self, username, ip_address, success=True):
-        """Log authentication attempt."""
-        self.logger.info(
-            f"Login {'successful' if success else 'failed'}: {username}",
-            extra={
-                'event_type': 'authentication',
-                'username': username,
-                'ip_address': ip_address,
-                'success': success,
-            }
-        )
-    
-    def log_api_key_usage(self, api_key_name, endpoint, ip_address):
-        """Log API key usage."""
-        self.logger.info(
-            f"API key used: {api_key_name} -> {endpoint}",
-            extra={
-                'event_type': 'api_access',
-                'api_key_name': api_key_name,
-                'endpoint': endpoint,
-                'ip_address': ip_address,
-            }
-        )
-    
-    def log_security_event(self, event_type, description, **kwargs):
-        """Log general security events."""
-        self.logger.warning(
-            f"Security event: {event_type} - {description}",
-            extra={
-                'event_type': 'security',
-                'security_event_type': event_type,
-                'description': description,
-                **kwargs
-            }
-        )
-    
-    def log_vulnerability_scan(self, scanner_name, target, vulnerabilities_found):
-        """Log vulnerability scan completion."""
-        self.logger.info(
-            f"Vulnerability scan completed: {scanner_name} -> {target}",
-            extra={
-                'event_type': 'vulnerability_scan',
-                'scanner_name': scanner_name,
-                'target': target,
-                'vulnerabilities_found': vulnerabilities_found,
-            }
-        )
-    
-    def log_remediation_action(self, vulnerability_id, action, user):
-        """Log remediation actions."""
-        self.logger.info(
-            f"Remediation action: {action} for vulnerability {vulnerability_id}",
-            extra={
-                'event_type': 'remediation',
-                'vulnerability_id': vulnerability_id,
-                'action': action,
-                'user': str(user),
-            }
-        )
+    # Five methods used to follow (log_login_attempt, log_api_key_usage,
+    # log_security_event, log_vulnerability_scan, log_remediation_action).
+    # Nothing called them, and log_security_event put whatever keyword
+    # arguments it was given into the record: a ready way to log a request
+    # (#755). The signal handlers use ``logger`` directly.
