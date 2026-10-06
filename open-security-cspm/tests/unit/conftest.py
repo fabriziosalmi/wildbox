@@ -117,6 +117,14 @@ class FakeRedis:
             return []
         return sorted(self.zsets[key].items(), key=lambda item: (item[1], item[0]))
 
+    def zrem(self, key, *members):
+        if not self._alive(key):
+            return 0
+        removed = [m for m in members if self.zsets[key].pop(m, None) is not None]
+        if not self.zsets[key]:
+            self.delete(key)
+        return len(removed)
+
     def zremrangebyscore(self, key, low, high):
         low, high = _score(low), _score(high)
         doomed = [m for m, s in self._sorted(key) if low <= s <= high]

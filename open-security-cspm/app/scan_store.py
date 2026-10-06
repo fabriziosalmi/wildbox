@@ -118,6 +118,18 @@ def save_metadata(redis, metadata: Dict[str, Any]) -> None:
     _index_scan(redis, metadata["team_id"], metadata["scan_id"], expires_at)
 
 
+def forget_scan(redis, scan_id: str, team_id: str) -> None:
+    """Remove every record of a scan that was never queued (#778).
+
+    Its credentials first, then its metadata and its entry in the team's
+    index: all that exists of a scan before a worker takes it. A scan that
+    was queued is never forgotten; it ends as completed, failed or
+    cancelled.
+    """
+    redis.delete(credentials_key(scan_id), metadata_key(scan_id))
+    redis.zrem(team_index_key(team_id), scan_id)
+
+
 def load_metadata(redis, scan_id: str) -> Optional[Dict[str, Any]]:
     raw = redis.get(metadata_key(scan_id))
     if not raw:

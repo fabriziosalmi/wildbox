@@ -331,6 +331,11 @@ curl -s --cacert "$CA" -X POST "$BASE/batch/scans" \
   and cancelled by its own `scan_id`. `task_id` is the same value.
 - A batch that names a provider other than `aws` is refused whole with `400`; none
   of its scans is stored or queued.
+- The scans are queued one after the other. If the task queue stops taking them
+  partway, the answer is `503`: the scan that could not be queued is not recorded,
+  the ones after it are not tried, and the ones before it are queued and will run.
+  The `503` carries no `scan_id`: those scans count in the team's summaries, and
+  no route lists them.
 - An empty `scans` list is accepted and answers `200` with `total_scans` 0.
 - The request also accepts `parallel_execution_limit` and `metadata`. Neither is
   used: every scan is queued at once, and the worker's concurrency decides how many
@@ -826,7 +831,9 @@ with the reason in `error.details.code`: `GATEWAY_AUTH_REQUIRED`,
 
 When Redis cannot be reached, every route that reads or writes it answers `503` in
 this format, and so does a scan the broker cannot take; the cause is in the
-service's log. `GET /providers` and `GET /checks` read nothing from Redis and
+service's log. A scan that could not be queued is not recorded: its credentials,
+its record and its entry in the team's index are removed, so it does not read
+`queued` afterwards. `GET /providers` and `GET /checks` read nothing from Redis and
 answer as usual. [`GET /health`](#health-check) answers `503` with its own body.
 
 ### When Redis does not answer

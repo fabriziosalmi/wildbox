@@ -40,6 +40,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is reported `unhealthy` (503 for Redis, `degraded` for the workers),
   where an answer that came after the probe stopped waiting told it
   nothing.
+- **A cspm scan that could not be queued is no longer left recorded as
+  `queued`** (#778). `POST /api/v1/scans` writes the scan's credentials
+  and its record, then queues the task. When the broker refused the task
+  the answer was 503, and what had been written stayed: a scan with no
+  task behind it, under an id the caller was never told, counted in the
+  team's `total_scans` and read `queued` until its retention ended, 90
+  days by default, and its encrypted credentials waited five minutes in
+  Redis for a worker that would not come. The credentials, the record
+  and the team index entry are now removed before the error is answered,
+  whatever stopped the scan between its first write and the queue. In a
+  batch, the scans queued before the one that failed stay queued and
+  run, as before.
 
 ## [0.12.0] - 2026-10-06
 

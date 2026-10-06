@@ -299,6 +299,12 @@ other scan. The team is always the caller's; a `team_id` in a scan's
 which is not used: every scan is queued at once and the workers'
 concurrency decides how many run together.
 
+A scan the task queue does not take, single or in a batch, is answered 503
+and is not recorded: its credentials, its metadata and its index entry are
+removed, where it used to read `queued` until its retention ended. In a
+batch the scans queued before it stay queued and run, and the ones after it
+are not tried; the 503 carries no scan id.
+
 ### Supported providers
 
 **GET** `/api/v1/providers`

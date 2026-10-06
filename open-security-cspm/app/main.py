@@ -193,11 +193,7 @@ def _submit_scan(
     # protection. Encryption is envelope-style with a service-held key: an
     # attacker with the Redis volume gets ciphertext.
     cred_key = scan_store.credentials_key(scan_id)
-    redis_client.setex(
-        cred_key,
-        300,  # 5 minute TTL
-        encrypt_credentials(scan_request.credentials.model_dump())
-    )
+    encrypted_credentials = encrypt_credentials(scan_request.credentials.model_dump())
 
     # Prepare scan configuration for worker (NO credentials in task args)
     scan_config = {
@@ -224,10 +220,42 @@ def _submit_scan(
     }
     if extra_metadata and "batch_id" in extra_metadata:
         scan_metadata["batch_id"] = extra_metadata["batch_id"]
-    scan_store.save_metadata(redis_client, scan_metadata)
 
-    run_cspm_scan_task.apply_async(args=[scan_config], task_id=scan_id)
+    written = False
+    try:
+        redis_client.setex(cred_key, 300, encrypted_credentials)  # 5 minute TTL
+        written = True
+        scan_store.save_metadata(redis_client, scan_metadata)
+        run_cspm_scan_task.apply_async(args=[scan_config], task_id=scan_id)
+    except Exception:
+        # Not queued: the caller is answered an error and never learns this
+        # id. What was written for it stayed: the scan read `queued` in the
+        # team's list for the whole retention, with no task behind it, and
+        # its credentials waited in Redis for five minutes (#778).
+        #
+        # Nothing to remove when the first write is what failed, and a
+        # store that does not answer is not asked again: the removal would
+        # wait as long as the write did, with the event loop.
+        if written:
+            _forget_scan_never_queued(scan_id, current_user["team_id"])
+        raise
     return scan_id
+
+
+def _forget_scan_never_queued(scan_id: str, team_id: str) -> None:
+    """Remove what _submit_scan wrote for a scan it could not queue.
+
+    The error that stopped the scan is the one the caller is answered: a
+    cleanup that fails as well (the same Redis, as a rule) is logged and
+    nothing more. The credentials then expire by themselves.
+    """
+    try:
+        scan_store.forget_scan(redis_client, scan_id, team_id)
+    except Exception as error:
+        logger.error(
+            "Scan %s could not be queued, and its record could not be removed: %s: %s",
+            scan_id, type(error).__name__, error,
+        )
 
 # Application state
 app_start_time = datetime.utcnow()
