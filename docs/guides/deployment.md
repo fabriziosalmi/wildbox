@@ -717,6 +717,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api tools-
 - **Entries.** CIDR ranges with their host bits zero, IP addresses and
   host names, comma-separated. A name is matched exactly. A bad entry
   stops both containers at start-up; `docker compose logs api` names it.
+- **An IPv4 entry covers IPv4 addresses only.** The same hosts written as
+  IPv4-mapped IPv6 addresses are not covered: with `10.20.0.0/16` listed,
+  the target `::ffff:10.20.3.4` is still refused. To allow that spelling
+  too, list the mapped range as well, `::ffff:10.20.0.0/112` (the IPv6
+  prefix length is 96 plus the IPv4 one). A mapped entry does not cover
+  the IPv4 spelling either.
 - **Keep the stack out.** Every caller of every network tool can scan
   what is listed. Do not list the stack's Docker networks (by default in
   `172.16.0.0/12`); its service names stay refused unless listed by name.
@@ -754,6 +760,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d guardian g
 - **A network must be inside the list.** A discovery of `192.168.50.0/23`
   is refused when only `192.168.50.0/24` is listed. The limit of 1,024
   addresses for each discovery applies to listed ranges too.
+- **An IPv4 entry covers IPv4 addresses only.** The same hosts written as
+  IPv4-mapped IPv6 addresses are not covered: with `10.20.0.0/16` listed, a
+  discovery of `::ffff:10.20.3.0/120` is still refused. To allow that
+  spelling too, list the mapped range as well, `::ffff:10.20.0.0/112` (the
+  IPv6 prefix length is 96 plus the IPv4 one). A mapped entry does not
+  cover the IPv4 spelling either.
+- **IPv6 targets need an IPv6 route.** A port scan connects over IPv6 to an
+  IPv6 asset (since 0.12.1), from `guardian-worker`. The stack's Docker
+  networks are IPv4 only, as Docker creates them unless told otherwise:
+  from such a worker a public IPv6 address is unreachable, and its scan
+  completes with no open port. Give the worker's network IPv6 if you scan
+  IPv6 assets.
 - **Guardian's list, not the tools service's.** `TOOLS_ALLOWED_INTERNAL_TARGETS`
   opens nothing for Guardian, and this variable nothing for the tools. Set
   both if both scan the lab.
@@ -761,9 +779,11 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d guardian g
   is listed. Do not list the stack's Docker networks (by default in
   `172.16.0.0/12`), loopback or `169.254.169.254`.
 - **Rules and assets stored before the upgrade** keep their networks and
-  addresses. A rule's run skips each internal network that is not listed, and
-  `guardian-worker` logs the network and the variable; the rule cannot be
-  saved again with that network until it is.
+  addresses. A rule's run skips each internal network that is not listed.
+  The rule's record says so, in `last_run_result`: each skipped network
+  with the reason, which names the variable, and status `skipped` when no
+  network was left to scan (since 0.12.1; `guardian-worker` logs the same).
+  The rule cannot be saved again with that network until it is listed.
 
 ### The sensor's telemetry
 
