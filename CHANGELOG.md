@@ -28,6 +28,15 @@ From 0.12.1 nothing is required beyond rebuilding the images:
 [Upgrading to 0.12.2](UPGRADING.md#upgrading-to-0122) lists what an
 operator or a client may notice.
 
+The patch was run before the release on the Linux host that holds the
+stack at 0.12.1, with data created under 0.10.0, applied as an operator
+applies it (check out, rebuild, `up -d`): all eighteen services healthy
+and no migration to apply; the six images without `pytest`, where they had
+it; redis-py 5.0.8 in cspm and guardian; a path without its trailing slash
+redirected with a `Location` that is a path; the API checks of the earlier
+tests and `make health` passing; and the integration suite against that
+stack with nothing failing (240 passed, 16 skipped).
+
 
 ### Security
 
