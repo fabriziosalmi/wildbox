@@ -689,10 +689,20 @@ Place it in a package under `app/checks/aws/<service>/` with an
 
 ## Development
 
+The image's lock holds no test tool. Install the runner on top of it, at
+the versions the unit-test job uses:
+
 ```bash
-pip install -r requirements-dev.txt
-pytest tests/
+pip install -r requirements.txt
+pip install pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0
+pytest tests/unit/
 ```
+
+The tests that need a Redis server start a throwaway container and are
+skipped where Docker is not running; `WILDBOX_REQUIRE_DOCKER_TESTS=1`, which
+CI sets, makes that a failure. `requirements-dev.txt` adds the linters; plain
+`pip install -r` refuses it, because `requirements.txt` is hash-pinned and
+its own pins are not: use `uv pip install -r requirements-dev.txt`.
 
 ## License
 

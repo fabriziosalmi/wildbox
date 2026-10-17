@@ -749,16 +749,19 @@ Columns:
   - name (String, unique): Source name
   - description (Text): Description
   - url (String): Source URL
-  - source_type (String): Type (feed, api, file, etc.)
+  - source_type (String): The name of a registered collector, such as
+    `feodo_tracker`; a source of any other type is never collected
   - config (JSON): Collection configuration
   - headers (JSON): HTTP headers for requests
   - auth_config (JSON): Authentication details
   - status (String): Current status
   - last_collection (DateTime): Last run time
   - last_success (DateTime): Last successful run
-  - last_error (Text): Last error message
+  - last_error (Text): The class of the last error, with the HTTP status
+    when there is one; never the error's text
   - collection_count (Int): Total collections
-  - error_count (Int): Total errors
+  - error_count (Int): Failures in a row; a successful collection sets it
+    to 0, and at ten the scheduler disables the source
   - enabled (Bool): Source enabled
   - collection_interval (Int): Seconds between runs
   - rate_limit (Int): Requests per window

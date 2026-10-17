@@ -364,64 +364,25 @@ Already configured in `open-security-dashboard/playwright.config.ts`:
 
 ## Continuous Integration
 
-### GitHub Actions Example
+### The workflows that run these suites
 
-```yaml
-name: Test Suite
+The repository's own workflows are the reference; an example copied here
+went out of date. Each starts the stack from a `.env` made by
+`scripts/generate_secrets.py`, raises the gateway's per-address limits for
+the suite, waits for every container to be healthy (`docker compose up -d
+--wait`, never a `sleep`) and installs its tools at pinned versions:
 
-on: [push, pull_request]
+| Suite | Workflow |
+| --- | --- |
+| `tests/integration/`, against the development stack | `.github/workflows/integration-tests.yml` |
+| `tests/integration/`, against the production overlay | `.github/workflows/production-stack.yml` |
+| Playwright specs, with and without the backend | `.github/workflows/e2e-fullstack.yml`, `.github/workflows/test.yml` |
+| Unit suites of the services, `tests/shared`, `tests/scripts` | `.github/workflows/test.yml` |
+| The gateway harness | `.github/workflows/gateway-tests.yml` |
 
-jobs:
-  python-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov
-      - name: Start services
-        run: docker compose up -d
-      - name: Wait for services
-        run: sleep 60
-      - name: Run tests
-        run: pytest tests/integration/ -v --cov --cov-report=xml
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-
-  e2e-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - name: Install dependencies
-        run: |
-          cd open-security-dashboard
-          npm ci
-      - name: Install Playwright
-        run: npx playwright install --with-deps
-      - name: Start services
-        run: docker compose up -d
-      - name: Wait for services
-        run: sleep 60
-      - name: Run E2E tests
-        run: |
-          cd open-security-dashboard
-          npx playwright test
-      - name: Upload test results
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: playwright-report
-          path: open-security-dashboard/playwright-report/
-```
+To run a suite against a stack of your own, set what those workflows set
+(the "Prerequisites" above, and the environment of the workflow's test
+step).
 
 ---
 

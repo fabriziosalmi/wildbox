@@ -397,7 +397,10 @@ container addresses.
 ## 🧪 Testing
 
 ```bash
-# Unit tests (no services needed)
+# Unit tests (no services needed). The lock holds no test tool: install
+# the runner on top of it, at the versions the unit-test job uses.
+pip install -r requirements.txt
+pip install pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0
 make test
 
 # Playbook execution through the gateway (needs the whole stack running)
