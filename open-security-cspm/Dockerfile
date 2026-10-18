@@ -6,7 +6,7 @@
 # a different OpenSSL and a different set of OS CVEs, with nothing recording
 # which one shipped (WILDBO-BLD-01). Dependabot's docker ecosystem proposes
 # digest bumps as reviewable PRs.
-FROM python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534 AS builder
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
 
 # Build metadata. Nothing used to be baked in, so an image identified by digest,
 # retagged, or copied to another registry lost the link to its commit -- the tag
@@ -49,7 +49,7 @@ RUN pip install --no-cache-dir --require-hashes --no-build-isolation --prefix=/i
 # a different OpenSSL and a different set of OS CVEs, with nothing recording
 # which one shipped (WILDBO-BLD-01). Dependabot's docker ecosystem proposes
 # digest bumps as reviewable PRs.
-FROM python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive

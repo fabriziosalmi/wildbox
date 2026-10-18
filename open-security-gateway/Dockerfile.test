@@ -3,7 +3,7 @@
 # a different OpenSSL and a different set of OS CVEs, with nothing recording
 # which one shipped (WILDBO-BLD-01). Dependabot's docker ecosystem proposes
 # digest bumps as reviewable PRs.
-FROM openresty/openresty:alpine@sha256:b3a6f1f432eabdbda4adcb6ec3e6461e621782eaa82dbe67154ddd1afd109569
+FROM openresty/openresty:alpine@sha256:d105c61207ac7568e3412aa1a0e5b4c8bb5bc818ffac21996068b282c25005b6
 # Install dependencies
 RUN apk add --no-cache curl wget && \
     mkdir -p /var/cache/nginx/wildbox_cache /var/log/nginx && \
