@@ -3,7 +3,7 @@
 # a different OpenSSL and a different set of OS CVEs, with nothing recording
 # which one shipped (WILDBO-BLD-01). Dependabot's docker ecosystem proposes
 # digest bumps as reviewable PRs.
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS base
+FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS base
 
 # Build metadata. Nothing used to be baked in, so an image identified by digest,
 # retagged, or copied to another registry lost the link to its commit -- the tag
