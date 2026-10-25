@@ -528,7 +528,7 @@ services:
 
   # PostgreSQL Database (Identity Service)
   postgres:
-    image: postgres:15@sha256:724292da1f2e50bdccfc3302ce75bbba7f4a6076701b588cc795fcac65683550
+    image: postgres:15@sha256:baa22e6286bf832cb147b8bb5aa9d8bc999846d69c21d11bf63f58fbeed1fa48
     container_name: wildbox-postgres
     restart: unless-stopped
     environment:
@@ -1259,7 +1259,7 @@ services:
   # reached on the loopback port below. Create n8n's owner account right
   # after the first start; see open-security-automations/README.md.
   automations:
-    image: n8nio/n8n:1.74.0@sha256:18edccfb47c6cae9a193c5636662e1255f3aef0b484a10bb63bd2199f1ffc471
+    image: n8nio/n8n:1.123.85@sha256:8d4e5a2b73e5ac3bdbd1cc310f5bb0a12897851e700413cf8674b6bf0f374d5a
     container_name: open-security-automations
     profiles: ["automations"]
     restart: unless-stopped
@@ -1395,7 +1395,7 @@ services:
     # of service through the remote-read endpoint (CVE-2026-42154) are fixed
     # in 3.5.3 and 3.11.3 only (#726). 3.x reads the TSDB of 2.55 as it is;
     # going back is possible to 2.55 and no earlier.
-    image: prom/prometheus:v3.13.4@sha256:87861b8cf91579109319ebc300f3f1060e6da9c05d6ae8ad15a20c879e84e32e
+    image: prom/prometheus:v3.13.5@sha256:aafa9d694e6a883c02db516d9f6e5b84e14195f49a2a6456a4cca815edda72b9
     profiles: ["monitoring"]
     restart: unless-stopped
     security_opt:
