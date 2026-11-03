@@ -21,7 +21,7 @@ uvicorn[standard]==0.24.0
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 alembic==1.12.1
-aiohttp==3.14.3
+aiohttp==3.14.4
 feedparser==6.0.10
 # Pydantic was pinned to 2.5.0 (November 2023). That single pin held FastAPI at
 # 0.125 and Starlette at 0.50 in this service's lock, while the other services
