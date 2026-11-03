@@ -29,7 +29,14 @@ cd "$(dirname "$0")/.."
 # The eight services, and one lock that is not a service: `ci-tools`, the test
 # runner and linters the workflows install (tests/ci-tools/requirements.in).
 SERVICES=(agents cspm data guardian identity responder sensor tools ci-tools)
-PYTHON_VERSION="3.11"
+# The patch level matters, not only the minor: "3.11" means 3.11.0 to uv, and
+# a marker such as redis's `async-timeout; python_full_version < "3.11.3"` then
+# keeps a package the images never install. Dependabot resolves its pip-group
+# PRs on a current 3.11.x and drops it, so every such PR failed --check on the
+# locks that depend on redis. This is the interpreter in the pinned
+# python:3.11-slim digest the Dockerfiles build from (`python -V` in that
+# image); move it when that digest moves to another 3.11 patch release.
+PYTHON_VERSION="3.11.16"
 
 # Directory that holds a lock's requirements.in and requirements.txt.
 lock_dir() {
@@ -84,13 +91,20 @@ for svc in "${SERVICES[@]}"; do
     cp "${dir}/requirements.txt" "$tmp"
     uv pip compile --quiet --generate-hashes --python-version "$PYTHON_VERSION" \
       --python-platform "$PYTHON_PLATFORM" "${dir}/requirements.in" -o "$tmp"
-    # Compare ignoring the header comment, which records the invoking command.
-    if ! diff -q <(grep -v '^#' "$tmp") <(grep -v '^#' "${dir}/requirements.txt") >/dev/null; then
+    # Compare what the two locks install, not how they are written: per
+    # package the name, the version and the set of hashes. Dependabot rewrites
+    # the locks of its pip-group PRs with pip-compile, which adds extras
+    # (uvicorn[standard]), markers, other `# via` lines and another order; a
+    # text compare failed every one of those PRs whatever they changed.
+    # compare_locks.py prints each difference; exit 1 is a stale lock, 2 a
+    # lock it could not read, and both fail the check.
+    if differences="$(python3 scripts/compare_locks.py "$tmp" "${dir}/requirements.txt")"; then
+      echo "ok:    ${svc}"
+    else
       echo "STALE: ${dir}/requirements.txt does not match requirements.in"
+      echo "$differences"
       echo "       run ./scripts/compile_requirements.sh ${svc}"
       status=1
-    else
-      echo "ok:    ${svc}"
     fi
     rm -f "$tmp"
   else

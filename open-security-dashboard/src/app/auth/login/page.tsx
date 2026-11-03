@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react'
@@ -10,13 +10,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ACCOUNT_CREATED_PARAM, CHANGE_PASSWORD_PAGE, useAuth } from '@/components/auth-provider'
 import { getErrorMessage } from '@/lib/utils'
 
+// The query string does not change while the login page is open, so there is
+// nothing to subscribe to.
+const subscribeToNothing = () => () => {}
+const readAccountCreated = () =>
+  new URLSearchParams(window.location.search).has(ACCOUNT_CREATED_PARAM)
+// The server render has no query string; the client reads it after hydration.
+const accountCreatedOnServer = () => false
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [accountCreated, setAccountCreated] = useState(false)
 
   const { login, isAuthenticated, isLoading: authLoading, user } = useAuth()
   const router = useRouter()
@@ -31,11 +38,13 @@ export default function LoginPage() {
   }, [isAuthenticated, authLoading, mustChangePassword, router])
 
   // A sign-up that created the account but could not sign it in sends the
-  // user here (#589). Read once on mount: useSearchParams() would need a
-  // Suspense boundary around the whole page.
-  useEffect(() => {
-    setAccountCreated(new URLSearchParams(window.location.search).has(ACCOUNT_CREATED_PARAM))
-  }, [])
+  // user here (#589). Read from the URL, not from useSearchParams(), which
+  // would need a Suspense boundary around the whole page.
+  const accountCreated = useSyncExternalStore(
+    subscribeToNothing,
+    readAccountCreated,
+    accountCreatedOnServer
+  )
 
   // Show loading while checking auth state
   if (authLoading) {

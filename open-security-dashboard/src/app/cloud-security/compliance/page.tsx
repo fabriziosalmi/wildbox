@@ -93,24 +93,30 @@ export default function CompliancePage() {
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
 
-  const fetchComplianceData = useCallback(async () => {
+  // State is set only once the requests settle: the page starts out loading,
+  // and a reload marks itself as loading before it calls this.
+  const fetchComplianceData = useCallback(() => {
+    return Promise.all([
+      cspmClient.get<ComplianceSummary>(getCSPMPath('/api/v1/compliance/summary')),
+      cspmClient.get<ComplianceFindingsResponse>(getCSPMPath('/api/v1/compliance/findings')),
+    ])
+      .then(
+        ([summary, findings]) => setData({ summary, findings }),
+        error => {
+          // Nothing from a half-failed load is shown: the summary and the
+          // findings describe the same scans and must not disagree.
+          setData(null)
+          setLoadError(getErrorMessage(error, 'The CSPM service did not answer.'))
+        }
+      )
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  const reloadComplianceData = () => {
     setIsLoading(true)
     setLoadError(null)
-    try {
-      const [summary, findings] = await Promise.all([
-        cspmClient.get<ComplianceSummary>(getCSPMPath('/api/v1/compliance/summary')),
-        cspmClient.get<ComplianceFindingsResponse>(getCSPMPath('/api/v1/compliance/findings')),
-      ])
-      setData({ summary, findings })
-    } catch (error) {
-      // Nothing from a half-failed load is shown: the summary and the
-      // findings describe the same scans and must not disagree.
-      setData(null)
-      setLoadError(getErrorMessage(error, 'The CSPM service did not answer.'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+    void fetchComplianceData()
+  }
 
   useEffect(() => {
     fetchComplianceData()
@@ -158,7 +164,7 @@ export default function CompliancePage() {
             Check results from the newest completed scan of each cloud account
           </p>
         </div>
-        <Button onClick={fetchComplianceData} variant="outline" size="sm" disabled={isLoading}>
+        <Button onClick={reloadComplianceData} variant="outline" size="sm" disabled={isLoading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
@@ -186,7 +192,7 @@ export default function CompliancePage() {
             <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-red-500" />
             <p className="mb-2 font-medium text-red-600">Compliance data could not be loaded</p>
             <p className="mb-4 text-sm text-muted-foreground">{loadError}</p>
-            <Button onClick={fetchComplianceData} variant="outline" disabled={isLoading}>
+            <Button onClick={reloadComplianceData} variant="outline" disabled={isLoading}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Try again
             </Button>

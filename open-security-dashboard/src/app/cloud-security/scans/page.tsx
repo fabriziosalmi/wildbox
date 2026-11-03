@@ -82,25 +82,34 @@ export default function CloudSecurityScansPage() {
     },
   })
 
-  const fetchProviders = useCallback(async () => {
+  // State is set only once the request settles: the list starts out loading,
+  // and a reload marks itself as loading before it calls this.
+  const fetchProviders = useCallback(() => {
+    return cspmClient
+      .get<ProvidersResponse>(getCSPMPath('/api/v1/providers'))
+      .then(
+        response => {
+          setProviders(response.providers)
+          setNewScan(current =>
+            response.providers.some(entry => entry.provider === current.provider)
+              ? current
+              : { ...current, provider: response.providers[0]?.provider }
+          )
+        },
+        error => {
+          // No list stands in for the missing answer: the form offers nothing.
+          setProviders(null)
+          setProvidersError(getErrorMessage(error, 'The CSPM service did not answer.'))
+        }
+      )
+      .finally(() => setProvidersLoading(false))
+  }, [])
+
+  const reloadProviders = () => {
     setProvidersLoading(true)
     setProvidersError(null)
-    try {
-      const response = await cspmClient.get<ProvidersResponse>(getCSPMPath('/api/v1/providers'))
-      setProviders(response.providers)
-      setNewScan(current =>
-        response.providers.some(entry => entry.provider === current.provider)
-          ? current
-          : { ...current, provider: response.providers[0]?.provider }
-      )
-    } catch (error) {
-      // No list stands in for the missing answer: the form offers nothing.
-      setProviders(null)
-      setProvidersError(getErrorMessage(error, 'The CSPM service did not answer.'))
-    } finally {
-      setProvidersLoading(false)
-    }
-  }, [])
+    void fetchProviders()
+  }
 
   useEffect(() => {
     fetchProviders()
@@ -255,7 +264,7 @@ export default function CloudSecurityScansPage() {
                       </p>
                       <p className="text-muted-foreground">{providersError}</p>
                       <Button
-                        onClick={fetchProviders}
+                        onClick={reloadProviders}
                         variant="outline"
                         size="sm"
                         disabled={providersLoading}
