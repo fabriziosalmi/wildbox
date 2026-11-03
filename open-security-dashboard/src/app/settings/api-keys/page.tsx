@@ -69,21 +69,21 @@ export default function ApiKeysPage() {
     expires_at: '',
   })
 
-  const fetchApiKeys = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      const keys = await identityClient.get<ApiKeyWithSecret[]>(getIdentityPath('/api/v1/api-keys'))
-      setApiKeys(keys)
-    } catch (error) {
-      console.error('Failed to fetch API keys:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load API keys',
-        variant: 'destructive',
+  // State is set only once the request settles. The page starts out loading;
+  // a later read for a refreshed user keeps the list on screen until the new
+  // one arrives.
+  const fetchApiKeys = useCallback(() => {
+    return identityClient
+      .get<ApiKeyWithSecret[]>(getIdentityPath('/api/v1/api-keys'))
+      .then(setApiKeys, error => {
+        console.error('Failed to fetch API keys:', error)
+        toast({
+          title: 'Error',
+          description: 'Failed to load API keys',
+          variant: 'destructive',
+        })
       })
-    } finally {
-      setIsLoading(false)
-    }
+      .finally(() => setIsLoading(false))
   }, [toast])
 
   useEffect(() => {

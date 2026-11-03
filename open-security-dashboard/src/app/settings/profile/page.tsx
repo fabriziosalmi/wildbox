@@ -93,20 +93,23 @@ export default function ProfilePage() {
 
   // /auth/users/me carries no team, so the team comes from identity's
   // per-user summary, the same source the team page uses.
-  const fetchMembership = useCallback(async () => {
-    try {
-      const activity = await identityClient.get<{ team_memberships?: MyMembership[] }>(
-        myActivityPath()
-      )
-      setMembership(activity.team_memberships?.[0] ?? null)
-    } catch {
-      setMembership(undefined)
-    }
+  const fetchMembership = useCallback(() => {
+    return identityClient.get<{ team_memberships?: MyMembership[] }>(myActivityPath()).then(
+      activity => setMembership(activity.team_memberships?.[0] ?? null),
+      () => setMembership(undefined)
+    )
   }, [])
+
+  // The email field follows the account whenever the user is read again,
+  // adjusted during render rather than in an effect that renders twice.
+  const [emailFieldUser, setEmailFieldUser] = useState(user)
+  if (user !== emailFieldUser) {
+    setEmailFieldUser(user)
+    if (user) setEmail(user.email)
+  }
 
   useEffect(() => {
     if (user) {
-      setEmail(user.email)
       fetchMembership()
     }
   }, [user, fetchMembership])

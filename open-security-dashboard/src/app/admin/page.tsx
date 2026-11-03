@@ -147,12 +147,18 @@ export default function AdminPage() {
   // Whether the stat cards hold identity's analytics, which count every user,
   // rather than counts taken from the (at most 100-row) list.
   const analyticsLoadedRef = useRef(false)
-  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   // What the user list is actually filtered by: the search box, once typing
   // has paused (or on Enter / Search), and the status filter.
   const [appliedSearch, setAppliedSearch] = useState('')
   const [filterActive, setFilterActive] = useState<boolean | null>(null)
+  // The list is loading while it does not answer the current filters yet, or
+  // while an action reloads it. Derived during render: the effect that loads
+  // the list does not have to set a loading flag before the request.
+  const usersQuery = JSON.stringify([appliedSearch, filterActive])
+  const [loadedUsersQuery, setLoadedUsersQuery] = useState<string | null>(null)
+  const [isReloadingUsers, setIsReloadingUsers] = useState(false)
+  const isLoading = isReloadingUsers || loadedUsersQuery !== usersQuery
   // Responses to earlier searches that arrive late must not replace the list.
   const usersRequestRef = useRef(0)
   const [systemStats, setSystemStats] = useState({
@@ -194,65 +200,67 @@ export default function AdminPage() {
     return () => clearTimeout(timer)
   }, [searchTerm])
 
-  const fetchSystemHealth = useCallback(async () => {
+  // The loaders below set state only once their requests settle, in the
+  // promise callbacks, so the effects that call them do not render twice.
+  const fetchSystemHealth = useCallback(() => {
     // Every status below comes from a response. Database and Redis are what
     // identity's /health reports about its own dependencies; they used to be
     // set to healthy whenever identity answered, and identity's probe went to
     // a path that does not exist, so the card showed Offline and Unknown on a
     // healthy stack (#559).
-    const [identityHealth, gatewayHealth] = await Promise.allSettled([
+    return Promise.allSettled([
       identityClient.get<IdentityHealth>(getIdentityPath('/api/v1/health')),
       fetch(`${gatewayBaseUrl}/health`).then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
         return response.json()
       }),
-    ])
-
-    const identity = identityHealth.status === 'fulfilled' ? identityHealth.value : null
-    setSystemHealth({
-      gatewayStatus: gatewayHealth.status === 'fulfilled' ? 'online' : 'offline',
-      identityStatus: identity ? 'online' : 'offline',
-      databaseStatus: checkStatus(identity?.checks?.database?.status),
-      redisStatus: checkStatus(identity?.checks?.redis?.status),
+    ]).then(([identityHealth, gatewayHealth]) => {
+      const identity = identityHealth.status === 'fulfilled' ? identityHealth.value : null
+      setSystemHealth({
+        gatewayStatus: gatewayHealth.status === 'fulfilled' ? 'online' : 'offline',
+        identityStatus: identity ? 'online' : 'offline',
+        databaseStatus: checkStatus(identity?.checks?.database?.status),
+        redisStatus: checkStatus(identity?.checks?.redis?.status),
+      })
     })
   }, [])
 
-  const fetchSystemStats = useCallback(async () => {
-    const [systemAnalytics, usageSummary] = await Promise.allSettled([
+  const fetchSystemStats = useCallback(() => {
+    return Promise.allSettled([
       identityClient.get<AdminSystemAnalytics>(
         getIdentityPath('/api/v1/analytics/admin/system-stats?days=30')
       ),
       identityClient.get<AdminUsageSummary>(
         getIdentityPath('/api/v1/analytics/admin/usage-summary')
       ),
-    ])
+    ]).then(([systemAnalytics, usageSummary]) => {
+      const analytics = systemAnalytics.status === 'fulfilled' ? systemAnalytics.value : null
+      const usage = usageSummary.status === 'fulfilled' ? usageSummary.value : null
 
-    const analytics = systemAnalytics.status === 'fulfilled' ? systemAnalytics.value : null
-    const usage = usageSummary.status === 'fulfilled' ? usageSummary.value : null
-
-    if (analytics) {
-      analyticsLoadedRef.current = true
-      setSystemStats({
-        totalUsers: analytics.users.total,
-        activeUsers: analytics.users.active,
-        superAdmins: analytics.users.super_admins,
-        totalTeams: analytics.teams.total,
-        newUsersThisWeek: analytics.users.new_this_week,
-        apiKeysUsedToday: usage ? usage.summary.api_keys_active : null,
-      })
-    } else {
-      // Without the analytics, the counts come from the unfiltered user list
-      // (see fetchUsers). Nothing is invented for what the list cannot tell.
-      analyticsLoadedRef.current = false
-      setSystemStats(prev => ({
-        ...prev,
-        ...statsFromUsers(usersRef.current),
-        apiKeysUsedToday: usage ? usage.summary.api_keys_active : null,
-      }))
-    }
+      if (analytics) {
+        analyticsLoadedRef.current = true
+        setSystemStats({
+          totalUsers: analytics.users.total,
+          activeUsers: analytics.users.active,
+          superAdmins: analytics.users.super_admins,
+          totalTeams: analytics.teams.total,
+          newUsersThisWeek: analytics.users.new_this_week,
+          apiKeysUsedToday: usage ? usage.summary.api_keys_active : null,
+        })
+      } else {
+        // Without the analytics, the counts come from the unfiltered user list
+        // (see fetchUsers). Nothing is invented for what the list cannot tell.
+        analyticsLoadedRef.current = false
+        setSystemStats(prev => ({
+          ...prev,
+          ...statsFromUsers(usersRef.current),
+          apiKeysUsedToday: usage ? usage.summary.api_keys_active : null,
+        }))
+      }
+    })
   }, [])
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(() => {
     const requestId = ++usersRequestRef.current
     // identity filters the list itself: email_filter is a case-insensitive
     // substring match on the email, is_active an exact match. The page used
@@ -262,33 +270,43 @@ export default function AdminPage() {
     if (filterActive !== null) params.is_active = filterActive
     const unfiltered = !appliedSearch && filterActive === null
 
-    try {
-      setIsLoading(true)
-      const data = await identityClient.get<AdminUserData[]>(
-        getIdentityPath('/api/v1/admin/users'),
-        params
-      )
-      if (requestId !== usersRequestRef.current) return
+    return identityClient
+      .get<AdminUserData[]>(getIdentityPath('/api/v1/admin/users'), params)
+      .then(
+        data => {
+          if (requestId !== usersRequestRef.current) return
 
-      setUsers(data)
-      if (unfiltered) {
-        usersRef.current = data
-        if (!analyticsLoadedRef.current) {
-          setSystemStats(prev => ({ ...prev, ...statsFromUsers(data) }))
+          setUsers(data)
+          if (unfiltered) {
+            usersRef.current = data
+            if (!analyticsLoadedRef.current) {
+              setSystemStats(prev => ({ ...prev, ...statsFromUsers(data) }))
+            }
+          }
+        },
+        error => {
+          if (requestId !== usersRequestRef.current) return
+          console.error('Failed to fetch users:', error)
+          toast({
+            title: 'Error',
+            description: 'Failed to load users',
+            variant: 'destructive',
+          })
         }
-      }
-    } catch (error) {
-      if (requestId !== usersRequestRef.current) return
-      console.error('Failed to fetch users:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load users',
-        variant: 'destructive',
+      )
+      .finally(() => {
+        if (requestId !== usersRequestRef.current) return
+        setLoadedUsersQuery(usersQuery)
+        setIsReloadingUsers(false)
       })
-    } finally {
-      if (requestId === usersRequestRef.current) setIsLoading(false)
-    }
-  }, [toast, appliedSearch, filterActive])
+  }, [toast, appliedSearch, filterActive, usersQuery])
+
+  // After an action changed a user: show the list as loading until it is
+  // read again.
+  const reloadUsers = () => {
+    setIsReloadingUsers(true)
+    void fetchUsers()
+  }
 
   useEffect(() => {
     if (user?.is_superuser) {
@@ -307,7 +325,7 @@ export default function AdminPage() {
     // Apply what is typed now, without waiting for the debounce.
     const term = searchTerm.trim()
     if (term === appliedSearch) {
-      fetchUsers()
+      reloadUsers()
     } else {
       setAppliedSearch(term)
     }
@@ -324,7 +342,7 @@ export default function AdminPage() {
         description: `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`,
       })
 
-      fetchUsers()
+      reloadUsers()
     } catch (error) {
       console.error('Failed to toggle user status:', error)
       toast({
@@ -455,7 +473,7 @@ export default function AdminPage() {
         description: `User ${userEmail} ${forceDelete ? 'force ' : ''}deleted successfully`,
       })
 
-      fetchUsers()
+      reloadUsers()
     } catch (error) {
       console.error('Failed to delete user:', error)
 
@@ -502,7 +520,7 @@ export default function AdminPage() {
         description: `User ${userEmail} promoted to superuser successfully`,
       })
 
-      fetchUsers()
+      reloadUsers()
     } catch (error) {
       console.error('Failed to promote user to superuser:', error)
       toast({
@@ -528,7 +546,7 @@ export default function AdminPage() {
         description: `Superuser privileges removed from ${userEmail} successfully`,
       })
 
-      fetchUsers()
+      reloadUsers()
     } catch (error) {
       console.error('Failed to demote user from superuser:', error)
       toast({
@@ -657,7 +675,7 @@ export default function AdminPage() {
       setShowCreateUser(false)
 
       // Refresh users list
-      fetchUsers()
+      reloadUsers()
     } catch (error) {
       console.error('Failed to create user:', error)
       toast({
