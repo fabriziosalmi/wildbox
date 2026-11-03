@@ -121,6 +121,9 @@ export default function TeamPage() {
       })
       .then(
         team => {
+          // A read that succeeds replaces an earlier error, also when it
+          // comes from the effect rather than from Try again.
+          setLoadError(null)
           if (!team) {
             setTeamData(null)
             return

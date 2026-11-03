@@ -152,15 +152,15 @@ export default function AdminPage() {
   // has paused (or on Enter / Search), and the status filter.
   const [appliedSearch, setAppliedSearch] = useState('')
   const [filterActive, setFilterActive] = useState<boolean | null>(null)
-  // The list is loading while it does not answer the current filters yet, or
-  // while an action reloads it. Derived during render: the effect that loads
-  // the list does not have to set a loading flag before the request.
-  const usersQuery = JSON.stringify([appliedSearch, filterActive])
+  // Bumped by an action that changed a user, so the list is read again for
+  // the filters in force when it lands, not those of when the action began.
+  const [usersReloadKey, setUsersReloadKey] = useState(0)
+  // The list is loading until the read for the current filters and reload
+  // key has settled. Derived during render: the effect that reads the list
+  // does not set a loading flag before the request.
+  const usersQuery = JSON.stringify([appliedSearch, filterActive, usersReloadKey])
   const [loadedUsersQuery, setLoadedUsersQuery] = useState<string | null>(null)
-  const [isReloadingUsers, setIsReloadingUsers] = useState(false)
-  const isLoading = isReloadingUsers || loadedUsersQuery !== usersQuery
-  // Responses to earlier searches that arrive late must not replace the list.
-  const usersRequestRef = useRef(0)
+  const isLoading = loadedUsersQuery !== usersQuery
   const [systemStats, setSystemStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -249,7 +249,7 @@ export default function AdminPage() {
         })
       } else {
         // Without the analytics, the counts come from the unfiltered user list
-        // (see fetchUsers). Nothing is invented for what the list cannot tell.
+        // (see the user list effect). Nothing is invented for what the list cannot tell.
         analyticsLoadedRef.current = false
         setSystemStats(prev => ({
           ...prev,
@@ -260,8 +260,12 @@ export default function AdminPage() {
     })
   }, [])
 
-  const fetchUsers = useCallback(() => {
-    const requestId = ++usersRequestRef.current
+  const reloadUsers = () => setUsersReloadKey(key => key + 1)
+
+  useEffect(() => {
+    if (!user?.is_superuser) return
+    // A response for filters that changed meanwhile must not replace the list.
+    let superseded = false
     // identity filters the list itself: email_filter is a case-insensitive
     // substring match on the email, is_active an exact match. The page used
     // to ignore both controls and always load the first 100 users (#559).
@@ -270,12 +274,11 @@ export default function AdminPage() {
     if (filterActive !== null) params.is_active = filterActive
     const unfiltered = !appliedSearch && filterActive === null
 
-    return identityClient
+    identityClient
       .get<AdminUserData[]>(getIdentityPath('/api/v1/admin/users'), params)
       .then(
         data => {
-          if (requestId !== usersRequestRef.current) return
-
+          if (superseded) return
           setUsers(data)
           if (unfiltered) {
             usersRef.current = data
@@ -285,7 +288,9 @@ export default function AdminPage() {
           }
         },
         error => {
-          if (requestId !== usersRequestRef.current) return
+          if (superseded) return
+          // No list of other filters stands in for the one that failed.
+          setUsers([])
           console.error('Failed to fetch users:', error)
           toast({
             title: 'Error',
@@ -295,24 +300,12 @@ export default function AdminPage() {
         }
       )
       .finally(() => {
-        if (requestId !== usersRequestRef.current) return
-        setLoadedUsersQuery(usersQuery)
-        setIsReloadingUsers(false)
+        if (!superseded) setLoadedUsersQuery(usersQuery)
       })
-  }, [toast, appliedSearch, filterActive, usersQuery])
-
-  // After an action changed a user: show the list as loading until it is
-  // read again.
-  const reloadUsers = () => {
-    setIsReloadingUsers(true)
-    void fetchUsers()
-  }
-
-  useEffect(() => {
-    if (user?.is_superuser) {
-      fetchUsers()
+    return () => {
+      superseded = true
     }
-  }, [user, fetchUsers])
+  }, [user, toast, appliedSearch, filterActive, usersQuery])
 
   useEffect(() => {
     if (user?.is_superuser) {

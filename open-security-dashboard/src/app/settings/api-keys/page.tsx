@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { identityClient, getIdentityPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
@@ -58,7 +58,6 @@ export default function ApiKeysPage() {
   const { user } = useAuth()
   const { toast } = useToast()
   const [apiKeys, setApiKeys] = useState<ApiKeyWithSecret[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set())
@@ -69,28 +68,39 @@ export default function ApiKeysPage() {
     expires_at: '',
   })
 
-  // State is set only once the request settles. The page starts out loading;
-  // a later read for a refreshed user keeps the list on screen until the new
-  // one arrives.
-  const fetchApiKeys = useCallback(() => {
-    return identityClient
-      .get<ApiKeyWithSecret[]>(getIdentityPath('/api/v1/api-keys'))
-      .then(setApiKeys, error => {
-        console.error('Failed to fetch API keys:', error)
-        toast({
-          title: 'Error',
-          description: 'Failed to load API keys',
-          variant: 'destructive',
-        })
-      })
-      .finally(() => setIsLoading(false))
-  }, [toast])
+  // The list is read again whenever the session's user is (refetchUser).
+  // It shows as loading until the read for the current user has settled, so
+  // the revoke buttons of an older list are not offered meanwhile, and a read
+  // superseded by a newer one is dropped instead of restoring revoked keys.
+  const [keysLoadedFor, setKeysLoadedFor] = useState<typeof user>(null)
+  const isLoading = !user || keysLoadedFor !== user
 
   useEffect(() => {
-    if (user) {
-      fetchApiKeys()
+    if (!user) return
+    let superseded = false
+    identityClient
+      .get<ApiKeyWithSecret[]>(getIdentityPath('/api/v1/api-keys'))
+      .then(
+        keys => {
+          if (!superseded) setApiKeys(keys)
+        },
+        error => {
+          if (superseded) return
+          console.error('Failed to fetch API keys:', error)
+          toast({
+            title: 'Error',
+            description: 'Failed to load API keys',
+            variant: 'destructive',
+          })
+        }
+      )
+      .finally(() => {
+        if (!superseded) setKeysLoadedFor(user)
+      })
+    return () => {
+      superseded = true
     }
-  }, [user, fetchApiKeys])
+  }, [user, toast])
 
   const handleCreateApiKey = async (e: React.FormEvent) => {
     e.preventDefault()
