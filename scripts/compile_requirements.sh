@@ -29,7 +29,14 @@ cd "$(dirname "$0")/.."
 # The eight services, and one lock that is not a service: `ci-tools`, the test
 # runner and linters the workflows install (tests/ci-tools/requirements.in).
 SERVICES=(agents cspm data guardian identity responder sensor tools ci-tools)
-PYTHON_VERSION="3.11"
+# The patch level matters, not only the minor: "3.11" means 3.11.0 to uv, and
+# a marker such as redis's `async-timeout; python_full_version < "3.11.3"` then
+# keeps a package the images never install. Dependabot resolves its pip-group
+# PRs on a current 3.11.x and drops it, so every such PR failed --check on the
+# locks that depend on redis. This is the interpreter in the pinned
+# python:3.11-slim digest the Dockerfiles build from (`python -V` in that
+# image); move it when that digest moves to another 3.11 patch release.
+PYTHON_VERSION="3.11.16"
 
 # Directory that holds a lock's requirements.in and requirements.txt.
 lock_dir() {
