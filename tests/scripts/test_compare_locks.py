@@ -58,14 +58,19 @@ def test_stale_lock_fails_and_names_each_difference():
     result = run(LOCKS / "uv_compiled.txt", LOCKS / "stale.txt")
     assert result.returncode == 1
     assert "missing from the lock: async-timeout==5.0.1" in result.stdout
-    assert "version differs: uvicorn resolves to 0.24.0, lock has 0.23.2" in result.stdout
+    assert (
+        "version differs: uvicorn resolves to 0.24.0, lock has 0.23.2" in result.stdout
+    )
 
 
 def test_a_package_only_in_the_lock_fails():
     # The other direction: requirements.in dropped a package, the lock kept it.
     result = run(LOCKS / "stale.txt", LOCKS / "uv_compiled.txt")
     assert result.returncode == 1
-    assert "in the lock but not resolved from requirements.in: async-timeout==5.0.1" in result.stdout
+    assert (
+        "in the lock but not resolved from requirements.in: async-timeout==5.0.1"
+        in result.stdout
+    )
 
 
 def test_same_version_with_a_different_hash_fails():
@@ -86,7 +91,12 @@ def test_a_hash_missing_from_the_lock_fails():
 
 @pytest.mark.parametrize(
     "name, normalized",
-    [("PyJWT", "pyjwt"), ("typing_extensions", "typing-extensions"), ("zope.interface", "zope-interface"), ("a-_.b", "a-b")],
+    [
+        ("PyJWT", "pyjwt"),
+        ("typing_extensions", "typing-extensions"),
+        ("zope.interface", "zope-interface"),
+        ("a-_.b", "a-b"),
+    ],
 )
 def test_names_are_normalized_as_pep_503_says(name, normalized):
     assert cl.normalize_name(name) == normalized

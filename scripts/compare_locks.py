@@ -74,7 +74,9 @@ def parse_lock(text: str) -> dict[str, dict[str, frozenset[str]]]:
         if spec.startswith("-"):
             # Options such as --index-url or -c carry no pin. A lock that
             # includes another file (-r) is not something these locks do.
-            if spec.startswith(("-r", "--requirement", "-c", "--constraint", "-e", "--editable")):
+            if spec.startswith(
+                ("-r", "--requirement", "-c", "--constraint", "-e", "--editable")
+            ):
                 raise LockError(f"unsupported line in a lock: {line}")
             continue
         m = _REQUIREMENT.match(spec)
@@ -93,11 +95,15 @@ def compare(expected: dict, actual: dict) -> list[str]:
     for name in sorted(expected.keys() - actual.keys()):
         problems.append(f"missing from the lock: {name}=={_versions(expected[name])}")
     for name in sorted(actual.keys() - expected.keys()):
-        problems.append(f"in the lock but not resolved from requirements.in: {name}=={_versions(actual[name])}")
+        problems.append(
+            f"in the lock but not resolved from requirements.in: {name}=={_versions(actual[name])}"
+        )
     for name in sorted(expected.keys() & actual.keys()):
         exp, act = expected[name], actual[name]
         if set(exp) != set(act):
-            problems.append(f"version differs: {name} resolves to {_versions(exp)}, lock has {_versions(act)}")
+            problems.append(
+                f"version differs: {name} resolves to {_versions(exp)}, lock has {_versions(act)}"
+            )
             continue
         for version in sorted(exp):
             only_exp = exp[version] - act[version]
