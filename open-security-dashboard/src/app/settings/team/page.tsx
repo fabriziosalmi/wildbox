@@ -107,37 +107,47 @@ export default function TeamPage() {
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
   const [addingMember, setAddingMember] = useState(false)
 
-  const fetchTeamData = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      setLoadError(null)
-      const activity = await identityClient.get<{ team_memberships?: MyMembership[] }>(
-        myActivityPath()
-      )
-      const membership = activity.team_memberships?.[0]
-
-      if (!membership) {
-        setTeamData(null)
-        return
-      }
-
-      const members = await identityClient.get<TeamMember[]>(
-        `${teamPath(membership.team_id)}/members`
-      )
-
-      setTeamData({
-        membership,
-        members,
-        canManage: membership.role === 'owner' || membership.role === 'admin',
+  // State is set only once the requests settle: the page starts out loading,
+  // and a reload marks itself as loading before it calls this.
+  const fetchTeamData = useCallback(() => {
+    return identityClient
+      .get<{ team_memberships?: MyMembership[] }>(myActivityPath())
+      .then(activity => {
+        const membership = activity.team_memberships?.[0]
+        if (!membership) return null
+        return identityClient
+          .get<TeamMember[]>(`${teamPath(membership.team_id)}/members`)
+          .then(members => ({ membership, members }))
       })
-      setTeamEditForm({ name: membership.team_name })
-    } catch (error) {
-      setTeamData(null)
-      setLoadError(getErrorMessage(error, 'Failed to load team information'))
-    } finally {
-      setIsLoading(false)
-    }
+      .then(
+        team => {
+          // A read that succeeds replaces an earlier error, also when it
+          // comes from the effect rather than from Try again.
+          setLoadError(null)
+          if (!team) {
+            setTeamData(null)
+            return
+          }
+          setTeamData({
+            membership: team.membership,
+            members: team.members,
+            canManage: team.membership.role === 'owner' || team.membership.role === 'admin',
+          })
+          setTeamEditForm({ name: team.membership.team_name })
+        },
+        error => {
+          setTeamData(null)
+          setLoadError(getErrorMessage(error, 'Failed to load team information'))
+        }
+      )
+      .finally(() => setIsLoading(false))
   }, [])
+
+  const reloadTeamData = () => {
+    setIsLoading(true)
+    setLoadError(null)
+    return fetchTeamData()
+  }
 
   useEffect(() => {
     if (user) {
@@ -164,7 +174,7 @@ export default function TeamPage() {
       })
 
       setShowEditTeam(false)
-      await fetchTeamData()
+      await reloadTeamData()
 
       toast({
         title: 'Success',
@@ -204,7 +214,7 @@ export default function TeamPage() {
       )
       setAddMemberForm({ email: '', password: '', role: 'member' })
       setShowAddMember(false)
-      await fetchTeamData()
+      await reloadTeamData()
       toast({
         title: 'Member added',
         description: `${created.user.email} was added as ${created.role}. Share the initial password with them privately; they must change it when they first sign in.`,
@@ -227,7 +237,7 @@ export default function TeamPage() {
         `${teamPath(teamData.membership.team_id)}/members/${encodeURIComponent(userId)}`
       )
 
-      await fetchTeamData()
+      await reloadTeamData()
 
       toast({
         title: 'Success',
@@ -278,7 +288,7 @@ export default function TeamPage() {
           <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
           <p className="font-medium text-foreground">Could not load the team</p>
           <p className="mt-1 text-sm text-muted-foreground">{loadError}</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => fetchTeamData()}>
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => reloadTeamData()}>
             Try again
           </Button>
         </div>

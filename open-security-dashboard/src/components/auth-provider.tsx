@@ -178,12 +178,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   useEffect(() => {
-    // Skip during SSR
-    if (typeof window === 'undefined') {
-      setIsLoading(false)
-      return
-    }
-
+    // Effects never run during server rendering, so there is no SSR case to
+    // skip here: the session is read in the browser only.
     const initAuth = async () => {
       try {
         const token = Cookies.get('auth_token')

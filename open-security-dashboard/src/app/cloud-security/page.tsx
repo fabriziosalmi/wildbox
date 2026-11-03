@@ -53,20 +53,25 @@ export default function CloudSecurityPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const fetchSummary = useCallback(async () => {
+  // State is set only once the request settles: the page starts out loading,
+  // and a reload marks itself as loading before it calls this.
+  const fetchSummary = useCallback(() => {
+    return cspmClient
+      .get<DashboardSummary>(getCSPMPath('/api/v1/dashboard/summary'))
+      .then(setSummary, error => {
+        // A failed request is not an account with nothing in it: no figure is
+        // shown in its place, not even a stale one.
+        setSummary(null)
+        setLoadError(getErrorMessage(error, 'The CSPM service did not answer.'))
+      })
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  const reloadSummary = () => {
     setIsLoading(true)
     setLoadError(null)
-    try {
-      setSummary(await cspmClient.get<DashboardSummary>(getCSPMPath('/api/v1/dashboard/summary')))
-    } catch (error) {
-      // A failed request is not an account with nothing in it: no figure is
-      // shown in its place, not even a stale one.
-      setSummary(null)
-      setLoadError(getErrorMessage(error, 'The CSPM service did not answer.'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+    void fetchSummary()
+  }
 
   useEffect(() => {
     fetchSummary()
@@ -100,7 +105,7 @@ export default function CloudSecurityPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={fetchSummary} variant="outline" disabled={isLoading}>
+          <Button onClick={reloadSummary} variant="outline" disabled={isLoading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
@@ -138,7 +143,7 @@ export default function CloudSecurityPage() {
             <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-red-500" />
             <p className="mb-2 font-medium text-red-600">Cloud security data could not be loaded</p>
             <p className="mb-4 text-sm text-muted-foreground">{loadError}</p>
-            <Button onClick={fetchSummary} variant="outline" disabled={isLoading}>
+            <Button onClick={reloadSummary} variant="outline" disabled={isLoading}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Try again
             </Button>
