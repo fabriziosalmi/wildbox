@@ -72,6 +72,12 @@ updates:
     ignore:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
+      # The services run on python:3.11-slim and scripts/compile_requirements.sh
+      # resolves the hashed locks for 3.11. A move to a newer Python minor is a
+      # planned migration (locks recompiled for the target, wheels available,
+      # setuptools in the build stage), not a weekly bump (#809).
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
     groups:
       docker:
         patterns:
