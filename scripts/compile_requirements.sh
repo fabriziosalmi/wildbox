@@ -84,13 +84,20 @@ for svc in "${SERVICES[@]}"; do
     cp "${dir}/requirements.txt" "$tmp"
     uv pip compile --quiet --generate-hashes --python-version "$PYTHON_VERSION" \
       --python-platform "$PYTHON_PLATFORM" "${dir}/requirements.in" -o "$tmp"
-    # Compare ignoring the header comment, which records the invoking command.
-    if ! diff -q <(grep -v '^#' "$tmp") <(grep -v '^#' "${dir}/requirements.txt") >/dev/null; then
+    # Compare what the two locks install, not how they are written: per
+    # package the name, the version and the set of hashes. Dependabot rewrites
+    # the locks of its pip-group PRs with pip-compile, which adds extras
+    # (uvicorn[standard]), markers, other `# via` lines and another order; a
+    # text compare failed every one of those PRs whatever they changed.
+    # compare_locks.py prints each difference; exit 1 is a stale lock, 2 a
+    # lock it could not read, and both fail the check.
+    if differences="$(python3 scripts/compare_locks.py "$tmp" "${dir}/requirements.txt")"; then
+      echo "ok:    ${svc}"
+    else
       echo "STALE: ${dir}/requirements.txt does not match requirements.in"
+      echo "$differences"
       echo "       run ./scripts/compile_requirements.sh ${svc}"
       status=1
-    else
-      echo "ok:    ${svc}"
     fi
     rm -f "$tmp"
   else
