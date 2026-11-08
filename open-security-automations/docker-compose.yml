@@ -8,7 +8,7 @@ version: '3.8'
 
 services:
   n8n:
-    image: n8nio/n8n:1.123.85@sha256:8d4e5a2b73e5ac3bdbd1cc310f5bb0a12897851e700413cf8674b6bf0f374d5a
+    image: n8nio/n8n:1.123.92@sha256:7693a1fade8aea2985e0089cc36f25715e56ea6f3ebb1011f986462d46452f13
     container_name: wildbox-automations-n8n
     restart: unless-stopped
     ports:
