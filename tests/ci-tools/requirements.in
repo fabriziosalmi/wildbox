@@ -39,7 +39,7 @@ pyyaml==6.0.3
 packaging==26.3
 
 # Linters (Code Quality in test.yml, Python Code Quality in pr-validation.yml)
-black==26.10.0
+black==26.10.1
 flake8==7.4.1
 isort==9.0.2
 mypy==2.4.0
