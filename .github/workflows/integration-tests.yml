@@ -85,7 +85,17 @@ jobs:
           python3 scripts/validate_secrets.py
 
       - name: Set up Docker Buildx
+        # The docker driver: BuildKit inside the runner's daemon, whose
+        # containerd image store (Docker 29 on ubuntu-latest) accepts the gha
+        # cache backend, so the images land in the store as they are built.
+        # The default docker-container driver builds in a container of its
+        # own and sends every image to the daemon as a tarball: up to 63 s of
+        # the 69 s this job took on main (2026-11-17) to build sixteen images
+        # whose every layer was in the cache. A daemon without the
+        # containerd store refuses the cache export and fails the build.
         uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
 
       - name: Expose the Actions cache to BuildKit
         # The gha cache backend authenticates with the runner's cache token
