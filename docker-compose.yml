@@ -562,7 +562,7 @@ services:
 
   # Shared Redis Cache (Consolidated for all services)
   wildbox-redis:
-    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     container_name: wildbox-redis
     restart: unless-stopped
     # maxmemory-policy is noeviction, NOT allkeys-lru.
@@ -1259,7 +1259,7 @@ services:
   # reached on the loopback port below. Create n8n's owner account right
   # after the first start; see open-security-automations/README.md.
   automations:
-    image: n8nio/n8n:1.123.85@sha256:8d4e5a2b73e5ac3bdbd1cc310f5bb0a12897851e700413cf8674b6bf0f374d5a
+    image: n8nio/n8n:1.123.96@sha256:20c9f06f5b610c4a00fe216555335ae3f7c3c2c02bafa20a4d6760b106a4ac24
     container_name: open-security-automations
     profiles: ["automations"]
     restart: unless-stopped
@@ -1451,7 +1451,7 @@ services:
   # (smtp_auth_password_file, url_file, credentials_file), which are read from
   # ALERTMANAGER_SECRETS_DIR at every notification.
   alertmanager:
-    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    image: prom/alertmanager:v0.35.0@sha256:e638797febd034838eca8b98cdbd46f951e9bf7f178777aa8669167406a9946c
     profiles: ["monitoring"]
     restart: unless-stopped
     # The image's default user (nobody), stated so that it cannot become root
