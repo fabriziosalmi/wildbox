@@ -63,6 +63,7 @@ STACKS: tuple[tuple[str, ...], ...] = (
     ("docker-compose.yml", "docker-compose.dev.yml"),
     ("docker-compose.yml", "docker-compose.prod.yml"),
     ("docker-compose.yml", "ci/compose/compose.ci-ports.yml"),
+    ("docker-compose.yml", "ci/compose/compose.ci-cache.yml"),
     (
         "docker-compose.yml",
         "ci/compose/compose.ci-ports.yml",

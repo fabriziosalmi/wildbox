@@ -82,6 +82,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      - name: Expose the Actions cache to BuildKit
+        # See integration-tests.yml: the gha cache backend needs the runner's
+        # cache token and URLs, which only JavaScript actions receive.
+        uses: actions/github-script@v9
+        with:
+          script: |
+            for (const name of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL',
+                                'ACTIONS_CACHE_URL', 'ACTIONS_CACHE_SERVICE_V2']) {
+              if (process.env[name]) core.exportVariable(name, process.env[name]);
+            }
+
       - name: Install dashboard dependencies
         # For Playwright on the runner. The compose dashboard no longer sees
         # this node_modules: it bind-mounts only src/ and public/ and keeps
@@ -97,6 +108,16 @@ jobs:
         # stalled mirror fails here, not at the job's limit.
         timeout-minutes: 15
         run: npx playwright install --with-deps chromium
+
+      - name: Build the images
+        # Through the Actions cache, in the scopes Integration Tests fills
+        # with the same Dockerfiles and contexts (ci/compose/compose.ci-cache.yml).
+        # This step used to be part of start-up, which built all sixteen
+        # images from nothing on every run: 198 to 267 s of the 282 to 352 s
+        # "Start the stack" took over six runs of 2026-11-17. `up` below finds
+        # the images built and starts them, as in integration-tests.yml.
+        timeout-minutes: 20
+        run: docker compose -f docker-compose.yml -f ci/compose/compose.ci-cache.yml build
 
       - name: Start the stack
         timeout-minutes: 20
