@@ -4,8 +4,10 @@
 # (integration-tests.yml, e2e-fullstack.yml, production-stack.yml).
 #
 # It needs a BuildKit builder that can export a cache (docker/setup-buildx-
-# action) and the runner's cache credentials in the environment (the
-# "Expose the Actions cache to BuildKit" step).
+# action: the docker driver over a containerd image store in
+# integration-tests.yml and e2e-fullstack.yml, the docker-container driver
+# in production-stack.yml) and the runner's cache credentials in the
+# environment (the "Expose the Actions cache to BuildKit" step).
 #
 # One scope per build context, named as in docker-build-validation.yml, which
 # builds the same Dockerfiles with the same shared context: the two jobs fill
