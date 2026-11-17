@@ -62,7 +62,7 @@ Trivy and Bandit run once per pull request, in Security Scanning (`test.yml`):
   job installs, `setup-node` caches npm keyed on the dashboard's
   `package-lock.json`, and `setup-uv` caches by default. Integration Tests
   and the production stack build their images through the Actions cache
-  (`.github/compose.ci-cache.yml`), in the scopes `docker-build-validation`
+  (`ci/compose/compose.ci-cache.yml`), in the scopes `docker-build-validation`
   also uses.
 - **Permissions.** Each workflow starts from `contents: read`; a job that
   needs more asks for it.

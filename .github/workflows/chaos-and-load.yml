@@ -68,7 +68,7 @@ jobs:
         run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
 
       - name: Start the stack
-        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml up -d --wait --wait-timeout 600
+        run: docker compose -f docker-compose.yml -f ci/compose/compose.ci-ports.yml up -d --wait --wait-timeout 600
         # Image builds plus --wait-timeout above (10 min); observed max 10.7.
         timeout-minutes: 20
 
@@ -93,11 +93,11 @@ jobs:
 
       - name: Collect logs on failure
         if: failure()
-        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml logs --tail=200 gateway identity data postgres wildbox-redis
+        run: docker compose -f docker-compose.yml -f ci/compose/compose.ci-ports.yml logs --tail=200 gateway identity data postgres wildbox-redis
 
       - name: Tear down
         if: always()
-        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml down -v
+        run: docker compose -f docker-compose.yml -f ci/compose/compose.ci-ports.yml down -v
 
   load:
     name: Load baseline

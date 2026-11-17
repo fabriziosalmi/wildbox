@@ -288,7 +288,7 @@ def _compose_files():
     candidates = sorted(
         set(REPO_ROOT.glob("docker-compose*.y*ml"))
         | set(SERVICE_ROOT.glob("docker-compose*.y*ml"))
-        | set((REPO_ROOT / ".github").glob("*compose*.y*ml"))
+        | set((REPO_ROOT / "ci" / "compose").glob("*compose*.y*ml"))
     )
     found = []
     for path in candidates:
