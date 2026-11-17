@@ -7,7 +7,7 @@ version the registry served that day, holding the Docker API, which is root
 on the host. Nothing looked at Compose files other than the root one, so
 nothing noticed. This check reads every tracked Compose file (any YAML file
 with a top-level ``services:`` mapping: the root files, the overlays, the
-per-service ones, those under .github/) and refuses, per service:
+per-service ones, the CI overlays in ci/compose/) and refuses, per service:
 
 socket     a bind mount of a container runtime socket (docker.sock and the
            like) or of a directory that holds one. ``:ro`` does not help: it

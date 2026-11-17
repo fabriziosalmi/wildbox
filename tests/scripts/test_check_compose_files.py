@@ -234,9 +234,9 @@ def test_an_overlay_is_rendered_with_its_base_and_not_alone():
     assert ("docker-compose.prod.yml",) not in stacks
     assert ("docker-compose.dev.yml",) not in stacks
     # A stack with a file that is not there is not rendered ...
-    assert all(".github/compose.ci-ports.yml" not in stack for stack in stacks)
+    assert all("ci/compose/compose.ci-ports.yml" not in stack for stack in stacks)
     # ... and is reported, so the table cannot name a file that was removed.
-    assert ".github/compose.ci-ports.yml" in ccf.unknown_stack_files(files)
+    assert "ci/compose/compose.ci-ports.yml" in ccf.unknown_stack_files(files)
     # A tree without the root file has no stack to complete.
     assert ccf.unknown_stack_files(["svc/docker-compose.yml"]) == []
     covered = {name for stack in stacks for name in stack}

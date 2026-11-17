@@ -62,17 +62,17 @@ _spec.loader.exec_module(hygiene)
 STACKS: tuple[tuple[str, ...], ...] = (
     ("docker-compose.yml", "docker-compose.dev.yml"),
     ("docker-compose.yml", "docker-compose.prod.yml"),
-    ("docker-compose.yml", ".github/compose.ci-ports.yml"),
+    ("docker-compose.yml", "ci/compose/compose.ci-ports.yml"),
     (
         "docker-compose.yml",
-        ".github/compose.ci-ports.yml",
-        ".github/compose.ci-cache.yml",
+        "ci/compose/compose.ci-ports.yml",
+        "ci/compose/compose.ci-cache.yml",
     ),
     (
         "docker-compose.yml",
         "docker-compose.prod.yml",
-        ".github/compose.ci-ports.yml",
-        ".github/compose.ci-prod.yml",
+        "ci/compose/compose.ci-ports.yml",
+        "ci/compose/compose.ci-prod.yml",
     ),
 )
 
