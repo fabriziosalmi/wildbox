@@ -1,7 +1,7 @@
 # CI only. Builds the stack's images through the GitHub Actions cache.
 #
 # Applied on top of docker-compose.yml by the jobs that start the whole stack
-# (integration-tests.yml, production-stack.yml).
+# (integration-tests.yml, e2e-fullstack.yml, production-stack.yml).
 #
 # It needs a BuildKit builder that can export a cache (docker/setup-buildx-
 # action) and the runner's cache credentials in the environment (the
