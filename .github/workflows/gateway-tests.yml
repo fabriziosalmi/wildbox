@@ -36,7 +36,7 @@ jobs:
       CI_CORS_ORIGINS: "https://dashboard.example.test, http://localhost:3000"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build gateway test image
         run: docker build -f open-security-gateway/Dockerfile.test -t wildbox-gateway-test open-security-gateway
