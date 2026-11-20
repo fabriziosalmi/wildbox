@@ -13,7 +13,7 @@
 # the token-verification path (WILDBO-DEP-02/DEP-04/DEP-05).
 
 Django==5.2.17
-djangorestframework==3.17.2
+djangorestframework==3.18.2
 django-cors-headers==4.3.1
 django-filter==25.1
 django-extensions==3.2.3

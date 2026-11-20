@@ -27,7 +27,7 @@ docker==7.2.0
 psutil==6.1.1
 
 # Async testing support
-aiohttp==3.14.3
+aiohttp==3.14.4
 
 # Environment management
 python-dotenv==1.2.2
@@ -36,10 +36,10 @@ python-dotenv==1.2.2
 faker==33.1.0
 
 # Code quality
-black==26.3.1
+black==26.10.1
 flake8==7.1.1
 mypy==1.13.0
-pylint==3.3.2
+pylint==4.0.9
 
 # Security scanning
 # No `safety`: nothing that installs this file runs it (CI scans
