@@ -8,7 +8,7 @@ version: '3.8'
 
 services:
   n8n:
-    image: n8nio/n8n:1.123.85@sha256:8d4e5a2b73e5ac3bdbd1cc310f5bb0a12897851e700413cf8674b6bf0f374d5a
+    image: n8nio/n8n:1.123.98@sha256:bd5f89f2b71875cd11ab1dcc4cb355c9f44048b682b59d14b0fa1883888a7013
     container_name: wildbox-automations-n8n
     restart: unless-stopped
     ports:
@@ -74,7 +74,7 @@ services:
   # Local Redis for standalone development (optional but recommended)
   # When using main stack, automations can use shared wildbox-redis if needed
   redis:
-    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     container_name: wildbox-automations-redis
     restart: unless-stopped
     volumes:
