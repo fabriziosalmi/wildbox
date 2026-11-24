@@ -562,7 +562,7 @@ services:
 
   # Shared Redis Cache (Consolidated for all services)
   wildbox-redis:
-    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     container_name: wildbox-redis
     restart: unless-stopped
     # maxmemory-policy is noeviction, NOT allkeys-lru.
@@ -1259,7 +1259,7 @@ services:
   # reached on the loopback port below. Create n8n's owner account right
   # after the first start; see open-security-automations/README.md.
   automations:
-    image: n8nio/n8n:1.123.85@sha256:8d4e5a2b73e5ac3bdbd1cc310f5bb0a12897851e700413cf8674b6bf0f374d5a
+    image: n8nio/n8n:1.123.98@sha256:bd5f89f2b71875cd11ab1dcc4cb355c9f44048b682b59d14b0fa1883888a7013
     container_name: open-security-automations
     profiles: ["automations"]
     restart: unless-stopped
@@ -1344,7 +1344,7 @@ services:
     # Must match the server major in the `postgres` service above: pg_restore
     # from a newer major can emit SQL the older server rejects, which turns a
     # restore drill into a surprise at the worst possible moment.
-    image: postgres:15-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
+    image: postgres:15-alpine@sha256:e18480a22d6e48f4d816a6696769b1ec09ac73a824c5649e49c7d8b684913f3d
     profiles: ["backup"]
     restart: unless-stopped
     environment:
@@ -1451,7 +1451,7 @@ services:
   # (smtp_auth_password_file, url_file, credentials_file), which are read from
   # ALERTMANAGER_SECRETS_DIR at every notification.
   alertmanager:
-    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    image: prom/alertmanager:v0.35.0@sha256:e638797febd034838eca8b98cdbd46f951e9bf7f178777aa8669167406a9946c
     profiles: ["monitoring"]
     restart: unless-stopped
     # The image's default user (nobody), stated so that it cannot become root

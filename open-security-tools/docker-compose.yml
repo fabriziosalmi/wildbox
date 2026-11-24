@@ -47,7 +47,7 @@ services:
   # Local Redis for standalone development
   # When using main stack, API service can optionally use shared wildbox-redis
   redis:
-    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     container_name: wildbox-redis-api
     ports:
       - "127.0.0.1:6379:6379"
