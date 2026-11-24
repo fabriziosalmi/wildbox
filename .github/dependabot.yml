@@ -2,6 +2,8 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
+    cooldown:
+      default-days: 7
     directory: "/"
     schedule:
       interval: "weekly"
@@ -17,6 +19,8 @@ updates:
   # upgrades come from .github/workflows/pip-security-upgrades.yml.
 
   - package-ecosystem: "npm"
+    cooldown:
+      default-days: 7
     directories:
       - "/open-security-dashboard"
     schedule:
@@ -60,6 +64,8 @@ updates:
           - "10.x"
 
   - package-ecosystem: "docker"
+    cooldown:
+      default-days: 7
     directories:
       - "/open-security-*"
       - "/tests"
@@ -98,6 +104,8 @@ updates:
   # "The request contains invalid or unauthorized changes", and the whole
   # group failed with them.
   - package-ecosystem: "docker-compose"
+    cooldown:
+      default-days: 7
     directories:
       - "/"
       - "/ci/compose"
