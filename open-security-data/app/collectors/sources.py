@@ -2,13 +2,18 @@
 Specific collector implementations for popular threat intelligence sources
 """
 
+import csv
+import io
 import json
 import re
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List
+
+import aiohttp
+
 from app.collectors import BaseCollector, HTTPCollector
-from app.utils.log_safety import describe_error
+from app.utils.log_safety import describe_error, host_of
 
 logger = logging.getLogger(__name__)
 
@@ -406,6 +411,132 @@ class ThreatFoxCollector(HTTPCollector):
             'expires_at': datetime.now(timezone.utc) + timedelta(days=90)
         }
 
+class NetAPIHoneypotCollector(HTTPCollector):
+    """Collector for NetAPI's honeypot attacker IPs, an optional source.
+
+    The feed is a CSV of the IPv4 addresses that attacked NetAPI's own
+    honeypot sensors within the last 48 hours, rebuilt hourly, without a key,
+    under CC BY 4.0 (https://netapi.com/compromised-ips/). Its header is
+    ``ip,first_seen,last_seen,category,top_threat,threats,country,asn,as_name,sensors``.
+
+    It is read with the csv module and not with HTTPCollector's line split:
+    ``as_name`` is quoted and can hold a comma. A body without the columns
+    the collector reads (an error page, a changed format) fails the run
+    rather than collecting nothing and reporting success.
+    """
+
+    DEFAULT_URL = "https://netapi.com/api2/?method=compromised&dataset_type=ip&format=csv"
+    REQUIRED_COLUMNS = ("ip", "category", "top_threat", "threats", "last_seen")
+    # The feed's category of an address: its threat types, severity and tag.
+    CATEGORIES = {
+        "A": (["malware"], 8, "malware"),
+        "B": (["suspicious"], 6, "password-guessing"),
+        "C": (["exploit"], 7, "exploit"),
+        "D": (["spam"], 4, "form-spam"),
+    }
+    # An address stays on the feed for 48 hours after its last attack.
+    LISTED_FOR = timedelta(hours=48)
+    TAG = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+    def __init__(self, source):
+        super().__init__(source)
+        if not source.url:
+            source.url = self.DEFAULT_URL
+
+    async def collect_data(self):
+        url = self.source.url
+        try:
+            async with self.session.get(url) as response:
+                response.raise_for_status()
+                text = await response.text()
+        except aiohttp.ClientError as e:
+            logger.error(
+                f"HTTP error collecting from {host_of(url)}: {describe_error(e)}"
+            )
+            raise
+
+        reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
+        missing = [c for c in self.REQUIRED_COLUMNS if c not in (reader.fieldnames or [])]
+        if missing:
+            raise ValueError(
+                "The NetAPI feed answered without the columns " + ", ".join(missing)
+            )
+        rows = known = 0
+        for row in reader:
+            rows += 1
+            if (row.get('category') or '').strip().upper() in self.CATEGORIES:
+                known += 1
+            yield row
+        # A feed of attacks within 48 hours is never empty, and a row of no
+        # category the collector knows is one it skips: a header alone, or
+        # categories it does not know, is a changed feed, not a quiet day.
+        if not rows:
+            raise ValueError("The NetAPI feed answered with a header and no rows")
+        if not known:
+            raise ValueError("The NetAPI feed answered with no row of a known category")
+
+    @staticmethod
+    def _time(value: Optional[str]) -> Optional[datetime]:
+        try:
+            moment = datetime.fromisoformat((value or "").strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        # The feed's times are UTC; one without an offset is read as UTC, so
+        # that expires_at compares with the service's aware clock.
+        return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+    @staticmethod
+    def _int(value: Optional[str]) -> Optional[int]:
+        try:
+            return int((value or "").strip())
+        except ValueError:
+            return None
+
+    def parse_item(self, raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Parse one row of the NetAPI feed"""
+        ip_address = (raw_item.get('ip') or '').strip()
+        category = (raw_item.get('category') or '').strip().upper()
+        if not ip_address or category not in self.CATEGORIES:
+            return None
+
+        threat_types, severity, category_tag = self.CATEGORIES[category]
+        top_threat = (raw_item.get('top_threat') or '').strip()
+        threats = [t.strip() for t in (raw_item.get('threats') or '').split('|') if t.strip()]
+
+        # A tag the validator would refuse would cost the whole indicator.
+        tags = ['honeypot', 'netapi', category_tag]
+        for threat in [top_threat] + threats:
+            if threat and self.TAG.match(threat) and threat not in tags:
+                tags.append(threat)
+
+        # Without a readable time of the last attack the address is still on
+        # the feed now, so it attacked within the last 48 hours: those count
+        # from now.
+        last_seen = self._time(raw_item.get('last_seen'))
+        expires_from = last_seen or datetime.now(timezone.utc)
+
+        return {
+            'indicator_type': 'ip_address',
+            'value': ip_address,
+            'threat_types': list(threat_types),
+            'confidence': 'high',
+            'severity': severity,
+            'description': f'Attacked NetAPI honeypot sensors: {top_threat or category_tag}',
+            'tags': tags,
+            'metadata': {
+                'category': category,
+                'top_threat': top_threat or None,
+                'threats': threats,
+                'first_seen': (raw_item.get('first_seen') or '').strip() or None,
+                'last_seen': (raw_item.get('last_seen') or '').strip() or None,
+                'country': (raw_item.get('country') or '').strip() or None,
+                'asn': self._int(raw_item.get('asn')),
+                'as_name': (raw_item.get('as_name') or '').strip() or None,
+                'sensors': self._int(raw_item.get('sensors')),
+            },
+            'expires_at': expires_from + self.LISTED_FOR,
+        }
+
 
 # Register the collectors that can run. HTTPCollector itself is their base
 # class: it has no parse_item and is not one of them.
@@ -418,3 +549,4 @@ CollectorRegistry.register_collector('phishtank', PhishTankCollector)
 CollectorRegistry.register_collector('feodo_tracker', FeodoTrackerCollector)
 CollectorRegistry.register_collector('malwarebazaar', MalwareBazaarCollector)
 CollectorRegistry.register_collector('threatfox', ThreatFoxCollector)
+CollectorRegistry.register_collector('netapi_honeypot', NetAPIHoneypotCollector)

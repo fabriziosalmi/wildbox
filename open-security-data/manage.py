@@ -17,7 +17,7 @@ from app.collectors import CollectorRegistry
 # Importing the module registers the collectors that can run.
 import app.collectors.sources  # noqa: F401
 # The default sources: one list, of sources that can be collected.
-from app.collectors.defaults import DEFAULT_SOURCES
+from app.collectors.defaults import DEFAULT_SOURCES, OPTIONAL_SOURCES
 
 config = get_config()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -97,19 +97,7 @@ def add_default_sources():
                 continue
             
             # Create new source
-            source = Source(
-                name=source_config["name"],
-                description=source_config["description"],
-                url=source_config["url"],
-                source_type=source_config["source_type"],
-                enabled=source_config["enabled"],
-                collection_interval=source_config["collection_interval"],
-                config=source_config["config"],
-                headers=source_config["headers"],
-                auth_config=source_config["auth_config"],
-                status="active",
-                created_at=datetime.now(timezone.utc)
-            )
+            source = _new_source(source_config)
             
             db.add(source)
             added_count += 1
@@ -121,6 +109,67 @@ def add_default_sources():
         
     except Exception as e:
         logger.error(f"Error adding default sources: {e}")
+        db.rollback()
+        return False
+    finally:
+        db.close()
+
+def _new_source(source_config):
+    """A new source row from an entry of DEFAULT_SOURCES or OPTIONAL_SOURCES."""
+    source = Source(
+        name=source_config["name"],
+        description=source_config["description"],
+        url=source_config["url"],
+        source_type=source_config["source_type"],
+        enabled=source_config["enabled"],
+        collection_interval=source_config["collection_interval"],
+        config=source_config["config"],
+        headers=source_config["headers"],
+        auth_config=source_config["auth_config"],
+        status="active",
+        created_at=datetime.now(timezone.utc)
+    )
+    # An entry may set its own limits. Otherwise the column defaults apply.
+    for limit in ("rate_limit", "rate_limit_window"):
+        if limit in source_config:
+            setattr(source, limit, source_config[limit])
+    return source
+
+def add_optional_source(source_name: str):
+    """Add one of OPTIONAL_SOURCES by its name"""
+    source_config = next(
+        (c for c in OPTIONAL_SOURCES if c["name"].lower() == source_name.lower()), None
+    )
+    if source_config is None:
+        logger.error(
+            f"No optional source named '{source_name}'. Optional sources: "
+            + ", ".join(c["name"] for c in OPTIONAL_SOURCES)
+        )
+        return False
+    if not CollectorRegistry.can_collect(source_config["source_type"]):
+        logger.error(
+            f"Source '{source_config['name']}' was not added: no collector for "
+            f"source type '{source_config['source_type']}'"
+        )
+        return False
+
+    db = get_db_session()
+    try:
+        existing = db.query(Source).filter(Source.name == source_config["name"]).first()
+        if existing:
+            # The operator's row, as the operator set it (its URL, its
+            # limits): add-defaults leaves a working default alone the same way.
+            logger.info(
+                f"Source '{source_config['name']}' already exists, left as it is "
+                f"(rate limit {existing.rate_limit} per {existing.rate_limit_window}s)"
+            )
+            return True
+        db.add(_new_source(source_config))
+        db.commit()
+        logger.info(f"Added source: {source_config['name']}")
+        return True
+    except Exception as e:
+        logger.error(f"Error adding optional source: {e}")
         db.rollback()
         return False
     finally:
@@ -267,6 +316,12 @@ def main():
     sources_subparsers = sources_parser.add_subparsers(dest="sources_command")
     
     sources_subparsers.add_parser("add-defaults", help="Add default sources")
+    optional_parser = sources_subparsers.add_parser(
+        "add-optional", help="Add an optional source by name"
+    )
+    optional_parser.add_argument(
+        "name", help="One of: " + ", ".join(c["name"] for c in OPTIONAL_SOURCES)
+    )
     sources_subparsers.add_parser("list", help="List all sources")
     
     enable_parser = sources_subparsers.add_parser("enable", help="Enable a source")
@@ -317,6 +372,13 @@ def main():
                 print("Failed to add default sources")
                 sys.exit(1)
         
+        elif args.sources_command == "add-optional":
+            if add_optional_source(args.name):
+                print(f"Optional source '{args.name}' is in place")
+            else:
+                print(f"Failed to add optional source '{args.name}'")
+                sys.exit(1)
+
         elif args.sources_command == "list":
             list_sources()
         

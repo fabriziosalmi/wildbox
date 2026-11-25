@@ -27,6 +27,10 @@ reason checked on 6 October 2026:
 Their collectors are still registered (``app/collectors/sources.py``): a
 source of one of those types runs once it is given what the feed asks for.
 What is not offered is a source that fails every time it is tried.
+
+``OPTIONAL_SOURCES`` are sources that can run as they are but are not
+created for every deployment: an operator adds one by name with
+``manage.py sources add-optional``.
 """
 
 from typing import Any, Dict, List
@@ -39,6 +43,28 @@ DEFAULT_SOURCES: List[Dict[str, Any]] = [
         "source_type": "feodo_tracker",
         "enabled": True,
         "collection_interval": 3600,  # Hourly
+        "config": {},
+        "headers": {},
+        "auth_config": {},
+    },
+]
+
+OPTIONAL_SOURCES: List[Dict[str, Any]] = [
+    {
+        "name": "NetAPI Honeypot",
+        "description": (
+            "IPv4 addresses that attacked NetAPI's honeypot sensors within "
+            "the last 48 hours (CC BY 4.0, https://netapi.com/compromised-ips/)"
+        ),
+        "url": "https://netapi.com/api2/?method=compromised&dataset_type=ip&format=csv",
+        "source_type": "netapi_honeypot",
+        "enabled": True,
+        "collection_interval": 3600,  # Hourly, as the feed is rebuilt
+        # The collector's rate limiter counts parsed items, not requests, and
+        # a source's default is 100 an hour: this feed has tens of thousands
+        # of rows an hour.
+        "rate_limit": 100000,
+        "rate_limit_window": 3600,
         "config": {},
         "headers": {},
         "auth_config": {},

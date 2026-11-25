@@ -93,6 +93,19 @@ and the scheduler disables such a source when it meets one, with the
 reason in its `last_error`: a source that cannot be collected is not
 offered as an enabled one.
 
+Optional sources can be collected as they are too, but are not created for
+every deployment: an operator adds one by name.
+
+```bash
+docker compose exec data python manage.py sources add-optional "NetAPI Honeypot"
+```
+
+Today there is one, NetAPI Honeypot: the IPv4 addresses that attacked
+NetAPI's honeypot sensors within the last 48 hours, a CSV without a key,
+rebuilt hourly, under CC BY 4.0 (https://netapi.com/compromised-ips/).
+Credit NetAPI with that link when you redistribute what it collects.
+`sources add-optional` leaves a source of that name alone when it exists.
+
 The scheduler runs every enabled source it can collect, whatever the
 `status` of its row, by one rule at start and at its reload of the sources
 every ten minutes. It used to leave a source in `error` out at start and
@@ -150,6 +163,7 @@ its `source_type` through `CollectorRegistry`:
 | `source_type` | Collector | What its feed needs (checked on 6 October 2026) |
 | --- | --- | --- |
 | `feodo_tracker` | `FeodoTrackerCollector` | Nothing: the default source |
+| `netapi_honeypot` | `NetAPIHoneypotCollector` | Nothing: an optional source, added with `sources add-optional "NetAPI Honeypot"` |
 | `threatfox` | `ThreatFoxCollector` | An abuse.ch key, as an `Auth-Key` header of the source |
 | `malwarebazaar` | `MalwareBazaarCollector` | An abuse.ch key, as an `Auth-Key` header of the source |
 | `abuseipdb` | `AbuseIPDBCollector` | An AbuseIPDB key, as `api_key` in the source's `config` |
