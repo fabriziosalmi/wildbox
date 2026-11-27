@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://umami.edge99.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://umami.edge99.net; base-uri 'self'; form-action 'self'">
     <title>How to Check SPF, DKIM &amp; DMARC for a Domain (with dig) | Wildbox</title>
     <meta name="description" content="Step-by-step guide to check a domain's SPF, DKIM, and DMARC records with dig, read the results, and fix the misconfigurations that send legitimate email to spam.">
     <meta name="keywords" content="check SPF DKIM DMARC, DMARC record, SPF record, DKIM selector, email authentication, why emails go to spam, dig TXT record">
@@ -104,6 +104,7 @@
       .callout { background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: var(--radius); padding: 1.1rem 1.25rem; margin: 1.5rem 0; }
       .callout p { color: var(--text); margin: 0; }
     </style>
+    <script defer src="https://umami.edge99.net/s.js" data-website-id="ca62b779-dd57-4e9e-b5f6-63cb8ab18d86" data-domains="www.wildbox.io"></script>
 </head>
 <body>
     <!-- Navigation -->
