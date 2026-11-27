@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://umami.edge99.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://umami.edge99.net; base-uri 'self'; form-action 'self'">
     <title>JWT Decoder — Decode &amp; Inspect JSON Web Tokens Online | Wildbox</title>
     <meta name="description" content="Free JWT decoder. Paste a JSON Web Token to inspect its header, payload, and claims. Runs entirely in your browser — your token is never sent to any server.">
     <meta name="keywords" content="jwt decoder, decode jwt, jwt token decoder, json web token, decode jwt online, jwt claims, jwt payload">
@@ -102,6 +102,7 @@
       .claims td:last-child { color: var(--text-muted); }
       .tok-h { color: #f87171; } .tok-p { color: #818cf8; } .tok-s { color: #4ade80; }
     </style>
+    <script defer src="https://umami.edge99.net/s.js" data-website-id="ca62b779-dd57-4e9e-b5f6-63cb8ab18d86" data-domains="www.wildbox.io"></script>
 </head>
 <body>
     <!-- Navigation -->
