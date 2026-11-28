@@ -195,6 +195,7 @@ def test_every_registered_collector_can_be_instantiated():
         "feodo_tracker",
         "malware_domain_list",
         "malwarebazaar",
+        "netapi_honeypot",
         "phishtank",
         "threatfox",
         "urlvoid",
